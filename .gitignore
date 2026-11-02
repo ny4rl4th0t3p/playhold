@@ -1,0 +1,19 @@
+# Go
+*.test
+*.out
+/bin/
+/dist/
+go.work
+go.work.sum
+
+# Node
+node_modules/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+
+# Local environment
+.env
+.env.*

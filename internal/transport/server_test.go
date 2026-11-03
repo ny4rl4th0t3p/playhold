@@ -166,9 +166,22 @@ func TestSilentConnectionIsClosedAfterHandshakeTimeout(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestFirstFrameStopsHandshakeTimeout(t *testing.T) {
+func TestFramesDoNotStopHandshakeTimeoutOnTheirOwn(t *testing.T) {
+	ws := dial(t, startServer(t, &Config{HandshakeTimeout: 100 * time.Millisecond}, ignoreFrames))
+
+	data, err := proto.Marshal(&wire.ClientFrame{Seq: 1})
+	require.NoError(t, err)
+	require.NoError(t, ws.Write(testContext(t), websocket.MessageBinary, data))
+
+	_, _, err = ws.Read(testContext(t))
+	require.Error(t, err)
+}
+
+func TestHandshakeDoneStopsHandshakeTimeout(t *testing.T) {
 	timeout := 100 * time.Millisecond
-	ws := dial(t, startServer(t, &Config{HandshakeTimeout: timeout}, ignoreFrames))
+	ws := dial(t, startServer(t, &Config{HandshakeTimeout: timeout}, func(c *Conn) (func(*wire.ClientFrame), error) {
+		return func(_ *wire.ClientFrame) { c.HandshakeDone() }, nil
+	}))
 
 	data, err := proto.Marshal(&wire.ClientFrame{Seq: 1})
 	require.NoError(t, err)
@@ -191,6 +204,37 @@ func TestOtherOriginsAreRefusedUnlessListed(t *testing.T) {
 	ws, _, err := websocket.Dial(testContext(t), allowed, opts) //nolint:bodyclose // Dial's docs say the body needs no closing
 	require.NoError(t, err)
 	_ = ws.CloseNow()
+}
+
+func TestReplacedConnectionClosesWithItsOwnStatus(t *testing.T) {
+	connected := make(chan *Conn, 1)
+	url := startServer(t, &Config{}, func(c *Conn) (func(*wire.ClientFrame), error) {
+		connected <- c
+		return func(_ *wire.ClientFrame) {}, nil
+	})
+	ws := dial(t, url)
+
+	(<-connected).Replace()
+
+	_, _, err := ws.Read(testContext(t))
+	assert.Equal(t, StatusReplaced, websocket.CloseStatus(err))
+}
+
+func TestOnCloseRunsWhenTheConnectionEnds(t *testing.T) {
+	ended := make(chan struct{})
+	url := startServer(t, &Config{}, func(c *Conn) (func(*wire.ClientFrame), error) {
+		c.OnClose(func() { close(ended) })
+		return func(_ *wire.ClientFrame) {}, nil
+	})
+	ws := dial(t, url)
+
+	require.NoError(t, ws.CloseNow())
+
+	select {
+	case <-ended:
+	case <-testContext(t).Done():
+		require.FailNow(t, "OnClose did not run")
+	}
 }
 
 func TestConnectErrorClosesTheConnection(t *testing.T) {

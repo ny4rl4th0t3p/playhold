@@ -24,6 +24,11 @@ type Conn struct {
 
 	wake  chan struct{}          // says latest may be set
 	queue chan *wire.ServerFrame // frames that can't be skipped
+
+	replaced      chan struct{} // asks writeLoop to close the connection with StatusReplaced
+	closeReplaced func()        // set by the server before writeLoop starts
+	handshake     *time.Timer   // set by the server before any frame arrives
+	onClose       []func()      // only touched on the connection's read goroutine
 }
 
 func newConn(
@@ -41,7 +46,36 @@ func newConn(
 		logger:       logger,
 		wake:         make(chan struct{}, 1),
 		queue:        make(chan *wire.ServerFrame, cfg.QueueSize),
+		replaced:     make(chan struct{}, 1),
 	}
+}
+
+// HandshakeDone stops the handshake timeout. Call it once the client has identified itself.
+func (c *Conn) HandshakeDone() { c.handshake.Stop() }
+
+// OnClose registers fn to run after the connection has ended. Call it from Connect or a frame callback.
+func (c *Conn) OnClose(fn func()) { c.onClose = append(c.onClose, fn) }
+
+// Replace closes the connection with StatusReplaced, so the client knows not to reconnect. It doesn't wait.
+func (c *Conn) Replace() {
+	select {
+	case c.replaced <- struct{}{}:
+	default: // already asked
+	}
+}
+
+// SendWelcome accepts the client's Hello.
+func (c *Conn) SendWelcome(playerID, secret string) {
+	c.enqueue(&wire.ServerFrame{Body: &wire.ServerFrame_Welcome{
+		Welcome: &wire.Welcome{PlayerId: playerID, Secret: secret},
+	}})
+}
+
+// SendJoined accepts the client's Join, the frame numbered seq.
+func (c *Conn) SendJoined(seq uint64, code string) {
+	c.enqueue(&wire.ServerFrame{Body: &wire.ServerFrame_Joined{
+		Joined: &wire.Joined{Seq: seq, Code: code},
+	}})
 }
 
 // SendState makes state the next one this client receives, replacing any not yet written. A slow client skips
@@ -101,6 +135,10 @@ func (c *Conn) writeLoop() {
 		var next *wire.ServerFrame
 		select {
 		case <-c.ctx.Done():
+			return
+		case <-c.replaced:
+			c.closeReplaced()
+			c.cancel()
 			return
 		case <-c.wake:
 		case next = <-c.queue:

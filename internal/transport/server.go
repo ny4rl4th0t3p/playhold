@@ -16,6 +16,10 @@ import (
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 )
 
+// StatusReplaced is the WebSocket close status of a connection replaced by a newer one from the same player.
+// A client should not reconnect after it, or two open tabs would keep replacing each other.
+const StatusReplaced websocket.StatusCode = 4001
+
 // Defaults for Config fields left at zero.
 const (
 	defaultMaxMessageBytes  = 32 << 10
@@ -36,7 +40,7 @@ type Config struct {
 	MaxConns int
 	// MaxConnsPerIP is the most connections accepted at once from one IP address.
 	MaxConnsPerIP int
-	// HandshakeTimeout is how long a new connection has to send its first frame.
+	// HandshakeTimeout is how long a new connection has to reach Conn.HandshakeDone.
 	HandshakeTimeout time.Duration
 	// PingInterval is the time between checks that a client is still there.
 	PingInterval time.Duration
@@ -139,6 +143,8 @@ func (s *Server) serve(ws *websocket.Conn) {
 	conn := newConn(ctx, cancel, s.cfg, s.cfg.Logger, func(ctx context.Context, data []byte) error {
 		return ws.Write(ctx, websocket.MessageBinary, data)
 	})
+	conn.closeReplaced = func() { _ = ws.Close(StatusReplaced, "replaced by a newer connection") }
+	conn.handshake = time.AfterFunc(s.cfg.HandshakeTimeout, conn.Close)
 
 	var loops sync.WaitGroup
 	loops.Go(conn.writeLoop)
@@ -152,22 +158,21 @@ func (s *Server) serve(ws *websocket.Conn) {
 		s.readLoop(ctx, conn, ws, onFrame)
 	}
 
+	conn.handshake.Stop()
 	cancel()
 	loops.Wait()
+	for _, fn := range conn.onClose {
+		fn()
+	}
 }
 
 func (s *Server) readLoop(ctx context.Context, conn *Conn, ws *websocket.Conn, onFrame func(*wire.ClientFrame)) {
-	handshake := time.AfterFunc(s.cfg.HandshakeTimeout, conn.Close)
-	defer handshake.Stop()
-
 	for {
 		typ, data, err := ws.Read(ctx)
 		if err != nil {
 			s.cfg.Logger.Debug("connection ended", "error", err)
 			return
 		}
-		handshake.Stop()
-
 		if typ != websocket.MessageBinary {
 			_ = ws.Close(websocket.StatusUnsupportedData, "binary frames only")
 			return

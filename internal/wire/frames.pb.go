@@ -38,6 +38,12 @@ const (
 	ErrorCode_ERROR_CODE_ROOM_CLOSED ErrorCode = 5
 	// ERROR_CODE_REJECTED means the handler refused the message.
 	ErrorCode_ERROR_CODE_REJECTED ErrorCode = 6
+	// ERROR_CODE_UNAUTHORIZED means the player ID and secret don't match. The client can say Hello again as a new guest.
+	ErrorCode_ERROR_CODE_UNAUTHORIZED ErrorCode = 7
+	// ERROR_CODE_ROOM_FULL means the room has no free seat.
+	ErrorCode_ERROR_CODE_ROOM_FULL ErrorCode = 8
+	// ERROR_CODE_UNSUPPORTED_PROTOCOL means the server doesn't speak this protocol version.
+	ErrorCode_ERROR_CODE_UNSUPPORTED_PROTOCOL ErrorCode = 9
 )
 
 // Enum value maps for ErrorCode.
@@ -50,15 +56,21 @@ var (
 		4: "ERROR_CODE_QUEUE_FULL",
 		5: "ERROR_CODE_ROOM_CLOSED",
 		6: "ERROR_CODE_REJECTED",
+		7: "ERROR_CODE_UNAUTHORIZED",
+		8: "ERROR_CODE_ROOM_FULL",
+		9: "ERROR_CODE_UNSUPPORTED_PROTOCOL",
 	}
 	ErrorCode_value = map[string]int32{
-		"ERROR_CODE_UNSPECIFIED":     0,
-		"ERROR_CODE_MALFORMED_FRAME": 1,
-		"ERROR_CODE_UNKNOWN_MESSAGE": 2,
-		"ERROR_CODE_BAD_MESSAGE":     3,
-		"ERROR_CODE_QUEUE_FULL":      4,
-		"ERROR_CODE_ROOM_CLOSED":     5,
-		"ERROR_CODE_REJECTED":        6,
+		"ERROR_CODE_UNSPECIFIED":          0,
+		"ERROR_CODE_MALFORMED_FRAME":      1,
+		"ERROR_CODE_UNKNOWN_MESSAGE":      2,
+		"ERROR_CODE_BAD_MESSAGE":          3,
+		"ERROR_CODE_QUEUE_FULL":           4,
+		"ERROR_CODE_ROOM_CLOSED":          5,
+		"ERROR_CODE_REJECTED":             6,
+		"ERROR_CODE_UNAUTHORIZED":         7,
+		"ERROR_CODE_ROOM_FULL":            8,
+		"ERROR_CODE_UNSUPPORTED_PROTOCOL": 9,
 	}
 )
 
@@ -259,6 +271,7 @@ type ServerFrame struct {
 	//	*ServerFrame_State
 	//	*ServerFrame_Error
 	//	*ServerFrame_Closed
+	//	*ServerFrame_Joined
 	Body          isServerFrame_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -337,6 +350,15 @@ func (x *ServerFrame) GetClosed() *RoomClosed {
 	return nil
 }
 
+func (x *ServerFrame) GetJoined() *Joined {
+	if x != nil {
+		if x, ok := x.Body.(*ServerFrame_Joined); ok {
+			return x.Joined
+		}
+	}
+	return nil
+}
+
 type isServerFrame_Body interface {
 	isServerFrame_Body()
 }
@@ -357,6 +379,10 @@ type ServerFrame_Closed struct {
 	Closed *RoomClosed `protobuf:"bytes,4,opt,name=closed,proto3,oneof"`
 }
 
+type ServerFrame_Joined struct {
+	Joined *Joined `protobuf:"bytes,5,opt,name=joined,proto3,oneof"`
+}
+
 func (*ServerFrame_Welcome) isServerFrame_Body() {}
 
 func (*ServerFrame_State) isServerFrame_Body() {}
@@ -365,10 +391,15 @@ func (*ServerFrame_Error) isServerFrame_Body() {}
 
 func (*ServerFrame_Closed) isServerFrame_Body() {}
 
-// Hello is the first frame on a connection.
+func (*ServerFrame_Joined) isServerFrame_Body() {}
+
+// Hello is the first frame on a connection. A returning guest sends the ID and secret from its Welcome; a new
+// guest leaves them empty.
 type Hello struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	ProtocolVersion uint32                 `protobuf:"varint,1,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
+	PlayerId        string                 `protobuf:"bytes,2,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"`
+	Secret          string                 `protobuf:"bytes,3,opt,name=secret,proto3" json:"secret,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -410,10 +441,25 @@ func (x *Hello) GetProtocolVersion() uint32 {
 	return 0
 }
 
-// Welcome accepts a Hello.
+func (x *Hello) GetPlayerId() string {
+	if x != nil {
+		return x.PlayerId
+	}
+	return ""
+}
+
+func (x *Hello) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+// Welcome accepts a Hello. The secret is only sent to a new guest, once.
 type Welcome struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PlayerId      string                 `protobuf:"bytes,1,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"`
+	Secret        string                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -455,7 +501,14 @@ func (x *Welcome) GetPlayerId() string {
 	return ""
 }
 
-// Join asks to enter the room with this code.
+func (x *Welcome) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+// Join asks to enter the room with this code, creating it if the code is new.
 type Join struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
@@ -500,6 +553,59 @@ func (x *Join) GetCode() string {
 	return ""
 }
 
+// Joined accepts a Join. Module messages can be sent from now on.
+type Joined struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Seq           uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Joined) Reset() {
+	*x = Joined{}
+	mi := &file_playhold_v1_frames_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Joined) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Joined) ProtoMessage() {}
+
+func (x *Joined) ProtoReflect() protoreflect.Message {
+	mi := &file_playhold_v1_frames_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Joined.ProtoReflect.Descriptor instead.
+func (*Joined) Descriptor() ([]byte, []int) {
+	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Joined) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *Joined) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
 // ModuleMessage is a message for one module's handler. IDs are local to the module.
 type ModuleMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -512,7 +618,7 @@ type ModuleMessage struct {
 
 func (x *ModuleMessage) Reset() {
 	*x = ModuleMessage{}
-	mi := &file_playhold_v1_frames_proto_msgTypes[5]
+	mi := &file_playhold_v1_frames_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -524,7 +630,7 @@ func (x *ModuleMessage) String() string {
 func (*ModuleMessage) ProtoMessage() {}
 
 func (x *ModuleMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_playhold_v1_frames_proto_msgTypes[5]
+	mi := &file_playhold_v1_frames_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -537,7 +643,7 @@ func (x *ModuleMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModuleMessage.ProtoReflect.Descriptor instead.
 func (*ModuleMessage) Descriptor() ([]byte, []int) {
-	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{5}
+	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ModuleMessage) GetModule() string {
@@ -572,7 +678,7 @@ type ModuleView struct {
 
 func (x *ModuleView) Reset() {
 	*x = ModuleView{}
-	mi := &file_playhold_v1_frames_proto_msgTypes[6]
+	mi := &file_playhold_v1_frames_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -584,7 +690,7 @@ func (x *ModuleView) String() string {
 func (*ModuleView) ProtoMessage() {}
 
 func (x *ModuleView) ProtoReflect() protoreflect.Message {
-	mi := &file_playhold_v1_frames_proto_msgTypes[6]
+	mi := &file_playhold_v1_frames_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -597,7 +703,7 @@ func (x *ModuleView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModuleView.ProtoReflect.Descriptor instead.
 func (*ModuleView) Descriptor() ([]byte, []int) {
-	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{6}
+	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ModuleView) GetModule() string {
@@ -624,7 +730,7 @@ type RoomState struct {
 
 func (x *RoomState) Reset() {
 	*x = RoomState{}
-	mi := &file_playhold_v1_frames_proto_msgTypes[7]
+	mi := &file_playhold_v1_frames_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -636,7 +742,7 @@ func (x *RoomState) String() string {
 func (*RoomState) ProtoMessage() {}
 
 func (x *RoomState) ProtoReflect() protoreflect.Message {
-	mi := &file_playhold_v1_frames_proto_msgTypes[7]
+	mi := &file_playhold_v1_frames_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -649,7 +755,7 @@ func (x *RoomState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RoomState.ProtoReflect.Descriptor instead.
 func (*RoomState) Descriptor() ([]byte, []int) {
-	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{7}
+	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RoomState) GetViews() []*ModuleView {
@@ -671,7 +777,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_playhold_v1_frames_proto_msgTypes[8]
+	mi := &file_playhold_v1_frames_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -683,7 +789,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_playhold_v1_frames_proto_msgTypes[8]
+	mi := &file_playhold_v1_frames_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -696,7 +802,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{8}
+	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Error) GetSeq() uint64 {
@@ -730,7 +836,7 @@ type RoomClosed struct {
 
 func (x *RoomClosed) Reset() {
 	*x = RoomClosed{}
-	mi := &file_playhold_v1_frames_proto_msgTypes[9]
+	mi := &file_playhold_v1_frames_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -742,7 +848,7 @@ func (x *RoomClosed) String() string {
 func (*RoomClosed) ProtoMessage() {}
 
 func (x *RoomClosed) ProtoReflect() protoreflect.Message {
-	mi := &file_playhold_v1_frames_proto_msgTypes[9]
+	mi := &file_playhold_v1_frames_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -755,7 +861,7 @@ func (x *RoomClosed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RoomClosed.ProtoReflect.Descriptor instead.
 func (*RoomClosed) Descriptor() ([]byte, []int) {
-	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{9}
+	return file_playhold_v1_frames_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RoomClosed) GetReason() CloseReason {
@@ -775,19 +881,26 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x05hello\x18\x02 \x01(\v2\x12.playhold.v1.HelloH\x00R\x05hello\x12'\n" +
 	"\x04join\x18\x03 \x01(\v2\x11.playhold.v1.JoinH\x00R\x04join\x126\n" +
 	"\amessage\x18\x04 \x01(\v2\x1a.playhold.v1.ModuleMessageH\x00R\amessageB\x06\n" +
-	"\x04body\"\xd6\x01\n" +
+	"\x04body\"\x85\x02\n" +
 	"\vServerFrame\x120\n" +
 	"\awelcome\x18\x01 \x01(\v2\x14.playhold.v1.WelcomeH\x00R\awelcome\x12.\n" +
 	"\x05state\x18\x02 \x01(\v2\x16.playhold.v1.RoomStateH\x00R\x05state\x12*\n" +
 	"\x05error\x18\x03 \x01(\v2\x12.playhold.v1.ErrorH\x00R\x05error\x121\n" +
-	"\x06closed\x18\x04 \x01(\v2\x17.playhold.v1.RoomClosedH\x00R\x06closedB\x06\n" +
-	"\x04body\"2\n" +
+	"\x06closed\x18\x04 \x01(\v2\x17.playhold.v1.RoomClosedH\x00R\x06closed\x12-\n" +
+	"\x06joined\x18\x05 \x01(\v2\x13.playhold.v1.JoinedH\x00R\x06joinedB\x06\n" +
+	"\x04body\"g\n" +
 	"\x05Hello\x12)\n" +
-	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\"&\n" +
+	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\x12\x1b\n" +
+	"\tplayer_id\x18\x02 \x01(\tR\bplayerId\x12\x16\n" +
+	"\x06secret\x18\x03 \x01(\tR\x06secret\">\n" +
 	"\aWelcome\x12\x1b\n" +
-	"\tplayer_id\x18\x01 \x01(\tR\bplayerId\"\x1a\n" +
+	"\tplayer_id\x18\x01 \x01(\tR\bplayerId\x12\x16\n" +
+	"\x06secret\x18\x02 \x01(\tR\x06secret\"\x1a\n" +
 	"\x04Join\x12\x12\n" +
-	"\x04code\x18\x01 \x01(\tR\x04code\"Q\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\".\n" +
+	"\x06Joined\x12\x10\n" +
+	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\"Q\n" +
 	"\rModuleMessage\x12\x16\n" +
 	"\x06module\x18\x01 \x01(\tR\x06module\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\rR\x02id\x12\x18\n" +
@@ -804,7 +917,7 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\amessage\x18\x03 \x01(\tR\amessage\">\n" +
 	"\n" +
 	"RoomClosed\x120\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xd3\x01\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xaf\x02\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aERROR_CODE_MALFORMED_FRAME\x10\x01\x12\x1e\n" +
@@ -812,7 +925,10 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x16ERROR_CODE_BAD_MESSAGE\x10\x03\x12\x19\n" +
 	"\x15ERROR_CODE_QUEUE_FULL\x10\x04\x12\x1a\n" +
 	"\x16ERROR_CODE_ROOM_CLOSED\x10\x05\x12\x17\n" +
-	"\x13ERROR_CODE_REJECTED\x10\x06*z\n" +
+	"\x13ERROR_CODE_REJECTED\x10\x06\x12\x1b\n" +
+	"\x17ERROR_CODE_UNAUTHORIZED\x10\a\x12\x18\n" +
+	"\x14ERROR_CODE_ROOM_FULL\x10\b\x12#\n" +
+	"\x1fERROR_CODE_UNSUPPORTED_PROTOCOL\x10\t*z\n" +
 	"\vCloseReason\x12\x1c\n" +
 	"\x18CLOSE_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLOSE_REASON_REQUESTED\x10\x01\x12\x19\n" +
@@ -832,7 +948,7 @@ func file_playhold_v1_frames_proto_rawDescGZIP() []byte {
 }
 
 var file_playhold_v1_frames_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_playhold_v1_frames_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_playhold_v1_frames_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_playhold_v1_frames_proto_goTypes = []any{
 	(ErrorCode)(0),        // 0: playhold.v1.ErrorCode
 	(CloseReason)(0),      // 1: playhold.v1.CloseReason
@@ -841,28 +957,30 @@ var file_playhold_v1_frames_proto_goTypes = []any{
 	(*Hello)(nil),         // 4: playhold.v1.Hello
 	(*Welcome)(nil),       // 5: playhold.v1.Welcome
 	(*Join)(nil),          // 6: playhold.v1.Join
-	(*ModuleMessage)(nil), // 7: playhold.v1.ModuleMessage
-	(*ModuleView)(nil),    // 8: playhold.v1.ModuleView
-	(*RoomState)(nil),     // 9: playhold.v1.RoomState
-	(*Error)(nil),         // 10: playhold.v1.Error
-	(*RoomClosed)(nil),    // 11: playhold.v1.RoomClosed
+	(*Joined)(nil),        // 7: playhold.v1.Joined
+	(*ModuleMessage)(nil), // 8: playhold.v1.ModuleMessage
+	(*ModuleView)(nil),    // 9: playhold.v1.ModuleView
+	(*RoomState)(nil),     // 10: playhold.v1.RoomState
+	(*Error)(nil),         // 11: playhold.v1.Error
+	(*RoomClosed)(nil),    // 12: playhold.v1.RoomClosed
 }
 var file_playhold_v1_frames_proto_depIdxs = []int32{
 	4,  // 0: playhold.v1.ClientFrame.hello:type_name -> playhold.v1.Hello
 	6,  // 1: playhold.v1.ClientFrame.join:type_name -> playhold.v1.Join
-	7,  // 2: playhold.v1.ClientFrame.message:type_name -> playhold.v1.ModuleMessage
+	8,  // 2: playhold.v1.ClientFrame.message:type_name -> playhold.v1.ModuleMessage
 	5,  // 3: playhold.v1.ServerFrame.welcome:type_name -> playhold.v1.Welcome
-	9,  // 4: playhold.v1.ServerFrame.state:type_name -> playhold.v1.RoomState
-	10, // 5: playhold.v1.ServerFrame.error:type_name -> playhold.v1.Error
-	11, // 6: playhold.v1.ServerFrame.closed:type_name -> playhold.v1.RoomClosed
-	8,  // 7: playhold.v1.RoomState.views:type_name -> playhold.v1.ModuleView
-	0,  // 8: playhold.v1.Error.code:type_name -> playhold.v1.ErrorCode
-	1,  // 9: playhold.v1.RoomClosed.reason:type_name -> playhold.v1.CloseReason
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	10, // 4: playhold.v1.ServerFrame.state:type_name -> playhold.v1.RoomState
+	11, // 5: playhold.v1.ServerFrame.error:type_name -> playhold.v1.Error
+	12, // 6: playhold.v1.ServerFrame.closed:type_name -> playhold.v1.RoomClosed
+	7,  // 7: playhold.v1.ServerFrame.joined:type_name -> playhold.v1.Joined
+	9,  // 8: playhold.v1.RoomState.views:type_name -> playhold.v1.ModuleView
+	0,  // 9: playhold.v1.Error.code:type_name -> playhold.v1.ErrorCode
+	1,  // 10: playhold.v1.RoomClosed.reason:type_name -> playhold.v1.CloseReason
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_playhold_v1_frames_proto_init() }
@@ -880,6 +998,7 @@ func file_playhold_v1_frames_proto_init() {
 		(*ServerFrame_State)(nil),
 		(*ServerFrame_Error)(nil),
 		(*ServerFrame_Closed)(nil),
+		(*ServerFrame_Joined)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -887,7 +1006,7 @@ func file_playhold_v1_frames_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_playhold_v1_frames_proto_rawDesc), len(file_playhold_v1_frames_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

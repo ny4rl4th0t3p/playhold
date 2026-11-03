@@ -143,6 +143,8 @@ type RoomConfig struct {
 	Name string
 	// QueueSize is the inbound queue capacity. Zero or less uses the default.
 	QueueSize int
+	// MaxPlayers is how many seats a room has. Zero or less means no limit.
+	MaxPlayers int
 	// Modules are the modules in this room type. Events reach them in this order.
 	Modules []Module
 	// Init runs once before the room starts, after module state is created. An error or panic stops the

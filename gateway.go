@@ -2,45 +2,207 @@ package playhold
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 )
 
-// bindFunc decides which room and player a new connection belongs to.
-type bindFunc func(c *transport.Conn) (*Room, PlayerID, error)
+const (
+	// protocolVersion is the version of the frames in proto/playhold/v1.
+	protocolVersion = 1
+	maxRoomCodeLen  = 32
+)
 
-// connector returns the transport callback that routes a connection's frames to its room.
-func connector(bind bindFunc) transport.Connect {
-	return func(c *transport.Conn) (func(*wire.ClientFrame), error) {
-		room, player, err := bind(c)
-		if err != nil {
-			return nil, err
-		}
-		go func() {
-			select {
-			case <-room.Done():
-				c.SendClosed(wireCloseReason(room.Wait()))
-			case <-c.Done():
-			}
-		}()
-		return func(frame *wire.ClientFrame) { routeFrame(c, room, player, frame) }, nil
+// gateway connects client connections to guests and rooms.
+type gateway struct {
+	guests *guests
+	lobby  *lobby
+}
+
+func (g *gateway) connect(c *transport.Conn) (func(*wire.ClientFrame), error) {
+	s := &session{gateway: g, conn: c}
+	c.OnClose(s.ended)
+	return s.frame, nil
+}
+
+// session is one connection's progress: Hello, then Join, then module messages.
+type session struct {
+	gateway *gateway
+	conn    *transport.Conn
+	player  PlayerID // only used on the connection's read goroutine
+
+	// The room's goroutine reports the result of a Join, so these need the lock.
+	mu     sync.Mutex
+	room   *Room
+	code   string
+	joined bool
+	failed chan struct{} // closed if the Join fails, to stop watching the room
+}
+
+func (s *session) frame(frame *wire.ClientFrame) {
+	seq := frame.GetSeq()
+	switch body := frame.GetBody().(type) {
+	case *wire.ClientFrame_Hello:
+		s.hello(seq, body.Hello)
+	case *wire.ClientFrame_Join:
+		s.join(seq, body.Join.GetCode())
+	case *wire.ClientFrame_Message:
+		s.message(seq, body.Message)
+	default:
+		s.malformed(seq, "frame has no body")
 	}
 }
 
-func routeFrame(c *transport.Conn, room *Room, player PlayerID, frame *wire.ClientFrame) {
-	seq := frame.GetSeq()
-	msg := frame.GetMessage()
-	if msg == nil || msg.GetModule() == "" {
-		c.SendError(seq, wire.ErrorCode_ERROR_CODE_MALFORMED_FRAME, "expected a message for a module")
+func (s *session) malformed(seq uint64, message string) {
+	s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_MALFORMED_FRAME, message)
+}
+
+func (s *session) hello(seq uint64, hello *wire.Hello) {
+	if s.player != "" {
+		s.malformed(seq, "already said hello")
+		return
+	}
+	if hello.GetProtocolVersion() != protocolVersion {
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNSUPPORTED_PROTOCOL, "unsupported protocol version")
+		return
+	}
+
+	guests := s.gateway.guests
+	player, secret := PlayerID(hello.GetPlayerId()), ""
+	if player == "" && hello.GetSecret() == "" {
+		player, secret = guests.create()
+	} else if !guests.verify(player, hello.GetSecret()) {
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAUTHORIZED, "unknown player or wrong secret")
+		return
+	}
+
+	s.player = player
+	if old := guests.attach(player, s.conn); old != nil {
+		old.Replace()
+	}
+	s.conn.HandshakeDone()
+	s.conn.SendWelcome(string(player), secret)
+}
+
+func (s *session) join(seq uint64, code string) {
+	switch {
+	case s.player == "":
+		s.malformed(seq, "say hello before joining")
+		return
+	case !validRoomCode(code):
+		s.malformed(seq, "invalid room code")
+		return
+	}
+
+	s.mu.Lock()
+	busy := s.room != nil && !s.room.closed()
+	s.mu.Unlock()
+	if busy {
+		s.malformed(seq, "already in a room")
+		return
+	}
+
+	room, err := s.gateway.lobby.enter(code)
+	if err != nil {
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_REJECTED, "the room could not be created")
+		return
+	}
+
+	failed := make(chan struct{})
+	s.mu.Lock()
+	s.room, s.code, s.joined, s.failed = room, code, false, failed
+	s.mu.Unlock()
+	go s.watchRoom(room, failed)
+
+	result := func(err error) { s.seated(seq, code, err) }
+	if err := room.seat(s.player, result); err != nil {
+		result(err)
+	}
+}
+
+// seated finishes a Join. It runs on the room's goroutine, unless the request never reached the room.
+func (s *session) seated(seq uint64, code string, err error) {
+	s.mu.Lock()
+	room, failed := s.room, s.failed
+	if err == nil {
+		s.joined = true
+	} else {
+		s.room = nil
+	}
+	s.mu.Unlock()
+
+	if err == nil {
+		s.conn.SendJoined(seq, code)
+		return
+	}
+	if room != nil { // otherwise the connection has already ended
+		close(failed)
+		s.gateway.lobby.leave(code, room)
+	}
+	s.conn.SendError(seq, wireErrorCode(err), err.Error())
+}
+
+// watchRoom tells the client when its room closes.
+func (s *session) watchRoom(room *Room, failed <-chan struct{}) {
+	select {
+	case <-room.Done():
+		s.conn.SendClosed(wireCloseReason(room.Wait()))
+	case <-failed:
+	case <-s.conn.Done():
+	}
+}
+
+func (s *session) message(seq uint64, msg *wire.ModuleMessage) {
+	s.mu.Lock()
+	room, joined := s.room, s.joined
+	s.mu.Unlock()
+
+	switch {
+	case !joined:
+		s.malformed(seq, "join a room before sending messages")
+		return
+	case msg.GetModule() == "":
+		s.malformed(seq, "message has no module")
 		return
 	}
 	report := func(err error) {
 		if err != nil {
-			c.SendError(seq, wireErrorCode(err), err.Error())
+			s.conn.SendError(seq, wireErrorCode(err), err.Error())
 		}
 	}
-	report(room.dispatch(player, msg.GetModule(), msg.GetId(), msg.GetPayload(), report))
+	report(room.dispatch(s.player, msg.GetModule(), msg.GetId(), msg.GetPayload(), report))
+}
+
+// ended releases what the connection held. The player keeps their seat.
+func (s *session) ended() {
+	if s.player != "" {
+		s.gateway.guests.detach(s.player, s.conn)
+	}
+
+	s.mu.Lock()
+	room, code := s.room, s.code
+	s.room = nil
+	s.mu.Unlock()
+
+	if room != nil {
+		s.gateway.lobby.leave(code, room)
+	}
+}
+
+// validRoomCode accepts codes that are safe to put in a link.
+func validRoomCode(code string) bool {
+	if code == "" || len(code) > maxRoomCodeLen {
+		return false
+	}
+	for _, c := range code {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func wireErrorCode(err error) wire.ErrorCode {
@@ -53,6 +215,8 @@ func wireErrorCode(err error) wire.ErrorCode {
 		return wire.ErrorCode_ERROR_CODE_QUEUE_FULL
 	case errors.Is(err, ErrRoomClosed):
 		return wire.ErrorCode_ERROR_CODE_ROOM_CLOSED
+	case errors.Is(err, ErrRoomFull):
+		return wire.ErrorCode_ERROR_CODE_ROOM_FULL
 	default:
 		return wire.ErrorCode_ERROR_CODE_REJECTED
 	}

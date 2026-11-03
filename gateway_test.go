@@ -502,6 +502,55 @@ func TestPlayersAreToldWhenTheRoomCloses(t *testing.T) {
 	}
 }
 
+func TestPlayerSeesTheirViewAfterJoiningAndAfterReconnecting(t *testing.T) {
+	text := func(t *testing.T, frame *wire.ServerFrame) string {
+		t.Helper()
+		views := frame.GetState().GetViews()
+		require.Len(t, views, 1)
+		return viewText(t, views[0])
+	}
+	url := startGameServer(t, RoomConfig{Modules: []Module{showsPlayer("cards")}}, 0)
+
+	first, welcome := seatedGuest(t, url)
+	want := "cards for " + welcome.GetPlayerId()
+	assert.Equal(t, want, text(t, readServerFrame(t, first)))
+	require.NoError(t, first.CloseNow())
+
+	again := returningGuest(t, url, welcome)
+	joinRoom(t, again, testCode)
+	assert.Equal(t, want, text(t, readServerFrame(t, again)))
+
+	sendFrame(t, again, messageFrame(t, 3, "cards", msgAdd, &addMsg{}))
+	assert.Equal(t, want, text(t, readServerFrame(t, again)))
+}
+
+func TestPlayersAreToldWhenTheirRoomIsStuck(t *testing.T) {
+	release := make(chan struct{})
+	module := registerFunc{name: "m", register: func(r *Registry) {
+		Handle(r, msgAdd, func(_ *RoomContext, _ *addMsg) error {
+			<-release
+			return nil
+		})
+	}}
+	server, err := NewServer(newConfiguredRuntime(t, Config{StuckTimeout: 50 * time.Millisecond}), &ServerConfig{
+		RoomType:    newTestRoomType(t, RoomConfig{Modules: []Module{module}}),
+		MemoryLimit: -1,
+		Logger:      slog.New(slog.DiscardHandler),
+	})
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	t.Cleanup(func() {
+		server.Close()
+		httpServer.Close()
+	})
+	defer close(release)
+
+	ws, _ := seatedGuest(t, "ws"+strings.TrimPrefix(httpServer.URL, "http"))
+	sendFrame(t, ws, messageFrame(t, 3, "m", msgAdd, &addMsg{}))
+
+	assert.Equal(t, wire.CloseReason_CLOSE_REASON_STUCK, readServerFrame(t, ws).GetClosed().GetReason())
+}
+
 func TestNewServerNeedsARoomType(t *testing.T) {
 	_, err := NewServer(NewRuntime(Config{}), &ServerConfig{})
 

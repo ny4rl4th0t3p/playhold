@@ -21,7 +21,14 @@ const testTimeout = 5 * time.Second
 // newTestRuntime returns a Runtime that shuts down when the test ends. Call it inside a bubble.
 func newTestRuntime(t *testing.T) *Runtime {
 	t.Helper()
-	rt := NewRuntime(Config{Logger: slog.New(slog.DiscardHandler)})
+	return newConfiguredRuntime(t, Config{})
+}
+
+// newConfiguredRuntime is newTestRuntime with some of the config set.
+func newConfiguredRuntime(t *testing.T, cfg Config) *Runtime {
+	t.Helper()
+	cfg.Logger = slog.New(slog.DiscardHandler)
+	rt := NewRuntime(cfg)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
@@ -437,6 +444,7 @@ func TestCloseReasonString(t *testing.T) {
 		{CloseShutdown, "shutdown"},
 		{ClosePanic, "panic"},
 		{CloseInitFailed, "init failed"},
+		{CloseStuck, "stuck"},
 		{CloseReason(0), "unknown (0)"},
 	}
 	for _, tt := range tests {

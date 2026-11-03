@@ -4,11 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"reflect"
 	"runtime/debug"
 	"slices"
 	"sync"
+	"sync/atomic"
+	"time"
 	"uuid"
+
+	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 )
 
 // defaultQueueSize is the inbound queue capacity of a room whose type does not set one.
@@ -51,6 +56,8 @@ const (
 	ClosePanic
 	// CloseInitFailed means the room's Init hook failed, so it never started.
 	CloseInitFailed
+	// CloseStuck means a turn ran for too long. The room's goroutine may still be running.
+	CloseStuck
 )
 
 // String returns a short name for the reason.
@@ -64,6 +71,8 @@ func (r CloseReason) String() string {
 		return "panic"
 	case CloseInitFailed:
 		return "init failed"
+	case CloseStuck:
+		return "stuck"
 	default:
 		return fmt.Sprintf("unknown (%d)", int(r))
 	}
@@ -76,13 +85,23 @@ type RoomContext struct {
 	player PlayerID
 	// depth counts how many events led to this call. Zero means it wasn't caused by an event.
 	depth int
+	// viewing means this call is building a view, so it can't emit events.
+	viewing bool
 }
 
 // RoomID returns the ID of the current room.
 func (rc *RoomContext) RoomID() RoomID { return rc.room.id }
 
-// Player returns the player whose input is being handled. It is empty in lifecycle hooks.
+// Player returns the player whose input is being handled, or the player a view is being built for. It is empty in
+// lifecycle hooks.
 func (rc *RoomContext) Player() PlayerID { return rc.player }
+
+// Rand returns the room's random numbers. Use it instead of math/rand, so a game can be reproduced from its seed.
+func (rc *RoomContext) Rand() *rand.Rand { return rc.room.rng }
+
+// Now returns the room's clock, which stays the same for a whole turn. Use it instead of time.Now, so a game can be
+// reproduced.
+func (rc *RoomContext) Now() time.Time { return rc.room.now }
 
 // Players returns the room's seated players, in the order they arrived. A player keeps their seat when they
 // disconnect. The result is a copy.
@@ -100,6 +119,9 @@ func (rc *RoomContext) CloseRoom() { rc.room.Close() }
 // Emit sends a typed event to the modules subscribed to it with On. Events are delivered after the current
 // handler returns, in the same turn, in module order. Events emitted while handling events queue behind them.
 func (rc *RoomContext) Emit(event any) {
+	if rc.viewing {
+		panic(fmt.Sprintf("playhold: a view can't emit events; got %T", event))
+	}
 	rc.room.pending = append(rc.room.pending, pendingEvent{event: event, depth: rc.depth + 1})
 }
 
@@ -116,6 +138,13 @@ type input struct {
 	run func(rc *RoomContext) error
 	// result, if set, receives the error from run on the room's goroutine. It is not called if run panics.
 	result func(err error)
+	// noViews skips sending views after this input, because it can't have changed what players see.
+	noViews bool
+}
+
+// viewSink receives a player's room state. Its method must not block.
+type viewSink interface {
+	SendState(state *wire.RoomState)
 }
 
 // Room is an isolated actor that owns its state and handles inputs one at a time on its own goroutine.
@@ -128,19 +157,28 @@ type Room struct {
 	inbox chan input
 
 	// Owned by the room's goroutine.
-	slots   []any
-	pending []pendingEvent
-	seats   []PlayerID
+	slots    []any
+	pending  []pendingEvent
+	seats    []PlayerID
+	viewers  map[PlayerID]viewSink
+	rng      *rand.Rand
+	clock    func() time.Time
+	now      time.Time
+	watchdog *time.Timer
+
+	stuckTimeout time.Duration
+	stuck        atomic.Bool // set if the watchdog gave up on this room's goroutine
 
 	stopOnce   sync.Once
 	stop       chan struct{} // closed only by requestStop
 	stopReason CloseReason   // written before stop closes, read after
 
-	done   chan struct{}
-	reason CloseReason // written before done closes, read after
+	finishOnce sync.Once
+	done       chan struct{}
+	reason     CloseReason // written before done closes, read after
 }
 
-func newRoom(id RoomID, typ *RoomType, logger *slog.Logger, onExit func(*Room)) *Room {
+func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
 	size := typ.cfg.QueueSize
 	if size <= 0 {
 		size = defaultQueueSize
@@ -148,12 +186,18 @@ func newRoom(id RoomID, typ *RoomType, logger *slog.Logger, onExit func(*Room)) 
 	return &Room{
 		id:     id,
 		typ:    typ,
-		logger: logger.With("room", string(id), "room_type", typ.cfg.Name),
+		logger: cfg.Logger.With("room", string(id), "room_type", typ.cfg.Name),
 		onExit: onExit,
 		inbox:  make(chan input, size),
 		slots:  make([]any, typ.slotCount),
-		stop:   make(chan struct{}),
-		done:   make(chan struct{}),
+
+		viewers:      make(map[PlayerID]viewSink),
+		rng:          rand.New(rand.NewChaCha8(cfg.NewSeed())), //nolint:gosec // ChaCha8 is strong, and seeded from crypto/rand by default
+		clock:        cfg.Now,
+		stuckTimeout: cfg.StuckTimeout,
+
+		stop: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 }
 
@@ -206,20 +250,73 @@ func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byt
 	}})
 }
 
-// seat queues a request to seat the player, who keeps any seat they already have. The result receives the
-// outcome on the room's goroutine. It isn't called if the room closes first.
-func (r *Room) seat(player PlayerID, result func(error)) error {
+// seat queues a request to seat the player, who keeps any seat they already have. From then on the sink, if set,
+// receives the player's views, starting with a full view at the end of this turn. The result receives the outcome
+// on the room's goroutine. It isn't called if the room closes first.
+func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 	return r.submit(input{player: player, result: result, run: func(rc *RoomContext) error {
-		if slices.Contains(r.seats, player) {
-			return nil
+		if !slices.Contains(r.seats, player) {
+			if limit := r.typ.cfg.MaxPlayers; limit > 0 && len(r.seats) >= limit {
+				return ErrRoomFull
+			}
+			r.seats = append(r.seats, player)
+			rc.Emit(PlayerJoined{Player: player})
 		}
-		if limit := r.typ.cfg.MaxPlayers; limit > 0 && len(r.seats) >= limit {
-			return ErrRoomFull
+		if sink != nil {
+			r.viewers[player] = sink
 		}
-		r.seats = append(r.seats, player)
-		rc.Emit(PlayerJoined{Player: player})
 		return nil
 	}})
+}
+
+// removeViewer stops sending views to the sink, unless the player has since moved to a newer one. If the request
+// can't be queued, the old sink stays until it is replaced or the room closes, which only wastes a little work.
+func (r *Room) removeViewer(player PlayerID, sink viewSink) {
+	_ = r.submit(input{player: player, noViews: true, run: func(_ *RoomContext) error {
+		if r.viewers[player] == sink {
+			delete(r.viewers, player)
+		}
+		return nil
+	}})
+}
+
+// sendViews gives each connected player a full view of the room, in one frame.
+func (r *Room) sendViews() {
+	if len(r.typ.views) == 0 {
+		return
+	}
+	for _, player := range r.seats {
+		if sink, ok := r.viewers[player]; ok {
+			sink.SendState(r.stateFor(player))
+		}
+	}
+}
+
+func (r *Room) stateFor(player PlayerID) *wire.RoomState {
+	rc := &RoomContext{room: r, player: player, viewing: true}
+	state := &wire.RoomState{Views: make([]*wire.ModuleView, 0, len(r.typ.views))}
+	for i := range r.typ.views {
+		view := &r.typ.views[i]
+		if data, ok := view.build(rc); ok {
+			state.Views = append(state.Views, &wire.ModuleView{Module: view.module, View: data})
+		}
+	}
+	return state
+}
+
+// startWork reads the clock and starts the stuck timer for one turn. The caller stops the timer afterward.
+func (r *Room) startWork() {
+	r.now = r.clock()
+	r.watchdog.Reset(r.stuckTimeout)
+}
+
+// abandon closes a room whose goroutine has run for too long. Go can't kill that goroutine, so if it ever wakes it
+// finds the room closed and ends without touching anything outside the room.
+func (r *Room) abandon() {
+	r.logger.Error("room stuck, closing it", "timeout", r.stuckTimeout)
+	r.stuck.Store(true)
+	r.requestStop(CloseStuck)
+	r.finish(CloseStuck)
 }
 
 // closed reports whether the room has finished.
@@ -241,6 +338,7 @@ func (r *Room) runInit() (panicErr error) {
 			panicErr = fmt.Errorf("playhold: room init panicked: %v", v)
 		}
 	}()
+	r.now = r.clock()
 	for _, slot := range r.typ.slots {
 		r.slots[slot.index] = slot.init()
 	}
@@ -271,6 +369,9 @@ func (r *Room) deliverEvents(player PlayerID) {
 
 // run is the room's goroutine.
 func (r *Room) run() {
+	r.watchdog = time.AfterFunc(r.stuckTimeout, r.abandon)
+	r.watchdog.Stop()
+
 	reason := r.loop()
 	r.callClose(reason)
 	r.finish(reason)
@@ -303,19 +404,30 @@ func (r *Room) turn(in input) (panicked bool) {
 			r.logger.Error("room handler panicked", "player", string(in.player), "panic", v, "stack", string(debug.Stack()))
 		}
 	}()
+	r.startWork()
+	defer r.watchdog.Stop()
+
 	err := in.run(&RoomContext{room: r, player: in.player})
 	r.deliverEvents(in.player)
+	if r.stuck.Load() {
+		return false // players were already told the room closed
+	}
 	if in.result != nil {
 		in.result(err)
+	}
+	if !in.noViews {
+		r.sendViews()
 	}
 	return false
 }
 
 func (r *Room) callClose(reason CloseReason) {
 	r.pending = nil // events left over from a panicked turn are dropped
-	if r.typ.cfg.Close == nil {
+	if r.typ.cfg.Close == nil || r.stuck.Load() {
 		return
 	}
+	r.startWork()
+	defer r.watchdog.Stop()
 	defer func() {
 		if v := recover(); v != nil {
 			r.logger.Error("room close hook panicked", "panic", v, "stack", string(debug.Stack()))
@@ -327,8 +439,10 @@ func (r *Room) callClose(reason CloseReason) {
 
 // finish marks the room as finished. It also releases anyone waiting on a room that never started.
 func (r *Room) finish(reason CloseReason) {
-	r.requestStop(reason)
-	r.reason = reason
-	r.onExit(r)
-	close(r.done)
+	r.finishOnce.Do(func() {
+		r.requestStop(reason)
+		r.reason = reason
+		r.onExit(r)
+		close(r.done)
+	})
 }

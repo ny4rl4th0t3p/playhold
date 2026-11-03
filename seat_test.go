@@ -12,7 +12,7 @@ import (
 func seatAndWait(t *testing.T, room *Room, player PlayerID) error {
 	t.Helper()
 	results := make(chan error, 1)
-	require.NoError(t, room.seat(player, func(err error) { results <- err }))
+	require.NoError(t, room.seat(player, nil, func(err error) { results <- err }))
 	return <-results
 }
 

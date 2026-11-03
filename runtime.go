@@ -2,10 +2,14 @@ package playhold
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 )
+
+const defaultStuckTimeout = 5 * time.Second
 
 // ErrRuntimeClosed means the runtime has been shut down.
 var ErrRuntimeClosed = errors.New("playhold: runtime closed")
@@ -14,10 +18,17 @@ var ErrRuntimeClosed = errors.New("playhold: runtime closed")
 type Config struct {
 	// Logger receives runtime logs. Nil uses slog.Default.
 	Logger *slog.Logger
+	// StuckTimeout is how long one turn can run before its room is closed as stuck. Zero or less uses 5 seconds.
+	StuckTimeout time.Duration
+	// NewSeed returns the seed of a new room's random numbers. Nil uses a random seed. Set it to reproduce a game.
+	NewSeed func() [32]byte
+	// Now is the clock rooms read at the start of each turn. Nil uses time.Now. Set it to reproduce a game.
+	Now func() time.Time
 }
 
 // Runtime creates rooms and keeps track of the ones still running.
 type Runtime struct {
+	cfg    Config
 	logger *slog.Logger
 
 	mu     sync.Mutex
@@ -27,20 +38,35 @@ type Runtime struct {
 
 // NewRuntime returns a Runtime with no rooms.
 func NewRuntime(cfg Config) *Runtime {
-	logger := cfg.Logger
-	if logger == nil {
-		logger = slog.Default()
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
+	if cfg.StuckTimeout <= 0 {
+		cfg.StuckTimeout = defaultStuckTimeout
+	}
+	if cfg.NewSeed == nil {
+		cfg.NewSeed = randomSeed
+	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
 	}
 	return &Runtime{
-		logger: logger,
+		cfg:    cfg,
+		logger: cfg.Logger,
 		rooms:  make(map[RoomID]*Room),
 	}
+}
+
+func randomSeed() [32]byte {
+	var seed [32]byte
+	_, _ = rand.Read(seed[:]) // documented to never return an error
+	return seed
 }
 
 // CreateRoom gives the room a new ID, runs the type's Init hook and starts the room. It returns an error,
 // with no room running, if the runtime is closed or Init fails.
 func (rt *Runtime) CreateRoom(typ *RoomType) (*Room, error) {
-	room := newRoom(newRoomID(), typ, rt.logger, rt.forget)
+	room := newRoom(newRoomID(), typ, &rt.cfg, rt.forget)
 
 	// Register first, so a Shutdown during Init also stops this room.
 	if err := rt.register(room); err != nil {

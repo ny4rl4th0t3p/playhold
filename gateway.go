@@ -116,7 +116,7 @@ func (s *session) join(seq uint64, code string) {
 	go s.watchRoom(room, failed)
 
 	result := func(err error) { s.seated(seq, code, err) }
-	if err := room.seat(s.player, result); err != nil {
+	if err := room.seat(s.player, s.conn, result); err != nil {
 		result(err)
 	}
 }
@@ -186,6 +186,7 @@ func (s *session) ended() {
 	s.mu.Unlock()
 
 	if room != nil {
+		room.removeViewer(s.player, s.conn)
 		s.gateway.lobby.leave(code, room)
 	}
 }
@@ -230,6 +231,8 @@ func wireCloseReason(reason CloseReason) wire.CloseReason {
 		return wire.CloseReason_CLOSE_REASON_SHUTDOWN
 	case ClosePanic:
 		return wire.CloseReason_CLOSE_REASON_PANIC
+	case CloseStuck:
+		return wire.CloseReason_CLOSE_REASON_STUCK
 	default:
 		return wire.CloseReason_CLOSE_REASON_UNSPECIFIED
 	}

@@ -93,6 +93,22 @@ func TestRoomClosedComesAfterTheLastState(t *testing.T) {
 	})
 }
 
+func TestQueuedFramesComeBeforeTheState(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		conn := newHeldConn(t, &Config{})
+
+		conn.SendError(1, wire.ErrorCode_ERROR_CODE_REJECTED, "held")
+		synctest.Wait()
+
+		conn.SendJoined(2, "room")
+		conn.SendState(stateNamed("first view"))
+
+		assert.NotNil(t, conn.next(t).GetError())
+		assert.NotNil(t, conn.next(t).GetJoined())
+		assert.NotNil(t, conn.next(t).GetState())
+	})
+}
+
 func TestClientThatFallsBehindOnErrorsIsDisconnected(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		conn := newHeldConn(t, &Config{QueueSize: 2})

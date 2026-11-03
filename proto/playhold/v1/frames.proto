@@ -105,6 +105,7 @@ enum CloseReason {
   CLOSE_REASON_REQUESTED = 1;
   CLOSE_REASON_SHUTDOWN = 2;
   CLOSE_REASON_PANIC = 3;
+  CLOSE_REASON_STUCK = 4;
 }
 
 // RoomClosed says the room has closed.

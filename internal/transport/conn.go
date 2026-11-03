@@ -143,15 +143,38 @@ func (c *Conn) writeLoop() {
 		case <-c.wake:
 		case next = <-c.queue:
 		}
-		// The state goes first, so a RoomClosed frame stays the last thing the client hears from a room.
-		if state := c.takeState(); state != nil {
-			if !c.writeFrame(&wire.ServerFrame{Body: &wire.ServerFrame_State{State: state}}) {
-				return
-			}
-		}
-		if next != nil && !c.writeFrame(next) {
+		if !c.writePending(next) {
 			return
 		}
+	}
+}
+
+// writePending writes queued frames first, so a Joined frame comes before the room's first state. RoomClosed is
+// the exception: it waits for the state, so it stays the last thing the client hears from a room.
+func (c *Conn) writePending(next *wire.ServerFrame) bool {
+	if next == nil {
+		next = c.tryDequeue()
+	}
+	for next != nil && next.GetClosed() == nil {
+		if !c.writeFrame(next) {
+			return false
+		}
+		next = c.tryDequeue()
+	}
+	if state := c.takeState(); state != nil {
+		if !c.writeFrame(&wire.ServerFrame{Body: &wire.ServerFrame_State{State: state}}) {
+			return false
+		}
+	}
+	return next == nil || c.writeFrame(next)
+}
+
+func (c *Conn) tryDequeue() *wire.ServerFrame {
+	select {
+	case frame := <-c.queue:
+		return frame
+	default:
+		return nil
 	}
 }
 

@@ -59,10 +59,11 @@ func (k *Key[T]) Get(rc *RoomContext) *T {
 
 // Registry collects what a module declares. Mistakes are reported together by NewRoomType.
 type Registry struct {
-	typ    *RoomType
-	module string
-	errs   []error
-	needs  []string
+	typ     *RoomType
+	module  string
+	errs    []error
+	needs   []string
+	hasView bool
 }
 
 func (r *Registry) errorf(format string, args ...any) {
@@ -119,6 +120,37 @@ func Handle[M any, PM interface {
 	}
 }
 
+// View declares what the module shows a player, who is RoomContext.Player inside the function. It runs at the end
+// of every turn, once per connected player, and its result is sent as is. Copy across only what that player may
+// see, and never send the module's state directly: a new state field stays private until it's added to the view.
+// Returning nil shows nothing. A view must not change state or emit events. A module has at most one view.
+func View[V any, PV interface {
+	*V
+	proto.Message
+}](r *Registry, view func(rc *RoomContext) PV) {
+	if view == nil {
+		r.errorf("view has no function")
+		return
+	}
+	if r.hasView {
+		r.errorf("view is registered twice")
+		return
+	}
+	r.hasView = true
+	module := r.module
+	r.typ.views = append(r.typ.views, moduleView{module: module, build: func(rc *RoomContext) ([]byte, bool) {
+		msg := view(rc)
+		if msg == nil {
+			return nil, false
+		}
+		data, err := proto.Marshal(msg)
+		if err != nil {
+			panic(fmt.Sprintf("playhold: module %q view can't be encoded: %v", module, err))
+		}
+		return data, true
+	}})
+}
+
 // On declares a handler for an event type emitted with RoomContext.Emit. Events are matched by their exact
 // type, so E can't be an interface. Subscribing creates no dependency on the emitting module.
 func On[E any](r *Registry, handler func(rc *RoomContext, event E)) {
@@ -162,6 +194,12 @@ type RoomType struct {
 	slotCount int
 	handlers  map[handlerKey]messageHandler
 	events    map[reflect.Type][]eventHandler
+	views     []moduleView
+}
+
+type moduleView struct {
+	module string
+	build  func(rc *RoomContext) (data []byte, ok bool)
 }
 
 type slotInit struct {

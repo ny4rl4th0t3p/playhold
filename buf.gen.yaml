@@ -1,0 +1,6 @@
+version: v2
+plugins:
+  - local: [ "go", "run", "google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12" ]
+    out: .
+    opt:
+      - module=github.com/ny4rl4th0t3p/playhold

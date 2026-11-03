@@ -182,13 +182,13 @@ func (r *Room) submit(in input) error {
 
 // dispatch queues a message for the handler registered by the named module. The result, if set, receives the
 // handler's error on the room's goroutine.
-func (r *Room) dispatch(player PlayerID, module string, id uint32, msg any, result func(error)) error {
+func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byte, result func(error)) error {
 	return r.submit(input{player: player, result: result, run: func(rc *RoomContext) error {
 		handler, ok := r.typ.handlers[handlerKey{module: module, id: id}]
 		if !ok {
 			return fmt.Errorf("%w: module %q message %d", ErrUnknownMessage, module, id)
 		}
-		return handler(rc, msg)
+		return handler(rc, payload)
 	}})
 }
 

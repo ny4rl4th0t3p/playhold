@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package playhold.v1;
+
+option go_package = "github.com/ny4rl4th0t3p/playhold/internal/wire;wire";
+
+// ClientFrame is everything a client can send.
+message ClientFrame {
+  // seq is chosen by the client and echoed in any error about this frame.
+  uint64 seq = 1;
+  oneof body {
+    Hello hello = 2;
+    Join join = 3;
+    ModuleMessage message = 4;
+  }
+}
+
+// ServerFrame is everything a server can send.
+message ServerFrame {
+  oneof body {
+    Welcome welcome = 1;
+    RoomState state = 2;
+    Error error = 3;
+    RoomClosed closed = 4;
+  }
+}
+
+// Hello is the first frame on a connection.
+message Hello {
+  uint32 protocol_version = 1;
+}
+
+// Welcome accepts a Hello.
+message Welcome {
+  string player_id = 1;
+}
+
+// Join asks to enter the room with this code.
+message Join {
+  string code = 1;
+}
+
+// ModuleMessage is a message for one module's handler. IDs are local to the module.
+message ModuleMessage {
+  string module = 1;
+  uint32 id = 2;
+  bytes payload = 3;
+}
+
+// ModuleView is what one module shows this player.
+message ModuleView {
+  string module = 1;
+  bytes view = 2;
+}
+
+// RoomState is everything this player can see in the room.
+message RoomState {
+  repeated ModuleView views = 1;
+}
+
+// ErrorCode says what kind of problem an Error reports.
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  // ERROR_CODE_MALFORMED_FRAME means the frame could not be decoded or breaks a frame rule.
+  ERROR_CODE_MALFORMED_FRAME = 1;
+  // ERROR_CODE_UNKNOWN_MESSAGE means no module handles this message.
+  ERROR_CODE_UNKNOWN_MESSAGE = 2;
+  // ERROR_CODE_BAD_MESSAGE means the payload could not be decoded as the handler's message.
+  ERROR_CODE_BAD_MESSAGE = 3;
+  // ERROR_CODE_QUEUE_FULL means the room is busy. The message was not handled.
+  ERROR_CODE_QUEUE_FULL = 4;
+  // ERROR_CODE_ROOM_CLOSED means the room no longer accepts messages.
+  ERROR_CODE_ROOM_CLOSED = 5;
+  // ERROR_CODE_REJECTED means the handler refused the message.
+  ERROR_CODE_REJECTED = 6;
+}
+
+// Error reports a problem with one client frame.
+message Error {
+  uint64 seq = 1;
+  ErrorCode code = 2;
+  string message = 3;
+}
+
+// CloseReason says why a room closed.
+enum CloseReason {
+  CLOSE_REASON_UNSPECIFIED = 0;
+  CLOSE_REASON_REQUESTED = 1;
+  CLOSE_REASON_SHUTDOWN = 2;
+  CLOSE_REASON_PANIC = 3;
+}
+
+// RoomClosed says the room has closed.
+message RoomClosed {
+  CloseReason reason = 1;
+}

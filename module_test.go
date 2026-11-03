@@ -5,6 +5,9 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +17,8 @@ const (
 	msgFail
 )
 
-type addMsg struct{ amount int }
+// addMsg is a ready-made Protobuf message, so these tests need no generated code.
+type addMsg = wrapperspb.Int32Value
 
 // counterModule is a module with state and handlers.
 var counterKey = NewKey[counterState]("counter")
@@ -28,7 +32,7 @@ func (counterModule) Name() string { return "counter" }
 func (counterModule) Register(r *Registry) {
 	State(r, counterKey, func() *counterState { return &counterState{} })
 	Handle(r, msgAdd, func(rc *RoomContext, msg *addMsg) error {
-		counterKey.Get(rc).value += msg.amount
+		counterKey.Get(rc).value += int(msg.GetValue())
 		return nil
 	})
 }
@@ -56,10 +60,12 @@ func runInRoom(t *testing.T, room *Room, fn func(rc *RoomContext)) {
 }
 
 // dispatchAndWait sends a message and returns the handler's result.
-func dispatchAndWait(t *testing.T, room *Room, module string, id uint32, msg any) error {
+func dispatchAndWait(t *testing.T, room *Room, module string, id uint32, msg proto.Message) error {
 	t.Helper()
+	payload, err := proto.Marshal(msg)
+	require.NoError(t, err)
 	results := make(chan error, 1)
-	require.NoError(t, room.dispatch("alice", module, id, msg, func(err error) { results <- err }))
+	require.NoError(t, room.dispatch("alice", module, id, payload, func(err error) { results <- err }))
 	return <-results
 }
 
@@ -72,8 +78,8 @@ func TestModuleStateIsSeparateInEachRoom(t *testing.T) {
 		second, err := rt.CreateRoom(typ)
 		require.NoError(t, err)
 
-		require.NoError(t, dispatchAndWait(t, first, "counter", msgAdd, &addMsg{amount: 3}))
-		require.NoError(t, dispatchAndWait(t, second, "counter", msgAdd, &addMsg{amount: 5}))
+		require.NoError(t, dispatchAndWait(t, first, "counter", msgAdd, &addMsg{Value: 3}))
+		require.NoError(t, dispatchAndWait(t, second, "counter", msgAdd, &addMsg{Value: 5}))
 
 		runInRoom(t, first, func(rc *RoomContext) { assert.Equal(t, 3, counterKey.Get(rc).value) })
 		runInRoom(t, second, func(rc *RoomContext) { assert.Equal(t, 5, counterKey.Get(rc).value) })
@@ -160,27 +166,37 @@ func TestDispatchReportsMessageProblems(t *testing.T) {
 		name   string
 		module string
 		id     uint32
-		msg    any
 		want   error
 	}{
-		{name: "unknown module", module: "nope", id: msgAdd, msg: &addMsg{}, want: ErrUnknownMessage},
-		{name: "unknown message", module: "counter", id: msgFail, msg: &addMsg{}, want: ErrUnknownMessage},
-		{name: "wrong type", module: "counter", id: msgAdd, msg: "not a message", want: ErrBadMessage},
-		{name: "handler error", module: "failing", id: msgFail, msg: &addMsg{}, want: errRule},
-		{name: "success", module: "counter", id: msgAdd, msg: &addMsg{amount: 1}, want: nil},
+		{name: "unknown module", module: "nope", id: msgAdd, want: ErrUnknownMessage},
+		{name: "unknown message", module: "counter", id: msgFail, want: ErrUnknownMessage},
+		{name: "handler error", module: "failing", id: msgFail, want: errRule},
+		{name: "success", module: "counter", id: msgAdd, want: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				room := newTestRoom(t, newTestRuntime(t), RoomConfig{Modules: []Module{counterModule{}, failing}})
 
-				require.ErrorIs(t, dispatchAndWait(t, room, tt.module, tt.id, tt.msg), tt.want)
+				require.ErrorIs(t, dispatchAndWait(t, room, tt.module, tt.id, &addMsg{Value: 1}), tt.want)
 
 				// None of these closes the room.
 				runInRoom(t, room, func(_ *RoomContext) {})
 			})
 		})
 	}
+}
+
+func TestUndecodablePayloadIsABadMessage(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		room := newTestRoom(t, newTestRuntime(t), RoomConfig{Modules: []Module{counterModule{}}})
+
+		results := make(chan error, 1)
+		require.NoError(t, room.dispatch("alice", "counter", msgAdd, []byte{0xff}, func(err error) { results <- err }))
+
+		require.ErrorIs(t, <-results, ErrBadMessage)
+		runInRoom(t, room, func(_ *RoomContext) {})
+	})
 }
 
 func TestSameMessageIDInDifferentModules(t *testing.T) {
@@ -378,7 +394,7 @@ func TestEventsArriveInOrderAfterTheHandler(t *testing.T) {
 		room := newTestRoom(t, newTestRuntime(t), RoomConfig{Modules: []Module{emitter, listener}})
 
 		results := make(chan error, 1)
-		require.NoError(t, room.dispatch("alice", "emitter", msgAdd, &addMsg{}, func(err error) {
+		require.NoError(t, room.dispatch("alice", "emitter", msgAdd, nil, func(err error) {
 			got = append(got, "result")
 			results <- err
 		}))

@@ -20,6 +20,11 @@ jobs:
       - run: make vet
       - run: make test
       - run: make vuln
+      - run: make buflint
+      - name: Check generated code is up to date
+        run: |
+          make gen
+          git diff --exit-code
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.15.0

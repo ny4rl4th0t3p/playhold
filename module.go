@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 	"sync/atomic"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // maxEventDepth limits how many times events can trigger further events in one turn, so a loop fails loudly.
@@ -14,7 +16,7 @@ const maxEventDepth = 16
 var (
 	// ErrUnknownMessage means no module in the room handles the message.
 	ErrUnknownMessage = errors.New("playhold: unknown message")
-	// ErrBadMessage means the message is not the type its handler expects.
+	// ErrBadMessage means the payload can't be decoded as the message its handler expects.
 	ErrBadMessage = errors.New("playhold: bad message type")
 )
 
@@ -95,7 +97,10 @@ func State[T any](r *Registry, key *Key[T], init func() *T) {
 
 // Handle declares the handler for one of the module's messages. IDs are local to the module. RoomContext.Player
 // says who sent the message.
-func Handle[M any](r *Registry, id uint32, handler func(rc *RoomContext, msg *M) error) {
+func Handle[M any, PM interface {
+	*M
+	proto.Message
+}](r *Registry, id uint32, handler func(rc *RoomContext, msg PM) error) {
 	if handler == nil {
 		r.errorf("message %d has no handler", id)
 		return
@@ -105,12 +110,12 @@ func Handle[M any](r *Registry, id uint32, handler func(rc *RoomContext, msg *M)
 		r.errorf("message %d is registered twice", id)
 		return
 	}
-	r.typ.handlers[key] = func(rc *RoomContext, msg any) error {
-		typed, ok := msg.(*M)
-		if !ok {
-			return fmt.Errorf("%w: module %q message %d got %T", ErrBadMessage, key.module, id, msg)
+	r.typ.handlers[key] = func(rc *RoomContext, payload []byte) error {
+		msg := PM(new(M))
+		if err := proto.Unmarshal(payload, msg); err != nil {
+			return fmt.Errorf("%w: module %q message %d", ErrBadMessage, key.module, id)
 		}
-		return handler(rc, typed)
+		return handler(rc, msg)
 	}
 }
 
@@ -168,7 +173,7 @@ type handlerKey struct {
 }
 
 type (
-	messageHandler func(rc *RoomContext, msg any) error
+	messageHandler func(rc *RoomContext, payload []byte) error
 	eventHandler   func(rc *RoomContext, event any)
 )
 

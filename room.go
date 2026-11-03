@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"runtime/debug"
 	"sync"
 	"uuid"
@@ -65,23 +66,13 @@ func (r CloseReason) String() string {
 	}
 }
 
-// RoomType describes a kind of room.
-type RoomType struct {
-	// Name identifies the room type in logs.
-	Name string
-	// QueueSize is the inbound queue capacity. Zero or less uses the default.
-	QueueSize int
-	// Init runs once before the room starts. An error or panic stops the room from being created.
-	Init func(rc *RoomContext) error
-	// Close runs once on the room's goroutine after its last turn, unless Init failed.
-	Close func(rc *RoomContext, reason CloseReason)
-}
-
 // RoomContext gives a handler access to the room it runs in. It is valid only during the call it was passed to.
 // It is not a context.Context.
 type RoomContext struct {
 	room   *Room
 	player PlayerID
+	// depth counts how many events led to this call. Zero means it wasn't caused by an event.
+	depth int
 }
 
 // RoomID returns the ID of the current room.
@@ -92,6 +83,18 @@ func (rc *RoomContext) Player() PlayerID { return rc.player }
 
 // CloseRoom asks the current room to close after this turn.
 func (rc *RoomContext) CloseRoom() { rc.room.Close() }
+
+// Emit sends a typed event to the modules subscribed to it with On. Events are delivered after the current
+// handler returns, in the same turn, in module order. Events emitted while handling events queue behind them.
+func (rc *RoomContext) Emit(event any) {
+	rc.room.pending = append(rc.room.pending, pendingEvent{event: event, depth: rc.depth + 1})
+}
+
+// pendingEvent is an event waiting to be delivered.
+type pendingEvent struct {
+	event any
+	depth int
+}
 
 // input is one unit of work for a room's goroutine.
 type input struct {
@@ -105,11 +108,15 @@ type input struct {
 // Room is an isolated actor that owns its state and handles inputs one at a time on its own goroutine.
 type Room struct {
 	id     RoomID
-	typ    RoomType
+	typ    *RoomType
 	logger *slog.Logger
 	onExit func(*Room)
 
 	inbox chan input
+
+	// Owned by the room's goroutine.
+	slots   []any
+	pending []pendingEvent
 
 	stopOnce   sync.Once
 	stop       chan struct{} // closed only by requestStop
@@ -119,17 +126,18 @@ type Room struct {
 	reason CloseReason // written before done closes, read after
 }
 
-func newRoom(id RoomID, typ RoomType, logger *slog.Logger, onExit func(*Room)) *Room {
-	size := typ.QueueSize
+func newRoom(id RoomID, typ *RoomType, logger *slog.Logger, onExit func(*Room)) *Room {
+	size := typ.cfg.QueueSize
 	if size <= 0 {
 		size = defaultQueueSize
 	}
 	return &Room{
 		id:     id,
 		typ:    typ,
-		logger: logger.With("room", string(id), "room_type", typ.Name),
+		logger: logger.With("room", string(id), "room_type", typ.cfg.Name),
 		onExit: onExit,
 		inbox:  make(chan input, size),
+		slots:  make([]any, typ.slotCount),
 		stop:   make(chan struct{}),
 		done:   make(chan struct{}),
 	}
@@ -172,18 +180,53 @@ func (r *Room) submit(in input) error {
 	}
 }
 
-// runInit runs the Init hook on the calling goroutine, before the room's own goroutine starts.
-func (r *Room) runInit() (err error) {
-	if r.typ.Init == nil {
-		return nil
-	}
+// dispatch queues a message for the handler registered by the named module. The result, if set, receives the
+// handler's error on the room's goroutine.
+func (r *Room) dispatch(player PlayerID, module string, id uint32, msg any, result func(error)) error {
+	return r.submit(input{player: player, result: result, run: func(rc *RoomContext) error {
+		handler, ok := r.typ.handlers[handlerKey{module: module, id: id}]
+		if !ok {
+			return fmt.Errorf("%w: module %q message %d", ErrUnknownMessage, module, id)
+		}
+		return handler(rc, msg)
+	}})
+}
+
+// runInit creates module state and runs the Init hook on the calling goroutine, before the room's own
+// goroutine starts.
+func (r *Room) runInit() (panicErr error) {
 	defer func() {
 		if v := recover(); v != nil {
 			r.logger.Error("room init panicked", "panic", v, "stack", string(debug.Stack()))
-			err = fmt.Errorf("playhold: room init panicked: %v", v)
+			panicErr = fmt.Errorf("playhold: room init panicked: %v", v)
 		}
 	}()
-	return r.typ.Init(&RoomContext{room: r})
+	for _, slot := range r.typ.slots {
+		r.slots[slot.index] = slot.init()
+	}
+	if r.typ.cfg.Init != nil {
+		if err := r.typ.cfg.Init(&RoomContext{room: r}); err != nil {
+			return err // the room never starts, so its events are dropped
+		}
+	}
+	r.deliverEvents("")
+	return nil
+}
+
+// deliverEvents delivers pending events in order, including any emitted along the way.
+func (r *Room) deliverEvents(player PlayerID) {
+	for len(r.pending) > 0 {
+		next := r.pending[0]
+		r.pending = r.pending[1:]
+		if next.depth > maxEventDepth {
+			panic(fmt.Sprintf("playhold: events triggered more than %d further events; last was %T", maxEventDepth, next.event))
+		}
+		rc := &RoomContext{room: r, player: player, depth: next.depth}
+		for _, handler := range r.typ.events[reflect.TypeOf(next.event)] {
+			handler(rc, next.event)
+		}
+	}
+	r.pending = nil
 }
 
 // run is the room's goroutine.
@@ -221,6 +264,7 @@ func (r *Room) turn(in input) (panicked bool) {
 		}
 	}()
 	err := in.run(&RoomContext{room: r, player: in.player})
+	r.deliverEvents(in.player)
 	if in.result != nil {
 		in.result(err)
 	}
@@ -228,7 +272,8 @@ func (r *Room) turn(in input) (panicked bool) {
 }
 
 func (r *Room) callClose(reason CloseReason) {
-	if r.typ.Close == nil {
+	r.pending = nil // events left over from a panicked turn are dropped
+	if r.typ.cfg.Close == nil {
 		return
 	}
 	defer func() {
@@ -236,7 +281,8 @@ func (r *Room) callClose(reason CloseReason) {
 			r.logger.Error("room close hook panicked", "panic", v, "stack", string(debug.Stack()))
 		}
 	}()
-	r.typ.Close(&RoomContext{room: r}, reason)
+	r.typ.cfg.Close(&RoomContext{room: r}, reason)
+	r.deliverEvents("")
 }
 
 // finish marks the room as finished. It also releases anyone waiting on a room that never started.

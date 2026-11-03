@@ -4,7 +4,8 @@ A self-hosted game backend in Go, built from authoritative rooms and composable 
 
 > **Status: planning.** There is no code yet. Once releases start, the API can change between them.
 
-playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After that, each release adds support for another kind of game.
+playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After
+that, each release adds support for another kind of game.
 
 ## The idea
 

@@ -30,9 +30,16 @@ func newTestRuntime(t *testing.T) *Runtime {
 	return rt
 }
 
-func newTestRoom(t *testing.T, rt *Runtime, typ RoomType) *Room {
+func newTestRoomType(t *testing.T, cfg RoomConfig) *RoomType {
 	t.Helper()
-	room, err := rt.CreateRoom(typ)
+	typ, err := NewRoomType(cfg)
+	require.NoError(t, err)
+	return typ
+}
+
+func newTestRoom(t *testing.T, rt *Runtime, cfg RoomConfig) *Room {
+	t.Helper()
+	room, err := rt.CreateRoom(newTestRoomType(t, cfg))
 	require.NoError(t, err)
 	return room
 }
@@ -49,7 +56,7 @@ func waitFor(t *testing.T, ch <-chan struct{}) {
 
 func TestRoomHandlesInputsInOrder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		room := newTestRoom(t, newTestRuntime(t), RoomType{})
+		room := newTestRoom(t, newTestRuntime(t), RoomConfig{})
 
 		const count = 100
 		got := make([]int, 0, count)
@@ -76,7 +83,7 @@ func TestRoomHandlesInputsInOrder(t *testing.T) {
 
 func TestRoomRejectsInputWhenQueueIsFull(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		room := newTestRoom(t, newTestRuntime(t), RoomType{QueueSize: 2})
+		room := newTestRoom(t, newTestRuntime(t), RoomConfig{QueueSize: 2})
 
 		started := make(chan struct{})
 		release := make(chan struct{})
@@ -117,7 +124,7 @@ func TestRoomReportsHandlerResultToSender(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				room := newTestRoom(t, newTestRuntime(t), RoomType{})
+				room := newTestRoom(t, newTestRuntime(t), RoomConfig{})
 
 				results := make(chan error, 1)
 				require.NoError(t, room.submit(input{
@@ -146,7 +153,7 @@ func TestRoomReportsHandlerResultToSender(t *testing.T) {
 
 func TestRoomContextIdentifiesRoomAndPlayer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		room := newTestRoom(t, newTestRuntime(t), RoomType{})
+		room := newTestRoom(t, newTestRuntime(t), RoomConfig{})
 
 		finished := make(chan struct{})
 		var gotRoom RoomID
@@ -166,8 +173,8 @@ func TestRoomContextIdentifiesRoomAndPlayer(t *testing.T) {
 func TestRoomPanicClosesOnlyThatRoom(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rt := newTestRuntime(t)
-		bad := newTestRoom(t, rt, RoomType{})
-		good := newTestRoom(t, rt, RoomType{})
+		bad := newTestRoom(t, rt, RoomConfig{})
+		good := newTestRoom(t, rt, RoomConfig{})
 
 		require.NoError(t, bad.submit(input{run: func(_ *RoomContext) error { panic("boom") }}))
 		waitFor(t, bad.Done())
@@ -229,7 +236,7 @@ func TestRoomCloseHookReceivesReason(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				rt := newTestRuntime(t)
 				reasons := make(chan CloseReason, 1)
-				room := newTestRoom(t, rt, RoomType{
+				room := newTestRoom(t, rt, RoomConfig{
 					Close: func(_ *RoomContext, reason CloseReason) { reasons <- reason },
 				})
 
@@ -245,7 +252,7 @@ func TestRoomCloseHookReceivesReason(t *testing.T) {
 
 func TestRoomSurvivesPanicInCloseHook(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		room := newTestRoom(t, newTestRuntime(t), RoomType{
+		room := newTestRoom(t, newTestRuntime(t), RoomConfig{
 			Close: func(_ *RoomContext, _ CloseReason) { panic("boom") },
 		})
 
@@ -258,7 +265,7 @@ func TestRoomSurvivesPanicInCloseHook(t *testing.T) {
 
 func TestCloseIsSafeToRepeat(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		room := newTestRoom(t, newTestRuntime(t), RoomType{})
+		room := newTestRoom(t, newTestRuntime(t), RoomConfig{})
 
 		room.Close()
 		room.Close()
@@ -285,10 +292,10 @@ func TestCreateRoomInitFailure(t *testing.T) {
 				rt := newTestRuntime(t)
 				closeCalled := false
 
-				room, err := rt.CreateRoom(RoomType{
+				room, err := rt.CreateRoom(newTestRoomType(t, RoomConfig{
 					Init:  tt.init,
 					Close: func(_ *RoomContext, _ CloseReason) { closeCalled = true },
-				})
+				}))
 				require.Error(t, err)
 				assert.Nil(t, room)
 				assert.False(t, closeCalled)
@@ -302,10 +309,10 @@ func TestRoomIDsAreNeverReused(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rt := newTestRuntime(t)
 
-		first := newTestRoom(t, rt, RoomType{})
+		first := newTestRoom(t, rt, RoomConfig{})
 		first.Close()
 		waitFor(t, first.Done())
-		second := newTestRoom(t, rt, RoomType{})
+		second := newTestRoom(t, rt, RoomConfig{})
 
 		assert.NotEqual(t, first.ID(), second.ID())
 		_, listed := rt.Room(second.ID())
@@ -351,7 +358,7 @@ func TestNewRoomIDSortsByCreationTime(t *testing.T) {
 func TestShutdownRefusesNewRoomsAndCanRepeat(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rt := newTestRuntime(t)
-		room := newTestRoom(t, rt, RoomType{})
+		room := newTestRoom(t, rt, RoomConfig{})
 
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
@@ -359,7 +366,7 @@ func TestShutdownRefusesNewRoomsAndCanRepeat(t *testing.T) {
 		require.NoError(t, rt.Shutdown(ctx))
 
 		assert.Equal(t, CloseShutdown, room.Wait())
-		_, err := rt.CreateRoom(RoomType{})
+		_, err := rt.CreateRoom(newTestRoomType(t, RoomConfig{}))
 		require.ErrorIs(t, err, ErrRuntimeClosed)
 	})
 }
@@ -367,7 +374,7 @@ func TestShutdownRefusesNewRoomsAndCanRepeat(t *testing.T) {
 func TestShutdownGivesUpOnStuckRoom(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rt := newTestRuntime(t)
-		room := newTestRoom(t, rt, RoomType{})
+		room := newTestRoom(t, rt, RoomConfig{})
 
 		started := make(chan struct{})
 		release := make(chan struct{})
@@ -391,7 +398,7 @@ func TestShutdownGivesUpOnStuckRoom(t *testing.T) {
 
 func TestRoomStateIsSafeWithConcurrentSenders(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		room := newTestRoom(t, newTestRuntime(t), RoomType{QueueSize: 1024})
+		room := newTestRoom(t, newTestRuntime(t), RoomConfig{QueueSize: 1024})
 
 		const (
 			senders    = 8

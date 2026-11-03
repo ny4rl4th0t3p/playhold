@@ -39,7 +39,7 @@ func NewRuntime(cfg Config) *Runtime {
 
 // CreateRoom gives the room a new ID, runs the type's Init hook and starts the room. It returns an error,
 // with no room running, if the runtime is closed or Init fails.
-func (rt *Runtime) CreateRoom(typ RoomType) (*Room, error) {
+func (rt *Runtime) CreateRoom(typ *RoomType) (*Room, error) {
 	room := newRoom(newRoomID(), typ, rt.logger, rt.forget)
 
 	// Register first, so a Shutdown during Init also stops this room.

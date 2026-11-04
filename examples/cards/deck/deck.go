@@ -24,8 +24,17 @@ func (Module) Name() string { return "deck" }
 // Register implements playhold.Module.
 func (Module) Register(r *playhold.Registry) {
 	playhold.State(r, key, func() *state { return &state{} })
+	playhold.Snapshot(r, key, 1, save, load)
 	playhold.On(r, start)
 	playhold.View(r, view)
+}
+
+func save(s *state) *pb.DeckState {
+	return &pb.DeckState{Pile: s.pile, Discard: s.discard, ActiveSuit: s.activeSuit}
+}
+
+func load(msg *pb.DeckState) *state {
+	return &state{pile: msg.GetPile(), discard: msg.GetDiscard(), activeSuit: msg.GetActiveSuit()}
 }
 
 // start shuffles and turns over the first card. An eight can't start the game, because nobody has chosen a suit.

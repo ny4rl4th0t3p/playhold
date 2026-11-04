@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync/atomic"
 
 	"google.golang.org/protobuf/proto"
@@ -64,6 +65,8 @@ type Registry struct {
 	errs    []error
 	needs   []string
 	hasView bool
+
+	hasSnapshot bool
 }
 
 func (r *Registry) errorf(format string, args ...any) {
@@ -92,8 +95,45 @@ func State[T any](r *Registry, key *Key[T], init func() *T) {
 			return
 		}
 	}
-	r.typ.slots = append(r.typ.slots, slotInit{index: key.index, init: func() any { return init() }})
+	r.typ.slots = append(r.typ.slots, slotInit{module: r.module, index: key.index, init: func() any { return init() }})
 	r.typ.slotCount = max(r.typ.slotCount, key.index+1)
+}
+
+// Snapshot declares how a module's state is saved, so a room can come back after a restart. The state stays a plain
+// struct, and save and load convert it to and from a Protobuf message at this schema version, which starts at 1. A
+// module has at most one snapshot, and a server with a store needs one for every state.
+func Snapshot[T, M any, PM interface {
+	*M
+	proto.Message
+}](r *Registry, key *Key[T], version int, save func(state *T) PM, load func(msg PM) *T) {
+	switch {
+	case save == nil || load == nil:
+		r.errorf("snapshot of %q needs both save and load", key.name)
+		return
+	case version < 1:
+		r.errorf("snapshot of %q has version %d, but versions start at 1", key.name, version)
+		return
+	case r.hasSnapshot:
+		r.errorf("snapshot is registered twice")
+		return
+	}
+	r.hasSnapshot = true
+	r.typ.snapshots = append(r.typ.snapshots, moduleSnapshot{
+		module:  r.module,
+		index:   key.index,
+		version: version,
+		encode: func(state any) ([]byte, error) {
+			typed, _ := state.(*T) // always *T: State is the only writer of this slot
+			return proto.Marshal(save(typed))
+		},
+		decode: func(data []byte) (any, error) {
+			msg := PM(new(M))
+			if err := proto.Unmarshal(data, msg); err != nil {
+				return nil, err
+			}
+			return load(msg), nil
+		},
+	})
 }
 
 // Handle declares the handler for one of the module's messages. IDs are local to the module. RoomContext.Player
@@ -195,6 +235,28 @@ type RoomType struct {
 	handlers  map[handlerKey]messageHandler
 	events    map[reflect.Type][]eventHandler
 	views     []moduleView
+	snapshots []moduleSnapshot
+}
+
+type moduleSnapshot struct {
+	module  string
+	index   int
+	version int
+	encode  func(state any) ([]byte, error)
+	decode  func(data []byte) (any, error)
+}
+
+// requireSnapshots reports every state that couldn't be saved. A server with a store checks this at startup, so a
+// missing snapshot stops the server instead of quietly losing a match.
+func (t *RoomType) requireSnapshots() error {
+	var errs []error
+	for _, slot := range t.slots {
+		saved := slices.ContainsFunc(t.snapshots, func(snapshot moduleSnapshot) bool { return snapshot.index == slot.index })
+		if !saved {
+			errs = append(errs, fmt.Errorf("playhold: room type %q: module %q has state but no snapshot", t.cfg.Name, slot.module))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 type moduleView struct {
@@ -203,8 +265,9 @@ type moduleView struct {
 }
 
 type slotInit struct {
-	index int
-	init  func() any
+	module string
+	index  int
+	init   func() any
 }
 
 type handlerKey struct {
@@ -249,6 +312,15 @@ func NewRoomType(cfg RoomConfig) (*RoomType, error) {
 		module.Register(registry)
 		errs = append(errs, registry.errs...)
 		needs[name] = registry.needs
+	}
+
+	for i := range typ.snapshots {
+		snapshot := &typ.snapshots[i]
+		registered := slices.ContainsFunc(typ.slots, func(slot slotInit) bool { return slot.index == snapshot.index })
+		if !registered {
+			errs = append(errs, fmt.Errorf("playhold: room type %q: module %q has a snapshot of state it never registered",
+				cfg.Name, snapshot.module))
+		}
 	}
 
 	// Modules can need each other in any order, so this runs after all of them have registered.

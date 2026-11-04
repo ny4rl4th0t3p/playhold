@@ -1,6 +1,7 @@
 package playhold
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -23,7 +24,8 @@ const (
 type ServerConfig struct {
 	// RoomType is the kind of room that joining a new code creates. It is required.
 	RoomType *RoomType
-	// Store keeps what has to survive a restart. Nil keeps everything in memory, so a restart forgets it.
+	// Store keeps what has to survive a restart, and every module with state then needs a Snapshot. Nil keeps guests in
+	// memory and doesn't save rooms, so a restart forgets both.
 	Store store.Store
 	// EmptyRoomTimeout is how long a room stays open with nobody connected. The default is 5 minutes.
 	EmptyRoomTimeout time.Duration
@@ -51,6 +53,7 @@ type ServerConfig struct {
 // Server lets clients connect, identify themselves and join rooms over WebSocket. It is an http.Handler.
 type Server struct {
 	transport *transport.Server
+	writer    *snapshotWriter // nil if rooms aren't saved
 }
 
 // NewServer returns a Server that runs its rooms on rt.
@@ -71,27 +74,44 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		maxRooms = defaultMaxRooms
 	}
 	records := cfg.Store
+	var writer *snapshotWriter
 	if records == nil {
 		records = memory.New()
+	} else {
+		if err := cfg.RoomType.requireSnapshots(); err != nil {
+			return nil, err
+		}
+		writer = newSnapshotWriter(records, logger)
 	}
 	applyMemoryLimit(cfg.MemoryLimit, logger)
 
-	g := &gateway{guests: newGuests(records), lobby: newLobby(rt, cfg.RoomType, idle, maxRooms), logger: logger}
-	return &Server{transport: transport.NewServer(&transport.Config{
-		MaxMessageBytes:  cfg.MaxMessageBytes,
-		MaxConns:         cfg.MaxConns,
-		MaxConnsPerIP:    cfg.MaxConnsPerIP,
-		HandshakeTimeout: cfg.HandshakeTimeout,
-		OriginPatterns:   cfg.OriginPatterns,
-		Logger:           logger,
-	}, g.connect)}, nil
+	g := &gateway{guests: newGuests(records), lobby: newLobby(rt, cfg.RoomType, idle, maxRooms, writer), logger: logger}
+	return &Server{
+		writer: writer,
+		transport: transport.NewServer(&transport.Config{
+			MaxMessageBytes:  cfg.MaxMessageBytes,
+			MaxConns:         cfg.MaxConns,
+			MaxConnsPerIP:    cfg.MaxConnsPerIP,
+			HandshakeTimeout: cfg.HandshakeTimeout,
+			OriginPatterns:   cfg.OriginPatterns,
+			Logger:           logger,
+		}, g.connect),
+	}, nil
 }
 
 // ServeHTTP upgrades the request to a WebSocket and serves it until the connection ends.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.transport.ServeHTTP(w, r) }
 
-// Close disconnects every client and refuses new ones. Rooms keep running until the Runtime shuts down.
-func (s *Server) Close() { s.transport.Close() }
+// Close disconnects every client, refuses new ones and writes the snapshots waiting to be saved. Rooms keep running until
+// the Runtime shuts down, but anything they save after this isn't written.
+func (s *Server) Close() {
+	s.transport.Close()
+	if s.writer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), snapshotWriteTimeout)
+		defer cancel()
+		s.writer.close(ctx)
+	}
+}
 
 // applyMemoryLimit sets the soft memory limit, which makes the garbage collector work harder before the machine
 // runs out, instead of the whole process crashing and taking every room with it.

@@ -16,6 +16,7 @@ type lobby struct {
 	typ      *RoomType
 	idle     time.Duration
 	maxRooms int
+	writer   *snapshotWriter // nil if rooms aren't saved
 
 	mu    sync.Mutex
 	rooms map[string]*lobbyRoom
@@ -27,8 +28,8 @@ type lobbyRoom struct {
 	timer *time.Timer // running while conns is zero
 }
 
-func newLobby(rt *Runtime, typ *RoomType, idle time.Duration, maxRooms int) *lobby {
-	return &lobby{rt: rt, typ: typ, idle: idle, maxRooms: maxRooms, rooms: make(map[string]*lobbyRoom)}
+func newLobby(rt *Runtime, typ *RoomType, idle time.Duration, maxRooms int, writer *snapshotWriter) *lobby {
+	return &lobby{rt: rt, typ: typ, idle: idle, maxRooms: maxRooms, writer: writer, rooms: make(map[string]*lobbyRoom)}
 }
 
 // enter counts a new connection to the room with this code, creating the room if needed. Each successful call
@@ -42,7 +43,7 @@ func (l *lobby) enter(code string) (*Room, error) {
 		return nil, ErrTooManyRooms
 	}
 	if !ok || entry.room.closed() {
-		room, err := l.rt.CreateRoom(l.typ)
+		room, err := l.rt.createRoom(l.typ, code, l.writer)
 		if err != nil {
 			return nil, err
 		}

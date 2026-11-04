@@ -76,6 +76,52 @@ func (s *Store) GuestSecretHash(ctx context.Context, player string) ([]byte, err
 	return hash, nil
 }
 
+// WriteRooms implements store.Store.
+func (s *Store) WriteRooms(ctx context.Context, saves []store.RoomRecord, deletes []string) error {
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if len(saves) > 0 {
+			batch := &pgx.Batch{}
+			for i := range saves {
+				batch.Queue(`
+					INSERT INTO rooms (room_id, code, room_type, data) VALUES ($1, $2, $3, $4)
+					ON CONFLICT (room_id) DO UPDATE SET
+						code = excluded.code, room_type = excluded.room_type, data = excluded.data, updated_at = now()`,
+					saves[i].ID, saves[i].Code, saves[i].RoomType, saves[i].Data)
+			}
+			if err := tx.SendBatch(ctx, batch).Close(); err != nil {
+				return err
+			}
+		}
+		if len(deletes) > 0 {
+			if _, err := tx.Exec(ctx, `DELETE FROM rooms WHERE room_id = ANY($1)`, deletes); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("postgres: writing rooms: %w", err)
+	}
+	return nil
+}
+
+// LoadRooms implements store.Store.
+func (s *Store) LoadRooms(ctx context.Context) ([]store.RoomRecord, error) {
+	rows, err := s.pool.Query(ctx, `SELECT room_id, code, room_type, data FROM rooms`)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: loading rooms: %w", err)
+	}
+	rooms, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (store.RoomRecord, error) {
+		var record store.RoomRecord
+		err := row.Scan(&record.ID, &record.Code, &record.RoomType, &record.Data)
+		return record, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("postgres: loading rooms: %w", err)
+	}
+	return rooms, nil
+}
+
 // migrate applies the migrations the database hasn't had yet. The lock lets servers start together safely.
 func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	files, err := fs.Sub(migrationFiles, "migrations")

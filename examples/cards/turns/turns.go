@@ -24,9 +24,30 @@ func (Module) Name() string { return "turns" }
 // Register implements playhold.Module.
 func (Module) Register(r *playhold.Registry) {
 	playhold.State(r, key, func() *state { return &state{} })
+	playhold.Snapshot(r, key, 1, save, load)
 	playhold.On(r, playerJoined)
 	playhold.On(r, playerWon)
 	playhold.View(r, view)
+}
+
+func save(s *state) *pb.TurnsState {
+	players := make([]string, 0, len(s.players))
+	for _, player := range s.players {
+		players = append(players, string(player))
+	}
+	return &pb.TurnsState{
+		Players: players,
+		Current: uint32(s.current), //nolint:gosec // an index into a short list
+		Winner:  string(s.winner),
+	}
+}
+
+func load(msg *pb.TurnsState) *state {
+	players := make([]playhold.PlayerID, 0, len(msg.GetPlayers()))
+	for _, player := range msg.GetPlayers() {
+		players = append(players, playhold.PlayerID(player))
+	}
+	return &state{players: players, current: int(msg.GetCurrent()), winner: playhold.PlayerID(msg.GetWinner())}
 }
 
 // playerJoined starts the game once the room is full. Whoever arrived first goes first.

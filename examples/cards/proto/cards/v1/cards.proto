@@ -46,6 +46,31 @@ message OtherHand {
   uint32 count = 2;
 }
 
+// DeckState is everything the deck module saves, including the order of the draw pile.
+message DeckState {
+  repeated string pile = 1;
+  repeated string discard = 2;
+  string active_suit = 3;
+}
+
+// TurnsState is everything the turns module saves.
+message TurnsState {
+  repeated string players = 1;
+  uint32 current = 2;
+  string winner = 3;
+}
+
+// Cards is a list of cards.
+message Cards {
+  repeated string cards = 1;
+}
+
+// HandsState is everything the hands module saves, including every player's cards.
+message HandsState {
+  map<string, Cards> hands = 1;
+  bool drew = 2;
+}
+
 // HandsView is what one player sees of the hands: their own cards, and only the size of the others.
 message HandsView {
   repeated string cards = 1;

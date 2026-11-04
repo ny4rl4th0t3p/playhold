@@ -13,7 +13,10 @@ import (
 	"time"
 	"uuid"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/store"
 )
 
 // defaultQueueSize is the inbound queue capacity of a room whose type does not set one. Each room allocates its whole
@@ -139,7 +142,7 @@ type input struct {
 	run func(rc *RoomContext) error
 	// result, if set, receives the error from run on the room's goroutine. It is not called if run panics.
 	result func(err error)
-	// noViews skips sending views after this input, because it can't have changed what players see.
+	// noViews skips sending views and saving a snapshot after this input, because it can't have changed the game.
 	noViews bool
 }
 
@@ -151,9 +154,11 @@ type viewSink interface {
 // Room is an isolated actor that owns its state and handles inputs one at a time on its own goroutine.
 type Room struct {
 	id     RoomID
+	code   string // how players reach this room, if they do
 	typ    *RoomType
 	logger *slog.Logger
 	onExit func(*Room)
+	writer *snapshotWriter // nil if nothing is saved
 
 	inbox chan input
 
@@ -163,6 +168,7 @@ type Room struct {
 	seats    []PlayerID
 	viewers  map[PlayerID]viewSink
 	rng      *rand.Rand
+	rngState *rand.ChaCha8 // rng's source, which is what a snapshot saves
 	clock    func() time.Time
 	now      time.Time
 	watchdog *time.Timer
@@ -184,6 +190,7 @@ func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
 	if size <= 0 {
 		size = defaultQueueSize
 	}
+	rngState := rand.NewChaCha8(cfg.NewSeed())
 	return &Room{
 		id:     id,
 		typ:    typ,
@@ -193,7 +200,8 @@ func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
 		slots:  make([]any, typ.slotCount),
 
 		viewers:      make(map[PlayerID]viewSink),
-		rng:          rand.New(rand.NewChaCha8(cfg.NewSeed())), //nolint:gosec // ChaCha8 is strong, and seeded from crypto/rand by default
+		rng:          rand.New(rngState), //nolint:gosec // ChaCha8 is strong, and seeded from crypto/rand by default
+		rngState:     rngState,
 		clock:        cfg.Now,
 		stuckTimeout: cfg.StuckTimeout,
 
@@ -317,7 +325,66 @@ func (r *Room) abandon() {
 	r.logger.Error("room stuck, closing it", "timeout", r.stuckTimeout)
 	r.stuck.Store(true)
 	r.requestStop(CloseStuck)
+	if r.writer != nil {
+		r.writer.forget(string(r.id))
+	}
 	r.finish(CloseStuck)
+}
+
+// saveSnapshot encodes the room on its own goroutine, so the copy is consistent, and leaves the writing to the writer.
+// A room that can't be encoded panics, closing it, rather than carrying on with nothing saved.
+func (r *Room) saveSnapshot() {
+	if r.writer == nil {
+		return
+	}
+	rngState, err := r.rngState.MarshalBinary()
+	if err != nil {
+		panic(fmt.Sprintf("playhold: room's random numbers can't be saved: %v", err))
+	}
+	snapshot := &wire.RoomSnapshot{
+		Seats:          make([]string, 0, len(r.seats)),
+		RngState:       rngState,
+		ClockUnixNanos: r.now.UnixNano(),
+		Modules:        make([]*wire.ModuleSnapshot, 0, len(r.typ.snapshots)),
+	}
+	for _, player := range r.seats {
+		snapshot.Seats = append(snapshot.Seats, string(player))
+	}
+	for i := range r.typ.snapshots {
+		module := &r.typ.snapshots[i]
+		state, err := module.encode(r.slots[module.index])
+		if err != nil {
+			panic(fmt.Sprintf("playhold: module %q state can't be saved: %v", module.module, err))
+		}
+		snapshot.Modules = append(snapshot.Modules, &wire.ModuleSnapshot{
+			Module:  module.module,
+			Version: uint32(module.version), //nolint:gosec // a small number the module chose
+			State:   state,
+		})
+	}
+	data, err := proto.Marshal(snapshot)
+	if err != nil {
+		panic(fmt.Sprintf("playhold: room can't be saved: %v", err))
+	}
+	r.writer.save(store.RoomRecord{ID: string(r.id), Code: r.code, RoomType: r.typ.cfg.Name, Data: data})
+}
+
+// finishSnapshot decides what stays saved when a room closes. A shutdown is the only reason to keep it: the room comes
+// back when the server does. Every other close means the room is over.
+func (r *Room) finishSnapshot(reason CloseReason) {
+	if r.writer == nil || r.stuck.Load() {
+		return
+	}
+	if reason != CloseShutdown {
+		r.writer.forget(string(r.id))
+		return
+	}
+	defer func() {
+		if v := recover(); v != nil {
+			r.logger.Error("saving room at shutdown panicked", "panic", v, "stack", string(debug.Stack()))
+		}
+	}()
+	r.saveSnapshot()
 }
 
 // closed reports whether the room has finished.
@@ -349,6 +416,7 @@ func (r *Room) runInit() (panicErr error) {
 		}
 	}
 	r.deliverEvents("")
+	r.saveSnapshot()
 	return nil
 }
 
@@ -375,6 +443,7 @@ func (r *Room) run() {
 
 	reason := r.loop()
 	r.callClose(reason)
+	r.finishSnapshot(reason)
 	r.finish(reason)
 }
 
@@ -418,6 +487,7 @@ func (r *Room) turn(in input) (panicked bool) {
 	}
 	if !in.noViews {
 		r.sendViews()
+		r.saveSnapshot()
 	}
 	return false
 }

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package playhold.v1;
+
+option go_package = "github.com/ny4rl4th0t3p/playhold/internal/wire;wire";
+
+// RoomSnapshot is everything needed to bring a room back. It's only ever stored, never sent to a client, because it
+// holds hidden information and the seed's current state.
+message RoomSnapshot {
+  repeated string seats = 1;
+  bytes rng_state = 2;
+  int64 clock_unix_nanos = 3;
+  repeated ModuleSnapshot modules = 4;
+}
+
+// ModuleSnapshot is one module's state, in that module's own message at that schema version.
+message ModuleSnapshot {
+  string module = 1;
+  uint32 version = 2;
+  bytes state = 3;
+}

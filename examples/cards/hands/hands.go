@@ -57,11 +57,30 @@ func (m Module) Register(r *playhold.Registry) {
 	r.Needs("deck", m.Deck)
 	r.Needs("turns", m.Turns)
 	playhold.State(r, key, func() *state { return &state{cards: make(map[playhold.PlayerID][]string)} })
+	playhold.Snapshot(r, key, 1, save, load)
 	playhold.On(r, m.deal)
 	playhold.Handle(r, uint32(pb.HandsMessage_HANDS_MESSAGE_PLAY), m.play)
 	playhold.Handle(r, uint32(pb.HandsMessage_HANDS_MESSAGE_DRAW), m.draw)
 	playhold.Handle(r, uint32(pb.HandsMessage_HANDS_MESSAGE_PASS), m.pass)
 	playhold.View(r, m.view)
+}
+
+func save(s *state) *pb.HandsState {
+	hands := make(map[string]*pb.Cards, len(s.cards))
+	//playhold:order-independent copying into another map, so nothing depends on the order
+	for player, cards := range s.cards {
+		hands[string(player)] = &pb.Cards{Cards: cards}
+	}
+	return &pb.HandsState{Hands: hands, Drew: s.drew}
+}
+
+func load(msg *pb.HandsState) *state {
+	cards := make(map[playhold.PlayerID][]string, len(msg.GetHands()))
+	//playhold:order-independent copying into another map, so nothing depends on the order
+	for player, hand := range msg.GetHands() {
+		cards[playhold.PlayerID(player)] = hand.GetCards()
+	}
+	return &state{cards: cards, drew: msg.GetDrew()}
 }
 
 func (m Module) deal(rc *playhold.RoomContext, event rules.GameStarted) {

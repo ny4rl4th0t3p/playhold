@@ -385,6 +385,226 @@ func (x *OtherHand) GetCount() uint32 {
 	return 0
 }
 
+// DeckState is everything the deck module saves, including the order of the draw pile.
+type DeckState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Pile          []string               `protobuf:"bytes,1,rep,name=pile,proto3" json:"pile,omitempty"`
+	Discard       []string               `protobuf:"bytes,2,rep,name=discard,proto3" json:"discard,omitempty"`
+	ActiveSuit    string                 `protobuf:"bytes,3,opt,name=active_suit,json=activeSuit,proto3" json:"active_suit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeckState) Reset() {
+	*x = DeckState{}
+	mi := &file_cards_v1_cards_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeckState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeckState) ProtoMessage() {}
+
+func (x *DeckState) ProtoReflect() protoreflect.Message {
+	mi := &file_cards_v1_cards_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeckState.ProtoReflect.Descriptor instead.
+func (*DeckState) Descriptor() ([]byte, []int) {
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *DeckState) GetPile() []string {
+	if x != nil {
+		return x.Pile
+	}
+	return nil
+}
+
+func (x *DeckState) GetDiscard() []string {
+	if x != nil {
+		return x.Discard
+	}
+	return nil
+}
+
+func (x *DeckState) GetActiveSuit() string {
+	if x != nil {
+		return x.ActiveSuit
+	}
+	return ""
+}
+
+// TurnsState is everything the turns module saves.
+type TurnsState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Players       []string               `protobuf:"bytes,1,rep,name=players,proto3" json:"players,omitempty"`
+	Current       uint32                 `protobuf:"varint,2,opt,name=current,proto3" json:"current,omitempty"`
+	Winner        string                 `protobuf:"bytes,3,opt,name=winner,proto3" json:"winner,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TurnsState) Reset() {
+	*x = TurnsState{}
+	mi := &file_cards_v1_cards_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TurnsState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TurnsState) ProtoMessage() {}
+
+func (x *TurnsState) ProtoReflect() protoreflect.Message {
+	mi := &file_cards_v1_cards_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TurnsState.ProtoReflect.Descriptor instead.
+func (*TurnsState) Descriptor() ([]byte, []int) {
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *TurnsState) GetPlayers() []string {
+	if x != nil {
+		return x.Players
+	}
+	return nil
+}
+
+func (x *TurnsState) GetCurrent() uint32 {
+	if x != nil {
+		return x.Current
+	}
+	return 0
+}
+
+func (x *TurnsState) GetWinner() string {
+	if x != nil {
+		return x.Winner
+	}
+	return ""
+}
+
+// Cards is a list of cards.
+type Cards struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cards         []string               `protobuf:"bytes,1,rep,name=cards,proto3" json:"cards,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Cards) Reset() {
+	*x = Cards{}
+	mi := &file_cards_v1_cards_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Cards) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Cards) ProtoMessage() {}
+
+func (x *Cards) ProtoReflect() protoreflect.Message {
+	mi := &file_cards_v1_cards_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Cards.ProtoReflect.Descriptor instead.
+func (*Cards) Descriptor() ([]byte, []int) {
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *Cards) GetCards() []string {
+	if x != nil {
+		return x.Cards
+	}
+	return nil
+}
+
+// HandsState is everything the hands module saves, including every player's cards.
+type HandsState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hands         map[string]*Cards      `protobuf:"bytes,1,rep,name=hands,proto3" json:"hands,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Drew          bool                   `protobuf:"varint,2,opt,name=drew,proto3" json:"drew,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HandsState) Reset() {
+	*x = HandsState{}
+	mi := &file_cards_v1_cards_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HandsState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HandsState) ProtoMessage() {}
+
+func (x *HandsState) ProtoReflect() protoreflect.Message {
+	mi := &file_cards_v1_cards_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HandsState.ProtoReflect.Descriptor instead.
+func (*HandsState) Descriptor() ([]byte, []int) {
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *HandsState) GetHands() map[string]*Cards {
+	if x != nil {
+		return x.Hands
+	}
+	return nil
+}
+
+func (x *HandsState) GetDrew() bool {
+	if x != nil {
+		return x.Drew
+	}
+	return false
+}
+
 // HandsView is what one player sees of the hands: their own cards, and only the size of the others.
 type HandsView struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -399,7 +619,7 @@ type HandsView struct {
 
 func (x *HandsView) Reset() {
 	*x = HandsView{}
-	mi := &file_cards_v1_cards_proto_msgTypes[6]
+	mi := &file_cards_v1_cards_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -411,7 +631,7 @@ func (x *HandsView) String() string {
 func (*HandsView) ProtoMessage() {}
 
 func (x *HandsView) ProtoReflect() protoreflect.Message {
-	mi := &file_cards_v1_cards_proto_msgTypes[6]
+	mi := &file_cards_v1_cards_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -424,7 +644,7 @@ func (x *HandsView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandsView.ProtoReflect.Descriptor instead.
 func (*HandsView) Descriptor() ([]byte, []int) {
-	return file_cards_v1_cards_proto_rawDescGZIP(), []int{6}
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *HandsView) GetCards() []string {
@@ -486,7 +706,27 @@ const file_cards_v1_cards_proto_rawDesc = "" +
 	"\aplayers\x18\x04 \x03(\tR\aplayers\"9\n" +
 	"\tOtherHand\x12\x16\n" +
 	"\x06player\x18\x01 \x01(\tR\x06player\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\rR\x05count\"\xa0\x01\n" +
+	"\x05count\x18\x02 \x01(\rR\x05count\"Z\n" +
+	"\tDeckState\x12\x12\n" +
+	"\x04pile\x18\x01 \x03(\tR\x04pile\x12\x18\n" +
+	"\adiscard\x18\x02 \x03(\tR\adiscard\x12\x1f\n" +
+	"\vactive_suit\x18\x03 \x01(\tR\n" +
+	"activeSuit\"X\n" +
+	"\n" +
+	"TurnsState\x12\x18\n" +
+	"\aplayers\x18\x01 \x03(\tR\aplayers\x12\x18\n" +
+	"\acurrent\x18\x02 \x01(\rR\acurrent\x12\x16\n" +
+	"\x06winner\x18\x03 \x01(\tR\x06winner\"\x1d\n" +
+	"\x05Cards\x12\x14\n" +
+	"\x05cards\x18\x01 \x03(\tR\x05cards\"\xa2\x01\n" +
+	"\n" +
+	"HandsState\x125\n" +
+	"\x05hands\x18\x01 \x03(\v2\x1f.cards.v1.HandsState.HandsEntryR\x05hands\x12\x12\n" +
+	"\x04drew\x18\x02 \x01(\bR\x04drew\x1aI\n" +
+	"\n" +
+	"HandsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12%\n" +
+	"\x05value\x18\x02 \x01(\v2\x0f.cards.v1.CardsR\x05value:\x028\x01\"\xa0\x01\n" +
 	"\tHandsView\x12\x14\n" +
 	"\x05cards\x18\x01 \x03(\tR\x05cards\x12\x1a\n" +
 	"\bplayable\x18\x02 \x03(\tR\bplayable\x12\x19\n" +
@@ -512,24 +752,31 @@ func file_cards_v1_cards_proto_rawDescGZIP() []byte {
 }
 
 var file_cards_v1_cards_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_cards_v1_cards_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_cards_v1_cards_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_cards_v1_cards_proto_goTypes = []any{
-	(HandsMessage)(0), // 0: cards.v1.HandsMessage
-	(*Play)(nil),      // 1: cards.v1.Play
-	(*Draw)(nil),      // 2: cards.v1.Draw
-	(*Pass)(nil),      // 3: cards.v1.Pass
-	(*DeckView)(nil),  // 4: cards.v1.DeckView
-	(*TurnsView)(nil), // 5: cards.v1.TurnsView
-	(*OtherHand)(nil), // 6: cards.v1.OtherHand
-	(*HandsView)(nil), // 7: cards.v1.HandsView
+	(HandsMessage)(0),  // 0: cards.v1.HandsMessage
+	(*Play)(nil),       // 1: cards.v1.Play
+	(*Draw)(nil),       // 2: cards.v1.Draw
+	(*Pass)(nil),       // 3: cards.v1.Pass
+	(*DeckView)(nil),   // 4: cards.v1.DeckView
+	(*TurnsView)(nil),  // 5: cards.v1.TurnsView
+	(*OtherHand)(nil),  // 6: cards.v1.OtherHand
+	(*DeckState)(nil),  // 7: cards.v1.DeckState
+	(*TurnsState)(nil), // 8: cards.v1.TurnsState
+	(*Cards)(nil),      // 9: cards.v1.Cards
+	(*HandsState)(nil), // 10: cards.v1.HandsState
+	(*HandsView)(nil),  // 11: cards.v1.HandsView
+	nil,                // 12: cards.v1.HandsState.HandsEntry
 }
 var file_cards_v1_cards_proto_depIdxs = []int32{
-	6, // 0: cards.v1.HandsView.others:type_name -> cards.v1.OtherHand
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	12, // 0: cards.v1.HandsState.hands:type_name -> cards.v1.HandsState.HandsEntry
+	6,  // 1: cards.v1.HandsView.others:type_name -> cards.v1.OtherHand
+	9,  // 2: cards.v1.HandsState.HandsEntry.value:type_name -> cards.v1.Cards
+	3,  // [3:3] is the sub-list for method output_type
+	3,  // [3:3] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_cards_v1_cards_proto_init() }
@@ -543,7 +790,7 @@ func file_cards_v1_cards_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cards_v1_cards_proto_rawDesc), len(file_cards_v1_cards_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   7,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

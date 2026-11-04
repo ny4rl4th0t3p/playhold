@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
+	"github.com/ny4rl4th0t3p/playhold/store"
 	"github.com/ny4rl4th0t3p/playhold/store/memory"
 )
 
@@ -20,6 +21,14 @@ type downStore struct{}
 func (downStore) SaveGuest(_ context.Context, _ string, _ []byte) error { return errStoreDown }
 
 func (downStore) GuestSecretHash(_ context.Context, _ string) ([]byte, error) {
+	return nil, errStoreDown
+}
+
+func (downStore) WriteRooms(_ context.Context, _ []store.RoomRecord, _ []string) error {
+	return errStoreDown
+}
+
+func (downStore) LoadRooms(_ context.Context) ([]store.RoomRecord, error) {
 	return nil, errStoreDown
 }
 

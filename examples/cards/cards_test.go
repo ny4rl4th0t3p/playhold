@@ -22,6 +22,8 @@ import (
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/pb"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/rules"
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/store"
+	"github.com/ny4rl4th0t3p/playhold/store/memory"
 )
 
 const (
@@ -70,13 +72,18 @@ type game struct {
 
 func startServer(t *testing.T, seed [32]byte) string {
 	t.Helper()
+	return startServerWith(t, seed, nil)
+}
+
+func startServerWith(t *testing.T, seed [32]byte, records store.Store) string {
+	t.Helper()
 	rt := playhold.NewRuntime(playhold.Config{
 		Logger:  slog.New(slog.DiscardHandler),
 		NewSeed: func() [32]byte { return seed },
 	})
 	typ, err := cards.NewRoomType()
 	require.NoError(t, err)
-	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1})
+	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, Store: records, MemoryLimit: -1})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
 	t.Cleanup(func() {
@@ -91,7 +98,11 @@ func startServer(t *testing.T, seed [32]byte) string {
 
 func startGame(t *testing.T, seed [32]byte) *game {
 	t.Helper()
-	url := startServer(t, seed)
+	return startGameOn(t, startServer(t, seed))
+}
+
+func startGameOn(t *testing.T, url string) *game {
+	t.Helper()
 	first := connect(t, url, "", "")
 	second := connect(t, url, "", "")
 
@@ -474,6 +485,42 @@ func TestSameSeedDealsTheSameGame(t *testing.T) {
 	assert.Equal(t, first.other.latest.hand.GetCards(), second.other.latest.hand.GetCards())
 	assert.Equal(t, first.first.latest.deck.GetTop(), second.first.latest.deck.GetTop())
 	assert.NotEqual(t, first.first.latest.hand.GetCards(), different.first.latest.hand.GetCards())
+}
+
+func TestGameIsSavedWithEverythingItNeeds(t *testing.T) {
+	records := memory.New()
+	g := startGameOn(t, startServerWith(t, testSeed, records))
+	for range reconnectTurn {
+		g.move()
+	}
+
+	var saved []string
+	var modules []*wire.ModuleSnapshot
+	require.Eventually(t, func() bool {
+		rooms, err := records.LoadRooms(testContext(t))
+		if err != nil || len(rooms) != 1 {
+			return false
+		}
+		snapshot := &wire.RoomSnapshot{}
+		if proto.Unmarshal(rooms[0].Data, snapshot) != nil {
+			return false
+		}
+		state := &pb.HandsState{}
+		for _, module := range snapshot.GetModules() {
+			if module.GetModule() == "hands" && proto.Unmarshal(module.GetState(), state) != nil {
+				return false
+			}
+		}
+		saved, modules = state.GetHands()[g.first.id].GetCards(), snapshot.GetModules()
+		return slices.Equal(saved, g.first.latest.hand.GetCards())
+	}, testTimeout, 10*time.Millisecond, "the saved hand never caught up with the game")
+
+	names := make([]string, 0, len(modules))
+	for _, module := range modules {
+		names = append(names, module.GetModule())
+		assert.Equal(t, uint32(1), module.GetVersion())
+	}
+	assert.Equal(t, []string{"deck", "turns", "hands"}, names)
 }
 
 func TestThirdPlayerIsRefused(t *testing.T) {

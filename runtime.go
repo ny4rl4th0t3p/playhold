@@ -66,7 +66,14 @@ func randomSeed() [32]byte {
 // CreateRoom gives the room a new ID, runs the type's Init hook and starts the room. It returns an error,
 // with no room running, if the runtime is closed or Init fails.
 func (rt *Runtime) CreateRoom(typ *RoomType) (*Room, error) {
+	return rt.createRoom(typ, "", nil)
+}
+
+// createRoom also gives the room its code, and the writer that saves it, if anything does.
+func (rt *Runtime) createRoom(typ *RoomType, code string, writer *snapshotWriter) (*Room, error) {
 	room := newRoom(newRoomID(), typ, &rt.cfg, rt.forget)
+	room.code = code
+	room.writer = writer
 
 	// Register first, so a Shutdown during Init also stops this room.
 	if err := rt.register(room); err != nil {

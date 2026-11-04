@@ -13,13 +13,41 @@ import (
 type Store struct {
 	mu     sync.Mutex
 	guests map[string][]byte
+	rooms  map[string]store.RoomRecord
 }
 
 var _ store.Store = (*Store)(nil)
 
 // New returns an empty Store.
 func New() *Store {
-	return &Store{guests: make(map[string][]byte)}
+	return &Store{guests: make(map[string][]byte), rooms: make(map[string]store.RoomRecord)}
+}
+
+// WriteRooms implements store.Store.
+func (s *Store) WriteRooms(_ context.Context, saves []store.RoomRecord, deletes []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range saves {
+		record := saves[i]
+		record.Data = slices.Clone(record.Data)
+		s.rooms[record.ID] = record
+	}
+	for _, id := range deletes {
+		delete(s.rooms, id)
+	}
+	return nil
+}
+
+// LoadRooms implements store.Store.
+func (s *Store) LoadRooms(_ context.Context) ([]store.RoomRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rooms := make([]store.RoomRecord, 0, len(s.rooms))
+	for _, record := range s.rooms {
+		record.Data = slices.Clone(record.Data)
+		rooms = append(rooms, record)
+	}
+	return rooms, nil
 }
 
 // SaveGuest implements store.Store.

@@ -17,12 +17,12 @@ const (
 
 func newTestLobby(t *testing.T, cfg RoomConfig) *lobby {
 	t.Helper()
-	return newLobby(newTestRuntime(t), newTestRoomType(t, cfg), testIdle, testMaxRooms)
+	return newLobby(newTestRuntime(t), newTestRoomType(t, cfg), testIdle, testMaxRooms, nil)
 }
 
 func TestLobbyRefusesNewRoomsOverTheCapButStillJoinsExistingOnes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		l := newLobby(newTestRuntime(t), newTestRoomType(t, RoomConfig{}), testIdle, 2)
+		l := newLobby(newTestRuntime(t), newTestRoomType(t, RoomConfig{}), testIdle, 2, nil)
 		first := enterRoom(t, l, "one")
 		enterRoom(t, l, "two")
 

@@ -2,7 +2,7 @@
 
 A self-hosted game backend in Go, built from authoritative rooms and composable modules.
 
-> **Status: planning.** There is no code yet. Once releases start, the API can change between them.
+> **Status: early development.** There are no releases yet, and the API can change.
 
 playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After
 that, each release adds support for another kind of game.
@@ -20,8 +20,8 @@ that, each release adds support for another kind of game.
 
 **First public release**
 
-- [ ] Rooms and modules
-- [ ] Web client
+- [x] Rooms and modules
+- [ ] TypeScript SDK for web games
 - [ ] Persistence and safe deploys
 - [ ] Security and abuse protection
 - [ ] Matchmaking, private rooms and bots
@@ -39,8 +39,14 @@ that, each release adds support for another kind of game.
 **Also planned**
 
 - [ ] Code generation and scaffolding
-- [ ] Unity and Godot clients
+- [ ] Unity and Godot SDKs
 - [ ] Modules in other languages
+
+## Layout
+
+- Root: the Go server library, imported as `github.com/ny4rl4th0t3p/playhold`
+- `sdk/`: libraries a game's client uses to talk to the server, one folder per language
+- `proto/`: the wire format they share
 
 ## Not planned
 

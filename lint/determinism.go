@@ -4,6 +4,7 @@ package lint
 import (
 	"go/ast"
 	"go/types"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -26,11 +27,11 @@ var Determinism = &analysis.Analyzer{
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	if !importsPlayhold(pass.Pkg) {
+	if !importsPlayhold(pass) {
 		return nil, nil
 	}
 	for _, file := range pass.Files {
-		if strings.HasSuffix(pass.Fset.File(file.Pos()).Name(), "_test.go") || ast.IsGenerated(file) {
+		if isTestFile(pass, file) || ast.IsGenerated(file) {
 			continue
 		}
 		allowed := allowedLines(pass, file)
@@ -47,13 +48,24 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func importsPlayhold(pkg *types.Package) bool {
-	for _, imported := range pkg.Imports() {
-		if imported.Path() == playholdPath {
-			return true
+// importsPlayhold ignores test files: go vet also checks a package together with its tests, and a tool that only uses
+// playhold in its tests isn't code built on playhold.
+func importsPlayhold(pass *analysis.Pass) bool {
+	for _, file := range pass.Files {
+		if isTestFile(pass, file) {
+			continue
+		}
+		for _, spec := range file.Imports {
+			if spec.Path.Value == strconv.Quote(playholdPath) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func isTestFile(pass *analysis.Pass, file *ast.File) bool {
+	return strings.HasSuffix(pass.Fset.File(file.Pos()).Name(), "_test.go")
 }
 
 func allowedLines(pass *analysis.Pass, file *ast.File) map[int]bool {

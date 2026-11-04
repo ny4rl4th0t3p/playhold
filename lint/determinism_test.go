@@ -9,5 +9,5 @@ import (
 )
 
 func TestDeterminism(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), lint.Determinism, "game", "unrelated")
+	analysistest.Run(t, analysistest.TestData(), lint.Determinism, "game", "unrelated", "testonly")
 }

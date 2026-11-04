@@ -1,0 +1,21 @@
+{
+    "name": "playhold-cards-web",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Browser page for the Crazy Eights sample game",
+    "license": "Apache-2.0",
+    "type": "module",
+    "scripts": {
+        "check": "tsc && vitest run && vite build",
+        "build": "vite build"
+    },
+    "dependencies": {
+        "@bufbuild/protobuf": "2.16.0",
+        "playhold-sdk": "file:../../../sdk/ts"
+    },
+    "devDependencies": {
+        "typescript": "7.0.2",
+        "vite": "8.3.5",
+        "vitest": "5.1.0"
+    }
+}

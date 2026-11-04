@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package cards.v1;
+
+option go_package = "github.com/ny4rl4th0t3p/playhold/examples/cards/pb;pb";
+
+// HandsMessage lists the messages the hands module handles.
+enum HandsMessage {
+  HANDS_MESSAGE_UNSPECIFIED = 0;
+  HANDS_MESSAGE_PLAY = 1;
+  HANDS_MESSAGE_DRAW = 2;
+  HANDS_MESSAGE_PASS = 3;
+}
+
+// Play puts a card from the player's hand on the discard pile.
+message Play {
+  string card = 1;
+  // chosen_suit is the suit to continue with, when the card is an eight.
+  string chosen_suit = 2;
+}
+
+// Draw takes a card from the draw pile.
+message Draw {}
+
+// Pass ends the turn, after drawing or when there's nothing to draw.
+message Pass {}
+
+// DeckView is what everyone sees of the piles.
+message DeckView {
+  string top = 1;
+  string active_suit = 2;
+  uint32 draw_count = 3;
+}
+
+// TurnsView is what everyone sees of the game's progress.
+message TurnsView {
+  bool started = 1;
+  string current = 2;
+  string winner = 3;
+  repeated string players = 4;
+}
+
+// OtherHand is what a player sees of someone else's hand.
+message OtherHand {
+  string player = 1;
+  uint32 count = 2;
+}
+
+// HandsView is what one player sees of the hands: their own cards, and only the size of the others.
+message HandsView {
+  repeated string cards = 1;
+  repeated string playable = 2;
+  bool can_draw = 3;
+  bool can_pass = 4;
+  repeated OtherHand others = 5;
+}

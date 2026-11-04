@@ -43,12 +43,21 @@
             min-height: 4.5rem;
         }
 
+        .card {
+            color: CanvasText;
+        }
+
         .card.red {
-            color: #c62828;
+            color: light-dark(#c62828, #ef5350);
+        }
+
+        .card:disabled {
+            opacity: 0.45;
         }
 
         #top {
             cursor: default;
+            opacity: 1;
         }
 
         #message {

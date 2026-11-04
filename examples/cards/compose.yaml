@@ -1,0 +1,31 @@
+# Run, play and measure the sample game on your own machine. There's no TLS or rate limiting yet, so don't expose it to
+# the internet. See README.md.
+name: playhold-cards
+
+services:
+  game:
+    build:
+      context: ../..
+      dockerfile: examples/cards/Dockerfile
+      target: server
+    # One bot holds many connections from one address, so the usual per-address cap is raised.
+    command: ["-max-conns-per-ip", "4096", "-empty-room-timeout", "${EMPTY_ROOM_TIMEOUT:-5m}"]
+    ports:
+      - "${BIND:-127.0.0.1}:8080:8080"
+    # A small VPS. Change these to try other sizes.
+    cpus: ${GAME_CPUS:-1}
+    mem_limit: ${GAME_MEMORY:-1g}
+
+  bot:
+    profiles: ["load"]
+    build:
+      context: ../..
+      dockerfile: examples/cards/Dockerfile
+      target: bot
+    command: ["-url", "ws://game:8080/ws", "-games", "${GAMES:-100}", "-think", "${THINK:-1s}"]
+    # At high load the bot opens connections faster than closed ones free their ports. These only affect this container.
+    sysctls:
+      net.ipv4.tcp_tw_reuse: 1
+      net.ipv4.ip_local_port_range: "1024 65000"
+    depends_on:
+      - game

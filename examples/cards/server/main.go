@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -26,20 +27,22 @@ func main() {
 	addr := flag.String("addr", ":8080", "address to listen on")
 	web := flag.String("web", "", "folder with the built browser page, to serve it from this server")
 	origins := flag.String("origins", "", "comma-separated web origins allowed to connect, besides this server's own")
+	maxPerIP := flag.Int("max-conns-per-ip", 0, "most connections from one IP address; 0 uses the default")
+	emptyRoom := flag.Duration("empty-room-timeout", 0, "how long a room stays open with nobody connected; 0 uses the default")
 	flag.Parse()
 
-	if err := run(*addr, *web, *origins); err != nil {
+	if err := run(*addr, *web, *origins, *maxPerIP, *emptyRoom); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(addr, web, origins string) error {
+func run(addr, web, origins string, maxPerIP int, emptyRoom time.Duration) error {
 	typ, err := cards.NewRoomType()
 	if err != nil {
 		return err
 	}
 	rt := playhold.NewRuntime(playhold.Config{})
-	cfg := &playhold.ServerConfig{RoomType: typ}
+	cfg := &playhold.ServerConfig{RoomType: typ, MaxConnsPerIP: maxPerIP, EmptyRoomTimeout: emptyRoom}
 	if origins != "" {
 		cfg.OriginPatterns = strings.Split(origins, ",")
 	}
@@ -62,7 +65,7 @@ func run(addr, web, origins string) error {
 		shutdown(httpServer, server, rt)
 	}()
 
-	slog.Info("listening", "addr", addr)
+	slog.Info("listening", "addr", addr, "memory_limit_bytes", debug.SetMemoryLimit(-1))
 	if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

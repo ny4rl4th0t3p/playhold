@@ -44,21 +44,25 @@ const (
 	ErrorCode_ERROR_CODE_ROOM_FULL ErrorCode = 8
 	// ERROR_CODE_UNSUPPORTED_PROTOCOL means the server doesn't speak this protocol version.
 	ErrorCode_ERROR_CODE_UNSUPPORTED_PROTOCOL ErrorCode = 9
+	// ERROR_CODE_UNAVAILABLE means the server can't do this right now, for example because its database is down. Try
+	// again later.
+	ErrorCode_ERROR_CODE_UNAVAILABLE ErrorCode = 10
 )
 
 // Enum value maps for ErrorCode.
 var (
 	ErrorCode_name = map[int32]string{
-		0: "ERROR_CODE_UNSPECIFIED",
-		1: "ERROR_CODE_MALFORMED_FRAME",
-		2: "ERROR_CODE_UNKNOWN_MESSAGE",
-		3: "ERROR_CODE_BAD_MESSAGE",
-		4: "ERROR_CODE_QUEUE_FULL",
-		5: "ERROR_CODE_ROOM_CLOSED",
-		6: "ERROR_CODE_REJECTED",
-		7: "ERROR_CODE_UNAUTHORIZED",
-		8: "ERROR_CODE_ROOM_FULL",
-		9: "ERROR_CODE_UNSUPPORTED_PROTOCOL",
+		0:  "ERROR_CODE_UNSPECIFIED",
+		1:  "ERROR_CODE_MALFORMED_FRAME",
+		2:  "ERROR_CODE_UNKNOWN_MESSAGE",
+		3:  "ERROR_CODE_BAD_MESSAGE",
+		4:  "ERROR_CODE_QUEUE_FULL",
+		5:  "ERROR_CODE_ROOM_CLOSED",
+		6:  "ERROR_CODE_REJECTED",
+		7:  "ERROR_CODE_UNAUTHORIZED",
+		8:  "ERROR_CODE_ROOM_FULL",
+		9:  "ERROR_CODE_UNSUPPORTED_PROTOCOL",
+		10: "ERROR_CODE_UNAVAILABLE",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED":          0,
@@ -71,6 +75,7 @@ var (
 		"ERROR_CODE_UNAUTHORIZED":         7,
 		"ERROR_CODE_ROOM_FULL":            8,
 		"ERROR_CODE_UNSUPPORTED_PROTOCOL": 9,
+		"ERROR_CODE_UNAVAILABLE":          10,
 	}
 )
 
@@ -920,7 +925,7 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\amessage\x18\x03 \x01(\tR\amessage\">\n" +
 	"\n" +
 	"RoomClosed\x120\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xaf\x02\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xcb\x02\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aERROR_CODE_MALFORMED_FRAME\x10\x01\x12\x1e\n" +
@@ -931,7 +936,9 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x13ERROR_CODE_REJECTED\x10\x06\x12\x1b\n" +
 	"\x17ERROR_CODE_UNAUTHORIZED\x10\a\x12\x18\n" +
 	"\x14ERROR_CODE_ROOM_FULL\x10\b\x12#\n" +
-	"\x1fERROR_CODE_UNSUPPORTED_PROTOCOL\x10\t*\x92\x01\n" +
+	"\x1fERROR_CODE_UNSUPPORTED_PROTOCOL\x10\t\x12\x1a\n" +
+	"\x16ERROR_CODE_UNAVAILABLE\x10\n" +
+	"*\x92\x01\n" +
 	"\vCloseReason\x12\x1c\n" +
 	"\x18CLOSE_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLOSE_REASON_REQUESTED\x10\x01\x12\x19\n" +

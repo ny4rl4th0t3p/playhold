@@ -79,7 +79,8 @@ func setDefault[T int | int64 | time.Duration](field *T, value T) {
 }
 
 // Connect is called for each new connection and returns the function that receives its frames. That function
-// runs on the connection's read goroutine, so it must not block. An error closes the connection.
+// runs on the connection's read goroutine, so waiting there only holds up this client, and it must not wait on anyone
+// else's. An error closes the connection.
 type Connect func(c *Conn) (onFrame func(*wire.ClientFrame), err error)
 
 // Server accepts WebSocket connections. It is an http.Handler.

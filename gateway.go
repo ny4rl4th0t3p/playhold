@@ -1,8 +1,11 @@
 package playhold
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
@@ -12,12 +15,14 @@ const (
 	// protocolVersion is the version of the frames in proto/playhold/v1.
 	protocolVersion = 1
 	maxRoomCodeLen  = 32
+	storeTimeout    = 5 * time.Second
 )
 
 // gateway connects client connections to guests and rooms.
 type gateway struct {
 	guests *guests
 	lobby  *lobby
+	logger *slog.Logger
 }
 
 func (g *gateway) connect(c *transport.Conn) (func(*wire.ClientFrame), error) {
@@ -68,12 +73,26 @@ func (s *session) hello(seq uint64, hello *wire.Hello) {
 		return
 	}
 
+	// This waits on the database, but only holds up this client, whose read goroutine it's running on.
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+
 	guests := s.gateway.guests
 	player, secret := PlayerID(hello.GetPlayerId()), ""
+	var err error
 	if player == "" && hello.GetSecret() == "" {
-		player, secret = guests.create()
-	} else if !guests.verify(player, hello.GetSecret()) {
-		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAUTHORIZED, "unknown player or wrong secret")
+		player, secret, err = guests.create(ctx)
+	} else {
+		var known bool
+		known, err = guests.verify(ctx, player, hello.GetSecret())
+		if err == nil && !known {
+			s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAUTHORIZED, "unknown player or wrong secret")
+			return
+		}
+	}
+	if err != nil {
+		s.gateway.logger.Error("guest store failed", "error", err)
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, "the server can't check players right now")
 		return
 	}
 

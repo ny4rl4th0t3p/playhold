@@ -47,6 +47,7 @@ that, each release adds support for another kind of game.
 
 - Root: the Go server library, imported as `github.com/ny4rl4th0t3p/playhold`
 - `sdk/`: libraries a game's client uses to talk to the server, one folder per language
+- `store/`: what a server keeps across restarts, with memory and PostgreSQL versions
 - `proto/`: the wire format they share
 - `examples/cards/`: a sample game, Crazy Eights, with a browser page
 

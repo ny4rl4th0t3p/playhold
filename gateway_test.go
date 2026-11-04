@@ -18,6 +18,7 @@ import (
 
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/store/memory"
 )
 
 // These tests use a real network connection, which synctest bubbles don't support, so they use real time.
@@ -34,12 +35,15 @@ func gatewayContext(t *testing.T) context.Context {
 // startGameServer returns the URL of a running server.
 func startGameServer(t *testing.T, rooms RoomConfig, handshake time.Duration) string {
 	t.Helper()
-	server, err := NewServer(newTestRuntime(t), &ServerConfig{
-		RoomType:         newTestRoomType(t, rooms),
-		HandshakeTimeout: handshake,
-		MemoryLimit:      -1,
-		Logger:           slog.New(slog.DiscardHandler),
-	})
+	return startServerWith(t, &ServerConfig{RoomType: newTestRoomType(t, rooms), HandshakeTimeout: handshake})
+}
+
+// startServerWith returns the URL of a running server with this config, on its own runtime.
+func startServerWith(t *testing.T, cfg *ServerConfig) string {
+	t.Helper()
+	cfg.MemoryLimit = -1
+	cfg.Logger = slog.New(slog.DiscardHandler)
+	server, err := NewServer(newTestRuntime(t), cfg)
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
 	t.Cleanup(func() {
@@ -150,6 +154,46 @@ func TestReturningGuestKeepsTheirIdentity(t *testing.T) {
 	got := readServerFrame(t, ws).GetWelcome()
 	assert.Equal(t, welcome.GetPlayerId(), got.GetPlayerId())
 	assert.Empty(t, got.GetSecret(), "the secret is only sent once")
+}
+
+func TestGuestKeepsTheirIdentityOnANewServerWithTheSameStore(t *testing.T) {
+	records := memory.New()
+	cfg := func() *ServerConfig {
+		return &ServerConfig{RoomType: newTestRoomType(t, RoomConfig{}), Store: records}
+	}
+	_, welcome := newGuest(t, startServerWith(t, cfg()))
+
+	ws := dialServer(t, startServerWith(t, cfg()))
+	sendFrame(t, ws, helloFrame(protocolVersion, welcome.GetPlayerId(), welcome.GetSecret()))
+
+	assert.Equal(t, welcome.GetPlayerId(), readServerFrame(t, ws).GetWelcome().GetPlayerId())
+}
+
+func TestStoreOutageIsReportedAndTheClientCanRetry(t *testing.T) {
+	url := startServerWith(t, &ServerConfig{RoomType: newTestRoomType(t, RoomConfig{}), Store: downStore{}})
+
+	tests := []struct {
+		name  string
+		frame *wire.ClientFrame
+	}{
+		{name: "new guest", frame: helloFrame(protocolVersion, "", "")},
+		{name: "returning guest", frame: helloFrame(protocolVersion, "alice", "secret")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := dialServer(t, url)
+
+			sendFrame(t, ws, tt.frame)
+
+			got := readServerFrame(t, ws).GetError()
+			assert.Equal(t, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, got.GetCode())
+			assert.NotContains(t, got.GetMessage(), errStoreDown.Error(), "internal errors stay on the server")
+
+			// The connection stays open, so saying hello again is allowed.
+			sendFrame(t, ws, tt.frame)
+			assert.NotNil(t, readServerFrame(t, ws).GetError())
+		})
+	}
 }
 
 func TestHelloProblems(t *testing.T) {

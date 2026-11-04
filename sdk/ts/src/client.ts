@@ -239,6 +239,9 @@ export class PlayholdClient {
       this.sendHello();
     } else if (error.code === ErrorCode.UNSUPPORTED_PROTOCOL) {
       this.stop("closed");
+    } else if (error.code === ErrorCode.UNAVAILABLE) {
+      // The server couldn't check this player. Closing leads to the usual reconnect, with its growing delay.
+      this.socket?.close();
     } else if (seq === this.joinSeq) {
       // Forget the code, so a reconnect doesn't keep trying a room that refused this player.
       this.code = undefined;

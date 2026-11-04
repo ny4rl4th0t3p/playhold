@@ -476,6 +476,25 @@ describe("reconnecting", () => {
     expect(sockets).toHaveLength(1);
   });
 
+  it("backs off and keeps its identity when the server is unavailable", () => {
+    const stored = JSON.stringify({ playerId: "alice", secret: "s3cret" });
+    const storage = memoryStorage({ "playhold.identity": stored });
+    const onError = vi.fn();
+    const { client, sockets, latest } = setup({ storage, onError });
+    client.connect();
+    latest().onopen?.();
+
+    latest().receive({ case: "error", value: { seq: 1n, code: ErrorCode.UNAVAILABLE, message: "try later" } });
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(latest().closedWith).toBeUndefined();
+    expect(storage.getItem("playhold.identity")).toBe(stored);
+
+    latest().drop();
+    vi.advanceTimersByTime(100);
+    expect(sockets).toHaveLength(2);
+  });
+
   it("doesn't open a second connection when already connecting or waiting", () => {
     const { client, sockets, latest } = setup();
 

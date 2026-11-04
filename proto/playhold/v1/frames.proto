@@ -90,6 +90,9 @@ enum ErrorCode {
   ERROR_CODE_ROOM_FULL = 8;
   // ERROR_CODE_UNSUPPORTED_PROTOCOL means the server doesn't speak this protocol version.
   ERROR_CODE_UNSUPPORTED_PROTOCOL = 9;
+  // ERROR_CODE_UNAVAILABLE means the server can't do this right now, for example because its database is down. Try
+  // again later.
+  ERROR_CODE_UNAVAILABLE = 10;
 }
 
 // Error reports a problem with one client frame.

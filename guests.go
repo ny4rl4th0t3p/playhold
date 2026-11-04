@@ -1,49 +1,54 @@
 package playhold
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"errors"
 	"sync"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
+	"github.com/ny4rl4th0t3p/playhold/store"
 )
 
-// guests remembers guest identities and which connection each one is using. Everything is in memory, so a
-// restart forgets every guest.
+// guests remembers guest identities, through the store, and which connection each one is using, in memory.
 type guests struct {
-	mu      sync.Mutex
-	secrets map[PlayerID][sha256.Size]byte // hashed, so a memory dump doesn't reveal them
-	conns   map[PlayerID]*transport.Conn
+	records store.Store
+
+	mu    sync.Mutex
+	conns map[PlayerID]*transport.Conn
 }
 
-func newGuests() *guests {
-	return &guests{
-		secrets: make(map[PlayerID][sha256.Size]byte),
-		conns:   make(map[PlayerID]*transport.Conn),
-	}
+func newGuests(records store.Store) *guests {
+	return &guests{records: records, conns: make(map[PlayerID]*transport.Conn)}
 }
 
-// create returns a new guest's ID and secret. The two are separate, so a player's ID can be shown to others.
-func (g *guests) create() (player PlayerID, secret string) {
+// create saves and returns a new guest's ID and secret. The two are separate, so a player's ID can be shown to others.
+// Only a hash of the secret is stored, so reading the database doesn't reveal it.
+func (g *guests) create(ctx context.Context) (player PlayerID, secret string, err error) {
 	player, secret = PlayerID(rand.Text()), rand.Text()
-
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.secrets[player] = sha256.Sum256([]byte(secret))
-	return player, secret
+	if err := g.records.SaveGuest(ctx, string(player), hashSecret(secret)); err != nil {
+		return "", "", err
+	}
+	return player, secret, nil
 }
 
-// verify reports whether the secret belongs to the player.
-func (g *guests) verify(player PlayerID, secret string) bool {
-	g.mu.Lock()
-	want, ok := g.secrets[player]
-	g.mu.Unlock()
-	if !ok {
-		return false
+// verify reports whether the secret belongs to the player. An error means it couldn't be checked.
+func (g *guests) verify(ctx context.Context, player PlayerID, secret string) (bool, error) {
+	want, err := g.records.GuestSecretHash(ctx, string(player))
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return false, nil
+	case err != nil:
+		return false, err
 	}
-	got := sha256.Sum256([]byte(secret))
-	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+	return subtle.ConstantTimeCompare(hashSecret(secret), want) == 1, nil
+}
+
+func hashSecret(secret string) []byte {
+	hash := sha256.Sum256([]byte(secret))
+	return hash[:]
 }
 
 // attach makes c the player's connection and returns the one it replaces, if any.

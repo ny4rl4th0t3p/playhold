@@ -16,8 +16,9 @@ import (
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 )
 
-// defaultQueueSize is the inbound queue capacity of a room whose type does not set one.
-const defaultQueueSize = 256
+// defaultQueueSize is the inbound queue capacity of a room whose type does not set one. Each room allocates its whole
+// queue up front, so this is part of what every room costs, even an idle one.
+const defaultQueueSize = 32
 
 // Errors returned when submitting work to a room.
 var (

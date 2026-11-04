@@ -93,6 +93,8 @@ enum ErrorCode {
   // ERROR_CODE_UNAVAILABLE means the server can't do this right now, for example because its database is down. Try
   // again later.
   ERROR_CODE_UNAVAILABLE = 10;
+  // ERROR_CODE_SERVER_FULL means the server won't create another room. Rooms that already exist can still be joined.
+  ERROR_CODE_SERVER_FULL = 11;
 }
 
 // Error reports a problem with one client frame.

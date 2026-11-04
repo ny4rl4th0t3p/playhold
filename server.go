@@ -14,7 +14,10 @@ import (
 	"github.com/ny4rl4th0t3p/playhold/store/memory"
 )
 
-const defaultEmptyRoomTimeout = 5 * time.Minute
+const (
+	defaultEmptyRoomTimeout = 5 * time.Minute
+	defaultMaxRooms         = 10_000
+)
 
 // ServerConfig configures a Server. Zero values use the defaults.
 type ServerConfig struct {
@@ -24,6 +27,9 @@ type ServerConfig struct {
 	Store store.Store
 	// EmptyRoomTimeout is how long a room stays open with nobody connected. The default is 5 minutes.
 	EmptyRoomTimeout time.Duration
+	// MaxRooms is the most rooms the server runs at once, counting finished ones until they close. Over it, joining a
+	// new code gets an error, and existing rooms carry on. The default is 10,000.
+	MaxRooms int
 	// OriginPatterns lists the other web origins allowed to connect, such as "*.itch.zone". The server's own
 	// host is always allowed.
 	OriginPatterns []string
@@ -60,13 +66,17 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	if idle <= 0 {
 		idle = defaultEmptyRoomTimeout
 	}
+	maxRooms := cfg.MaxRooms
+	if maxRooms <= 0 {
+		maxRooms = defaultMaxRooms
+	}
 	records := cfg.Store
 	if records == nil {
 		records = memory.New()
 	}
 	applyMemoryLimit(cfg.MemoryLimit, logger)
 
-	g := &gateway{guests: newGuests(records), lobby: newLobby(rt, cfg.RoomType, idle), logger: logger}
+	g := &gateway{guests: newGuests(records), lobby: newLobby(rt, cfg.RoomType, idle, maxRooms), logger: logger}
 	return &Server{transport: transport.NewServer(&transport.Config{
 		MaxMessageBytes:  cfg.MaxMessageBytes,
 		MaxConns:         cfg.MaxConns,

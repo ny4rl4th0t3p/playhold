@@ -63,9 +63,9 @@ func waitFor(t *testing.T, ch <-chan struct{}) {
 
 func TestRoomHandlesInputsInOrder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		room := newTestRoom(t, newTestRuntime(t), RoomConfig{})
-
 		const count = 100
+		room := newTestRoom(t, newTestRuntime(t), RoomConfig{QueueSize: count})
+
 		got := make([]int, 0, count)
 		finished := make(chan struct{})
 		for i := range count {

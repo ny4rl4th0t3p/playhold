@@ -433,6 +433,18 @@ func TestFailedHelloDoesNotStopTheHandshakeTimeout(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestServerWithTooManyRoomsSaysSo(t *testing.T) {
+	url := startServerWith(t, &ServerConfig{RoomType: newTestRoomType(t, RoomConfig{}), MaxRooms: 1})
+	seatedGuest(t, url)
+	ws, _ := newGuest(t, url)
+
+	sendFrame(t, ws, joinFrame("another-room"))
+	assert.Equal(t, wire.ErrorCode_ERROR_CODE_SERVER_FULL, readServerFrame(t, ws).GetError().GetCode())
+
+	// The room that exists can still be joined.
+	joinRoom(t, ws, testCode)
+}
+
 func TestRoomThatFailsToStartIsReported(t *testing.T) {
 	url := startGameServer(t, RoomConfig{Init: func(_ *RoomContext) error { return errors.New("bad config") }}, 0)
 	ws, _ := newGuest(t, url)

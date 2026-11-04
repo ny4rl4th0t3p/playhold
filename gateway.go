@@ -123,7 +123,11 @@ func (s *session) join(seq uint64, code string) {
 	}
 
 	room, err := s.gateway.lobby.enter(code)
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrTooManyRooms):
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_SERVER_FULL, "the server has no space for more games")
+		return
+	case err != nil:
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_REJECTED, "the room could not be created")
 		return
 	}

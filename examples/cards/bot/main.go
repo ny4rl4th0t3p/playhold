@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -53,6 +54,7 @@ type config struct {
 	think  time.Duration
 	ramp   time.Duration
 	report time.Duration
+	idle   int
 }
 
 func main() {
@@ -62,6 +64,7 @@ func main() {
 	flag.DurationVar(&cfg.think, "think", time.Second, "how long a player waits before each move")
 	flag.DurationVar(&cfg.ramp, "ramp", 10*time.Second, "how long to take starting all the games")
 	flag.DurationVar(&cfg.report, "report", 5*time.Second, "how often to print a report")
+	flag.IntVar(&cfg.idle, "idle", 0, "instead of playing, hold this many idle connections, to measure what one costs")
 	duration := flag.Duration("duration", 0, "how long to run; 0 runs until interrupted")
 	flag.Parse()
 
@@ -75,7 +78,82 @@ func main() {
 		ctx, cancel = context.WithTimeout(ctx, *duration)
 		defer cancel()
 	}
+	if cfg.idle > 0 {
+		holdIdle(ctx, cfg, os.Stdout)
+		return
+	}
 	run(ctx, cfg, os.Stdout)
+}
+
+// holdIdle keeps connections open that have said hello and do nothing else, until ctx ends, and returns how many it
+// managed. Comparing the server's memory with and without them shows what an idle connection costs.
+func holdIdle(ctx context.Context, cfg *config, out io.Writer) (held int64) {
+	var connected, reached, failed atomic.Int64
+	var holders sync.WaitGroup
+	for i := range cfg.idle {
+		holders.Go(func() {
+			delay := cfg.ramp * time.Duration(i) / time.Duration(cfg.idle)
+			if !sleep(ctx, delay) {
+				return
+			}
+			if err := holdOne(ctx, cfg, &connected, &reached); err != nil && ctx.Err() == nil {
+				failed.Add(1)
+			}
+		})
+	}
+
+	finished := make(chan struct{})
+	var reporter sync.WaitGroup
+	reporter.Go(func() {
+		ticker := time.NewTicker(cfg.report)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				_, _ = fmt.Fprintf(out, "%s idle=%d failures=%d\n",
+					time.Now().UTC().Format(time.TimeOnly), connected.Load(), failed.Load())
+			case <-finished:
+				return
+			}
+		}
+	})
+
+	holders.Wait()
+	close(finished)
+	reporter.Wait()
+	return reached.Load()
+}
+
+// holdOne stays connected until ctx ends. Reading is what answers the server's pings.
+func holdOne(ctx context.Context, cfg *config, connected, reached *atomic.Int64) error {
+	ws, _, err := websocket.Dial(ctx, cfg.url, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = ws.CloseNow() }()
+
+	guest := &player{}
+	if err := guest.send(ctx, ws, &wire.ClientFrame{Body: &wire.ClientFrame_Hello{
+		Hello: &wire.Hello{ProtocolVersion: protocolVersion},
+	}}); err != nil {
+		return err
+	}
+	frame, err := readFrame(ctx, ws)
+	if err != nil {
+		return err
+	}
+	if frame.GetWelcome() == nil {
+		return errRefused
+	}
+
+	reached.Add(1)
+	connected.Add(1)
+	defer connected.Add(-1)
+	for {
+		if _, _, err := ws.Read(ctx); err != nil {
+			return err
+		}
+	}
 }
 
 // run plays until ctx ends, and returns the totals.

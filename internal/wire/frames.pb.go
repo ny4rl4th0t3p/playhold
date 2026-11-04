@@ -47,6 +47,8 @@ const (
 	// ERROR_CODE_UNAVAILABLE means the server can't do this right now, for example because its database is down. Try
 	// again later.
 	ErrorCode_ERROR_CODE_UNAVAILABLE ErrorCode = 10
+	// ERROR_CODE_SERVER_FULL means the server won't create another room. Rooms that already exist can still be joined.
+	ErrorCode_ERROR_CODE_SERVER_FULL ErrorCode = 11
 )
 
 // Enum value maps for ErrorCode.
@@ -63,6 +65,7 @@ var (
 		8:  "ERROR_CODE_ROOM_FULL",
 		9:  "ERROR_CODE_UNSUPPORTED_PROTOCOL",
 		10: "ERROR_CODE_UNAVAILABLE",
+		11: "ERROR_CODE_SERVER_FULL",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED":          0,
@@ -76,6 +79,7 @@ var (
 		"ERROR_CODE_ROOM_FULL":            8,
 		"ERROR_CODE_UNSUPPORTED_PROTOCOL": 9,
 		"ERROR_CODE_UNAVAILABLE":          10,
+		"ERROR_CODE_SERVER_FULL":          11,
 	}
 )
 
@@ -925,7 +929,7 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\amessage\x18\x03 \x01(\tR\amessage\">\n" +
 	"\n" +
 	"RoomClosed\x120\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xcb\x02\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xe7\x02\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aERROR_CODE_MALFORMED_FRAME\x10\x01\x12\x1e\n" +
@@ -938,7 +942,8 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x14ERROR_CODE_ROOM_FULL\x10\b\x12#\n" +
 	"\x1fERROR_CODE_UNSUPPORTED_PROTOCOL\x10\t\x12\x1a\n" +
 	"\x16ERROR_CODE_UNAVAILABLE\x10\n" +
-	"*\x92\x01\n" +
+	"\x12\x1a\n" +
+	"\x16ERROR_CODE_SERVER_FULL\x10\v*\x92\x01\n" +
 	"\vCloseReason\x12\x1c\n" +
 	"\x18CLOSE_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLOSE_REASON_REQUESTED\x10\x01\x12\x19\n" +

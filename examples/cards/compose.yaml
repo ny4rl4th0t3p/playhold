@@ -9,7 +9,7 @@ services:
       dockerfile: examples/cards/Dockerfile
       target: server
     # One bot holds many connections from one address, so the usual per-address cap is raised.
-    command: ["-max-conns-per-ip", "4096", "-empty-room-timeout", "${EMPTY_ROOM_TIMEOUT:-5m}"]
+    command: ["-max-conns-per-ip", "4096", "-empty-room-timeout", "${EMPTY_ROOM_TIMEOUT:-5m}", "-max-rooms", "${MAX_ROOMS:-0}"]
     ports:
       - "${BIND:-127.0.0.1}:8080:8080"
     # A small VPS. Change these to try other sizes.
@@ -22,7 +22,7 @@ services:
       context: ../..
       dockerfile: examples/cards/Dockerfile
       target: bot
-    command: ["-url", "ws://game:8080/ws", "-games", "${GAMES:-100}", "-think", "${THINK:-1s}"]
+    command: ["-url", "ws://game:8080/ws", "-games", "${GAMES:-100}", "-think", "${THINK:-1s}", "-idle", "${IDLE:-0}"]
     # At high load the bot opens connections faster than closed ones free their ports. These only affect this container.
     sysctls:
       net.ipv4.tcp_tw_reuse: 1

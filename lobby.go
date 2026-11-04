@@ -1,16 +1,21 @@
 package playhold
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
 
-// lobby maps room codes to rooms. It creates a room when a code is first used, and closes a room once nobody has
-// been connected to it for the idle time, which frees its code.
+// ErrTooManyRooms means the server won't create another room. Rooms that already exist can still be joined.
+var ErrTooManyRooms = errors.New("playhold: too many rooms")
+
+// lobby maps room codes to rooms. It creates a room when a code is first used, up to a limit, since anyone can ask for
+// one with a new code. It closes a room once nobody has been connected to it for the idle time, which frees its code.
 type lobby struct {
-	rt   *Runtime
-	typ  *RoomType
-	idle time.Duration
+	rt       *Runtime
+	typ      *RoomType
+	idle     time.Duration
+	maxRooms int
 
 	mu    sync.Mutex
 	rooms map[string]*lobbyRoom
@@ -22,8 +27,8 @@ type lobbyRoom struct {
 	timer *time.Timer // running while conns is zero
 }
 
-func newLobby(rt *Runtime, typ *RoomType, idle time.Duration) *lobby {
-	return &lobby{rt: rt, typ: typ, idle: idle, rooms: make(map[string]*lobbyRoom)}
+func newLobby(rt *Runtime, typ *RoomType, idle time.Duration, maxRooms int) *lobby {
+	return &lobby{rt: rt, typ: typ, idle: idle, maxRooms: maxRooms, rooms: make(map[string]*lobbyRoom)}
 }
 
 // enter counts a new connection to the room with this code, creating the room if needed. Each successful call
@@ -33,6 +38,9 @@ func (l *lobby) enter(code string) (*Room, error) {
 	defer l.mu.Unlock()
 
 	entry, ok := l.rooms[code]
+	if !ok && len(l.rooms) >= l.maxRooms {
+		return nil, ErrTooManyRooms
+	}
 	if !ok || entry.room.closed() {
 		room, err := l.rt.CreateRoom(l.typ)
 		if err != nil {

@@ -29,20 +29,21 @@ func main() {
 	origins := flag.String("origins", "", "comma-separated web origins allowed to connect, besides this server's own")
 	maxPerIP := flag.Int("max-conns-per-ip", 0, "most connections from one IP address; 0 uses the default")
 	emptyRoom := flag.Duration("empty-room-timeout", 0, "how long a room stays open with nobody connected; 0 uses the default")
+	maxRooms := flag.Int("max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
 	flag.Parse()
 
-	if err := run(*addr, *web, *origins, *maxPerIP, *emptyRoom); err != nil {
+	if err := run(*addr, *web, *origins, *maxPerIP, *maxRooms, *emptyRoom); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(addr, web, origins string, maxPerIP int, emptyRoom time.Duration) error {
+func run(addr, web, origins string, maxPerIP, maxRooms int, emptyRoom time.Duration) error {
 	typ, err := cards.NewRoomType()
 	if err != nil {
 		return err
 	}
 	rt := playhold.NewRuntime(playhold.Config{})
-	cfg := &playhold.ServerConfig{RoomType: typ, MaxConnsPerIP: maxPerIP, EmptyRoomTimeout: emptyRoom}
+	cfg := &playhold.ServerConfig{RoomType: typ, MaxConnsPerIP: maxPerIP, MaxRooms: maxRooms, EmptyRoomTimeout: emptyRoom}
 	if origins != "" {
 		cfg.OriginPatterns = strings.Split(origins, ",")
 	}

@@ -52,6 +52,32 @@ func TestBotPlaysWholeGamesAgainstARealServer(t *testing.T) {
 	assert.Contains(t, out.String(), "games=")
 }
 
+func TestBotHoldsIdleConnections(t *testing.T) {
+	const idle = 8
+
+	rt := playhold.NewRuntime(playhold.Config{Logger: slog.New(slog.DiscardHandler)})
+	typ, err := cards.NewRoomType()
+	require.NoError(t, err)
+	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1})
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	t.Cleanup(func() {
+		server.Close()
+		httpServer.Close()
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	got := holdIdle(ctx, &config{
+		url:    "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/",
+		report: time.Hour,
+		idle:   idle,
+	}, &bytes.Buffer{})
+
+	assert.Equal(t, int64(idle), got)
+}
+
 func TestBotCountsFailures(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()

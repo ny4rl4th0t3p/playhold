@@ -10,11 +10,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testIdle = time.Minute
+const (
+	testIdle     = time.Minute
+	testMaxRooms = 1000
+)
 
 func newTestLobby(t *testing.T, cfg RoomConfig) *lobby {
 	t.Helper()
-	return newLobby(newTestRuntime(t), newTestRoomType(t, cfg), testIdle)
+	return newLobby(newTestRuntime(t), newTestRoomType(t, cfg), testIdle, testMaxRooms)
+}
+
+func TestLobbyRefusesNewRoomsOverTheCapButStillJoinsExistingOnes(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := newLobby(newTestRuntime(t), newTestRoomType(t, RoomConfig{}), testIdle, 2)
+		first := enterRoom(t, l, "one")
+		enterRoom(t, l, "two")
+
+		_, err := l.enter("three")
+		require.ErrorIs(t, err, ErrTooManyRooms)
+
+		assert.Same(t, first, enterRoom(t, l, "one"))
+
+		// A room closing makes space for a new one.
+		first.Close()
+		waitFor(t, first.Done())
+		synctest.Wait()
+		enterRoom(t, l, "three")
+	})
 }
 
 func enterRoom(t *testing.T, l *lobby, code string) *Room {

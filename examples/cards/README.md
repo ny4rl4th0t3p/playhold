@@ -41,13 +41,15 @@ compare the trend with the bot's reports, which use the same UTC times:
 sh record-stats.sh
 ```
 
-| Setting              | Default | What it does                                                                    |
-|----------------------|---------|---------------------------------------------------------------------------------|
-| `GAMES`              | 100     | Games played at once, with two connections each                                 |
-| `THINK`              | 1s      | How long a bot waits before each move                                           |
-| `GAME_CPUS`          | 1       | CPUs for the game server                                                        |
-| `GAME_MEMORY`        | 1g      | Memory for the game server, which sets its soft limit to about 80% of this      |
-| `EMPTY_ROOM_TIMEOUT` | 5m      | How long a room stays open with nobody connected, including after its game ends |
+| Setting              | Default | What it does                                                                              |
+|----------------------|---------|-------------------------------------------------------------------------------------------|
+| `GAMES`              | 100     | Games played at once, with two connections each                                           |
+| `THINK`              | 1s      | How long a bot waits before each move                                                     |
+| `GAME_CPUS`          | 1       | CPUs for the game server                                                                  |
+| `GAME_MEMORY`        | 1g      | Memory for the game server, which sets its soft limit to about 80% of this                |
+| `EMPTY_ROOM_TIMEOUT` | 5m      | How long a room stays open with nobody connected, including after its game ends           |
+| `MAX_ROOMS`          | 10,000  | Most rooms at once, counting finished ones until they close; above it, joins get an error |
+| `IDLE`               | 0       | Instead of playing, hold this many idle connections, to measure what one costs            |
 
 The bot prints finished games, failures, moves per second and how long the server took to answer a move, followed by the
 reason for any failures:
@@ -60,7 +62,8 @@ Reading the numbers:
 
 - The bot's latency includes its own delays, so run it on a machine with CPU to spare, or give the game fewer CPUs than
   the machine has.
-- A finished game's room stays open until it has been empty for `EMPTY_ROOM_TIMEOUT`, so a long run holds more rooms than
+- A finished game's room stays open until it has been empty for `EMPTY_ROOM_TIMEOUT`, so a long run holds more rooms
+  than
   are being played.
 - Results depend on your machine, so they aren't a benchmark of playhold.
 

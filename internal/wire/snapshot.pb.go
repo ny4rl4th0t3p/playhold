@@ -29,6 +29,8 @@ type RoomSnapshot struct {
 	RngState       []byte                 `protobuf:"bytes,2,opt,name=rng_state,json=rngState,proto3" json:"rng_state,omitempty"`
 	ClockUnixNanos int64                  `protobuf:"varint,3,opt,name=clock_unix_nanos,json=clockUnixNanos,proto3" json:"clock_unix_nanos,omitempty"`
 	Modules        []*ModuleSnapshot      `protobuf:"bytes,4,rep,name=modules,proto3" json:"modules,omitempty"`
+	Timers         []*PendingTimer        `protobuf:"bytes,5,rep,name=timers,proto3" json:"timers,omitempty"`
+	LastTimerId    uint64                 `protobuf:"varint,6,opt,name=last_timer_id,json=lastTimerId,proto3" json:"last_timer_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -91,6 +93,89 @@ func (x *RoomSnapshot) GetModules() []*ModuleSnapshot {
 	return nil
 }
 
+func (x *RoomSnapshot) GetTimers() []*PendingTimer {
+	if x != nil {
+		return x.Timers
+	}
+	return nil
+}
+
+func (x *RoomSnapshot) GetLastTimerId() uint64 {
+	if x != nil {
+		return x.LastTimerId
+	}
+	return 0
+}
+
+// PendingTimer is a timer that hasn't fired. The event is a Protobuf message, stored by its full name.
+type PendingTimer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	DueUnixNanos  int64                  `protobuf:"varint,2,opt,name=due_unix_nanos,json=dueUnixNanos,proto3" json:"due_unix_nanos,omitempty"`
+	EventType     string                 `protobuf:"bytes,3,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	Event         []byte                 `protobuf:"bytes,4,opt,name=event,proto3" json:"event,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PendingTimer) Reset() {
+	*x = PendingTimer{}
+	mi := &file_playhold_v1_snapshot_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PendingTimer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PendingTimer) ProtoMessage() {}
+
+func (x *PendingTimer) ProtoReflect() protoreflect.Message {
+	mi := &file_playhold_v1_snapshot_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PendingTimer.ProtoReflect.Descriptor instead.
+func (*PendingTimer) Descriptor() ([]byte, []int) {
+	return file_playhold_v1_snapshot_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PendingTimer) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *PendingTimer) GetDueUnixNanos() int64 {
+	if x != nil {
+		return x.DueUnixNanos
+	}
+	return 0
+}
+
+func (x *PendingTimer) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *PendingTimer) GetEvent() []byte {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
 // ModuleSnapshot is one module's state, in that module's own message at that schema version.
 type ModuleSnapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -103,7 +188,7 @@ type ModuleSnapshot struct {
 
 func (x *ModuleSnapshot) Reset() {
 	*x = ModuleSnapshot{}
-	mi := &file_playhold_v1_snapshot_proto_msgTypes[1]
+	mi := &file_playhold_v1_snapshot_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -115,7 +200,7 @@ func (x *ModuleSnapshot) String() string {
 func (*ModuleSnapshot) ProtoMessage() {}
 
 func (x *ModuleSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_playhold_v1_snapshot_proto_msgTypes[1]
+	mi := &file_playhold_v1_snapshot_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -128,7 +213,7 @@ func (x *ModuleSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModuleSnapshot.ProtoReflect.Descriptor instead.
 func (*ModuleSnapshot) Descriptor() ([]byte, []int) {
-	return file_playhold_v1_snapshot_proto_rawDescGZIP(), []int{1}
+	return file_playhold_v1_snapshot_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ModuleSnapshot) GetModule() string {
@@ -156,12 +241,20 @@ var File_playhold_v1_snapshot_proto protoreflect.FileDescriptor
 
 const file_playhold_v1_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"\x1aplayhold/v1/snapshot.proto\x12\vplayhold.v1\"\xa2\x01\n" +
+	"\x1aplayhold/v1/snapshot.proto\x12\vplayhold.v1\"\xf9\x01\n" +
 	"\fRoomSnapshot\x12\x14\n" +
 	"\x05seats\x18\x01 \x03(\tR\x05seats\x12\x1b\n" +
 	"\trng_state\x18\x02 \x01(\fR\brngState\x12(\n" +
 	"\x10clock_unix_nanos\x18\x03 \x01(\x03R\x0eclockUnixNanos\x125\n" +
-	"\amodules\x18\x04 \x03(\v2\x1b.playhold.v1.ModuleSnapshotR\amodules\"X\n" +
+	"\amodules\x18\x04 \x03(\v2\x1b.playhold.v1.ModuleSnapshotR\amodules\x121\n" +
+	"\x06timers\x18\x05 \x03(\v2\x19.playhold.v1.PendingTimerR\x06timers\x12\"\n" +
+	"\rlast_timer_id\x18\x06 \x01(\x04R\vlastTimerId\"y\n" +
+	"\fPendingTimer\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12$\n" +
+	"\x0edue_unix_nanos\x18\x02 \x01(\x03R\fdueUnixNanos\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x03 \x01(\tR\teventType\x12\x14\n" +
+	"\x05event\x18\x04 \x01(\fR\x05event\"X\n" +
 	"\x0eModuleSnapshot\x12\x16\n" +
 	"\x06module\x18\x01 \x01(\tR\x06module\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\rR\aversion\x12\x14\n" +
@@ -179,18 +272,20 @@ func file_playhold_v1_snapshot_proto_rawDescGZIP() []byte {
 	return file_playhold_v1_snapshot_proto_rawDescData
 }
 
-var file_playhold_v1_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_playhold_v1_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_playhold_v1_snapshot_proto_goTypes = []any{
 	(*RoomSnapshot)(nil),   // 0: playhold.v1.RoomSnapshot
-	(*ModuleSnapshot)(nil), // 1: playhold.v1.ModuleSnapshot
+	(*PendingTimer)(nil),   // 1: playhold.v1.PendingTimer
+	(*ModuleSnapshot)(nil), // 2: playhold.v1.ModuleSnapshot
 }
 var file_playhold_v1_snapshot_proto_depIdxs = []int32{
-	1, // 0: playhold.v1.RoomSnapshot.modules:type_name -> playhold.v1.ModuleSnapshot
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 0: playhold.v1.RoomSnapshot.modules:type_name -> playhold.v1.ModuleSnapshot
+	1, // 1: playhold.v1.RoomSnapshot.timers:type_name -> playhold.v1.PendingTimer
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_playhold_v1_snapshot_proto_init() }
@@ -204,7 +299,7 @@ func file_playhold_v1_snapshot_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_playhold_v1_snapshot_proto_rawDesc), len(file_playhold_v1_snapshot_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

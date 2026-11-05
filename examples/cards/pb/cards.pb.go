@@ -265,13 +265,16 @@ func (x *DeckView) GetDrawCount() uint32 {
 
 // TurnsView is what everyone sees of the game's progress.
 type TurnsView struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Started       bool                   `protobuf:"varint,1,opt,name=started,proto3" json:"started,omitempty"`
-	Current       string                 `protobuf:"bytes,2,opt,name=current,proto3" json:"current,omitempty"`
-	Winner        string                 `protobuf:"bytes,3,opt,name=winner,proto3" json:"winner,omitempty"`
-	Players       []string               `protobuf:"bytes,4,rep,name=players,proto3" json:"players,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Started bool                   `protobuf:"varint,1,opt,name=started,proto3" json:"started,omitempty"`
+	Current string                 `protobuf:"bytes,2,opt,name=current,proto3" json:"current,omitempty"`
+	Winner  string                 `protobuf:"bytes,3,opt,name=winner,proto3" json:"winner,omitempty"`
+	Players []string               `protobuf:"bytes,4,rep,name=players,proto3" json:"players,omitempty"`
+	// turn_millis_left and turn_millis_total let a client show a countdown. Left is measured when this view was made.
+	TurnMillisLeft  int64 `protobuf:"varint,5,opt,name=turn_millis_left,json=turnMillisLeft,proto3" json:"turn_millis_left,omitempty"`
+	TurnMillisTotal int64 `protobuf:"varint,6,opt,name=turn_millis_total,json=turnMillisTotal,proto3" json:"turn_millis_total,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *TurnsView) Reset() {
@@ -330,6 +333,20 @@ func (x *TurnsView) GetPlayers() []string {
 		return x.Players
 	}
 	return nil
+}
+
+func (x *TurnsView) GetTurnMillisLeft() int64 {
+	if x != nil {
+		return x.TurnMillisLeft
+	}
+	return 0
+}
+
+func (x *TurnsView) GetTurnMillisTotal() int64 {
+	if x != nil {
+		return x.TurnMillisTotal
+	}
+	return 0
 }
 
 // OtherHand is what a player sees of someone else's hand.
@@ -452,6 +469,7 @@ type TurnsState struct {
 	Players       []string               `protobuf:"bytes,1,rep,name=players,proto3" json:"players,omitempty"`
 	Current       uint32                 `protobuf:"varint,2,opt,name=current,proto3" json:"current,omitempty"`
 	Winner        string                 `protobuf:"bytes,3,opt,name=winner,proto3" json:"winner,omitempty"`
+	TurnTimer     uint64                 `protobuf:"varint,4,opt,name=turn_timer,json=turnTimer,proto3" json:"turn_timer,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -507,6 +525,95 @@ func (x *TurnsState) GetWinner() string {
 	return ""
 }
 
+func (x *TurnsState) GetTurnTimer() uint64 {
+	if x != nil {
+		return x.TurnTimer
+	}
+	return 0
+}
+
+// TurnExpired is the event when a player runs out of time.
+type TurnExpired struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Player        string                 `protobuf:"bytes,1,opt,name=player,proto3" json:"player,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TurnExpired) Reset() {
+	*x = TurnExpired{}
+	mi := &file_cards_v1_cards_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TurnExpired) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TurnExpired) ProtoMessage() {}
+
+func (x *TurnExpired) ProtoReflect() protoreflect.Message {
+	mi := &file_cards_v1_cards_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TurnExpired.ProtoReflect.Descriptor instead.
+func (*TurnExpired) Descriptor() ([]byte, []int) {
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *TurnExpired) GetPlayer() string {
+	if x != nil {
+		return x.Player
+	}
+	return ""
+}
+
+// FinishedGameExpired is the event when a finished game's room has been open long enough to see the result.
+type FinishedGameExpired struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FinishedGameExpired) Reset() {
+	*x = FinishedGameExpired{}
+	mi := &file_cards_v1_cards_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FinishedGameExpired) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FinishedGameExpired) ProtoMessage() {}
+
+func (x *FinishedGameExpired) ProtoReflect() protoreflect.Message {
+	mi := &file_cards_v1_cards_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FinishedGameExpired.ProtoReflect.Descriptor instead.
+func (*FinishedGameExpired) Descriptor() ([]byte, []int) {
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{9}
+}
+
 // Cards is a list of cards.
 type Cards struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -517,7 +624,7 @@ type Cards struct {
 
 func (x *Cards) Reset() {
 	*x = Cards{}
-	mi := &file_cards_v1_cards_proto_msgTypes[8]
+	mi := &file_cards_v1_cards_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -529,7 +636,7 @@ func (x *Cards) String() string {
 func (*Cards) ProtoMessage() {}
 
 func (x *Cards) ProtoReflect() protoreflect.Message {
-	mi := &file_cards_v1_cards_proto_msgTypes[8]
+	mi := &file_cards_v1_cards_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -542,7 +649,7 @@ func (x *Cards) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Cards.ProtoReflect.Descriptor instead.
 func (*Cards) Descriptor() ([]byte, []int) {
-	return file_cards_v1_cards_proto_rawDescGZIP(), []int{8}
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Cards) GetCards() []string {
@@ -563,7 +670,7 @@ type HandsState struct {
 
 func (x *HandsState) Reset() {
 	*x = HandsState{}
-	mi := &file_cards_v1_cards_proto_msgTypes[9]
+	mi := &file_cards_v1_cards_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -575,7 +682,7 @@ func (x *HandsState) String() string {
 func (*HandsState) ProtoMessage() {}
 
 func (x *HandsState) ProtoReflect() protoreflect.Message {
-	mi := &file_cards_v1_cards_proto_msgTypes[9]
+	mi := &file_cards_v1_cards_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -588,7 +695,7 @@ func (x *HandsState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandsState.ProtoReflect.Descriptor instead.
 func (*HandsState) Descriptor() ([]byte, []int) {
-	return file_cards_v1_cards_proto_rawDescGZIP(), []int{9}
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *HandsState) GetHands() map[string]*Cards {
@@ -619,7 +726,7 @@ type HandsView struct {
 
 func (x *HandsView) Reset() {
 	*x = HandsView{}
-	mi := &file_cards_v1_cards_proto_msgTypes[10]
+	mi := &file_cards_v1_cards_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -631,7 +738,7 @@ func (x *HandsView) String() string {
 func (*HandsView) ProtoMessage() {}
 
 func (x *HandsView) ProtoReflect() protoreflect.Message {
-	mi := &file_cards_v1_cards_proto_msgTypes[10]
+	mi := &file_cards_v1_cards_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -644,7 +751,7 @@ func (x *HandsView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandsView.ProtoReflect.Descriptor instead.
 func (*HandsView) Descriptor() ([]byte, []int) {
-	return file_cards_v1_cards_proto_rawDescGZIP(), []int{10}
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *HandsView) GetCards() []string {
@@ -698,12 +805,14 @@ const file_cards_v1_cards_proto_rawDesc = "" +
 	"\vactive_suit\x18\x02 \x01(\tR\n" +
 	"activeSuit\x12\x1d\n" +
 	"\n" +
-	"draw_count\x18\x03 \x01(\rR\tdrawCount\"q\n" +
+	"draw_count\x18\x03 \x01(\rR\tdrawCount\"\xc7\x01\n" +
 	"\tTurnsView\x12\x18\n" +
 	"\astarted\x18\x01 \x01(\bR\astarted\x12\x18\n" +
 	"\acurrent\x18\x02 \x01(\tR\acurrent\x12\x16\n" +
 	"\x06winner\x18\x03 \x01(\tR\x06winner\x12\x18\n" +
-	"\aplayers\x18\x04 \x03(\tR\aplayers\"9\n" +
+	"\aplayers\x18\x04 \x03(\tR\aplayers\x12(\n" +
+	"\x10turn_millis_left\x18\x05 \x01(\x03R\x0eturnMillisLeft\x12*\n" +
+	"\x11turn_millis_total\x18\x06 \x01(\x03R\x0fturnMillisTotal\"9\n" +
 	"\tOtherHand\x12\x16\n" +
 	"\x06player\x18\x01 \x01(\tR\x06player\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\rR\x05count\"Z\n" +
@@ -711,12 +820,17 @@ const file_cards_v1_cards_proto_rawDesc = "" +
 	"\x04pile\x18\x01 \x03(\tR\x04pile\x12\x18\n" +
 	"\adiscard\x18\x02 \x03(\tR\adiscard\x12\x1f\n" +
 	"\vactive_suit\x18\x03 \x01(\tR\n" +
-	"activeSuit\"X\n" +
+	"activeSuit\"w\n" +
 	"\n" +
 	"TurnsState\x12\x18\n" +
 	"\aplayers\x18\x01 \x03(\tR\aplayers\x12\x18\n" +
 	"\acurrent\x18\x02 \x01(\rR\acurrent\x12\x16\n" +
-	"\x06winner\x18\x03 \x01(\tR\x06winner\"\x1d\n" +
+	"\x06winner\x18\x03 \x01(\tR\x06winner\x12\x1d\n" +
+	"\n" +
+	"turn_timer\x18\x04 \x01(\x04R\tturnTimer\"%\n" +
+	"\vTurnExpired\x12\x16\n" +
+	"\x06player\x18\x01 \x01(\tR\x06player\"\x15\n" +
+	"\x13FinishedGameExpired\"\x1d\n" +
 	"\x05Cards\x12\x14\n" +
 	"\x05cards\x18\x01 \x03(\tR\x05cards\"\xa2\x01\n" +
 	"\n" +
@@ -752,26 +866,28 @@ func file_cards_v1_cards_proto_rawDescGZIP() []byte {
 }
 
 var file_cards_v1_cards_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_cards_v1_cards_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_cards_v1_cards_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_cards_v1_cards_proto_goTypes = []any{
-	(HandsMessage)(0),  // 0: cards.v1.HandsMessage
-	(*Play)(nil),       // 1: cards.v1.Play
-	(*Draw)(nil),       // 2: cards.v1.Draw
-	(*Pass)(nil),       // 3: cards.v1.Pass
-	(*DeckView)(nil),   // 4: cards.v1.DeckView
-	(*TurnsView)(nil),  // 5: cards.v1.TurnsView
-	(*OtherHand)(nil),  // 6: cards.v1.OtherHand
-	(*DeckState)(nil),  // 7: cards.v1.DeckState
-	(*TurnsState)(nil), // 8: cards.v1.TurnsState
-	(*Cards)(nil),      // 9: cards.v1.Cards
-	(*HandsState)(nil), // 10: cards.v1.HandsState
-	(*HandsView)(nil),  // 11: cards.v1.HandsView
-	nil,                // 12: cards.v1.HandsState.HandsEntry
+	(HandsMessage)(0),           // 0: cards.v1.HandsMessage
+	(*Play)(nil),                // 1: cards.v1.Play
+	(*Draw)(nil),                // 2: cards.v1.Draw
+	(*Pass)(nil),                // 3: cards.v1.Pass
+	(*DeckView)(nil),            // 4: cards.v1.DeckView
+	(*TurnsView)(nil),           // 5: cards.v1.TurnsView
+	(*OtherHand)(nil),           // 6: cards.v1.OtherHand
+	(*DeckState)(nil),           // 7: cards.v1.DeckState
+	(*TurnsState)(nil),          // 8: cards.v1.TurnsState
+	(*TurnExpired)(nil),         // 9: cards.v1.TurnExpired
+	(*FinishedGameExpired)(nil), // 10: cards.v1.FinishedGameExpired
+	(*Cards)(nil),               // 11: cards.v1.Cards
+	(*HandsState)(nil),          // 12: cards.v1.HandsState
+	(*HandsView)(nil),           // 13: cards.v1.HandsView
+	nil,                         // 14: cards.v1.HandsState.HandsEntry
 }
 var file_cards_v1_cards_proto_depIdxs = []int32{
-	12, // 0: cards.v1.HandsState.hands:type_name -> cards.v1.HandsState.HandsEntry
+	14, // 0: cards.v1.HandsState.hands:type_name -> cards.v1.HandsState.HandsEntry
 	6,  // 1: cards.v1.HandsView.others:type_name -> cards.v1.OtherHand
-	9,  // 2: cards.v1.HandsState.HandsEntry.value:type_name -> cards.v1.Cards
+	11, // 2: cards.v1.HandsState.HandsEntry.value:type_name -> cards.v1.Cards
 	3,  // [3:3] is the sub-list for method output_type
 	3,  // [3:3] is the sub-list for method input_type
 	3,  // [3:3] is the sub-list for extension type_name
@@ -790,7 +906,7 @@ func file_cards_v1_cards_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cards_v1_cards_proto_rawDesc), len(file_cards_v1_cards_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

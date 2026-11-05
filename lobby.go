@@ -29,6 +29,7 @@ type lobby struct {
 	idle     time.Duration
 	maxRooms int
 	writer   *snapshotWriter // nil if rooms aren't saved
+	timers   TimersAfterRestart
 
 	mu    sync.Mutex
 	rooms map[string]*lobbyRoom
@@ -157,12 +158,15 @@ func (l *lobby) restart(code string, entry *lobbyRoom, old *Room) bool {
 		return false
 	}
 
-	next, err := l.rt.restoreRoom(l.typ, old.id, code, *data, l.writer, l.restarter(code, entry))
+	// The server stayed up, so no time was lost, whatever a restart would do with timers.
+	next, err := l.rt.restoreRoom(l.typ, old.id, code, *data, l.writer, l.restarter(code, entry), TimersKeepRunning)
 	if err != nil {
 		old.logger.Error("restoring crashed room failed", "error", err)
 		return false
 	}
 	entry.restarts = append(entry.restarts, now)
+	old.logger.Error("room crashed, restored from its last snapshot",
+		"reason", old.reason.String(), "restarts", len(entry.restarts), "limit", maxRestarts, "window", restartWindow)
 	entry.room = next
 	return true
 }
@@ -203,7 +207,7 @@ func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 			continue
 		}
 		entry := &lobbyRoom{}
-		room, err := l.rt.restoreRoom(l.typ, RoomID(record.ID), record.Code, record.Data, l.writer, l.restarter(record.Code, entry))
+		room, err := l.rt.restoreRoom(l.typ, RoomID(record.ID), record.Code, record.Data, l.writer, l.restarter(record.Code, entry), l.timers)
 		if err != nil {
 			l.rt.logger.Error("skipping a saved room that can't be restored", "room", record.ID, "error", err)
 			continue

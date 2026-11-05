@@ -2,7 +2,7 @@ import {create, toBinary} from "@bufbuild/protobuf";
 import {describe, expect, it} from "vitest";
 
 import {DeckViewSchema, HandsViewSchema, TurnsViewSchema} from "./gen/cards/v1/cards_pb";
-import {cardLabel, isRed, isWild, readViews, suitSymbol, turnText} from "./view";
+import {cardLabel, isRed, isWild, readViews, suitSymbol, timerBar, turnText} from "./view";
 
 describe("readViews", () => {
     it("decodes each module's view, and ignores unknown modules", () => {
@@ -40,6 +40,23 @@ describe("cards", () => {
 
     it("shows an unknown suit as it is", () => {
         expect(suitSymbol("stars")).toBe("stars");
+    });
+});
+
+describe("timerBar", () => {
+    it.each([
+        ["full", 60_000, "100.0%", "hsl(120 70% 45%)", "60 s"],
+        ["half", 30_000, "50.0%", "hsl(60 70% 45%)", "30 s"],
+        ["nearly out", 500, "0.8%", "hsl(1 70% 45%)", "1 s"],
+        ["out", 0, "0.0%", "hsl(0 70% 45%)", "0 s"],
+        ["overdue", -5_000, "0.0%", "hsl(0 70% 45%)", "0 s"],
+        ["more than the total", 90_000, "100.0%", "hsl(120 70% 45%)", "90 s"],
+    ])("%s", (_, left, width, color, text) => {
+        expect(timerBar(left, 60_000)).toEqual({width, color, text});
+    });
+
+    it("copes with no total", () => {
+        expect(timerBar(1_000, 0).width).toBe("0.0%");
     });
 });
 

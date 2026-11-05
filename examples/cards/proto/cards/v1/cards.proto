@@ -38,6 +38,9 @@ message TurnsView {
   string current = 2;
   string winner = 3;
   repeated string players = 4;
+  // turn_millis_left and turn_millis_total let a client show a countdown. Left is measured when this view was made.
+  int64 turn_millis_left = 5;
+  int64 turn_millis_total = 6;
 }
 
 // OtherHand is what a player sees of someone else's hand.
@@ -58,7 +61,16 @@ message TurnsState {
   repeated string players = 1;
   uint32 current = 2;
   string winner = 3;
+  uint64 turn_timer = 4;
 }
+
+// TurnExpired is the event when a player runs out of time.
+message TurnExpired {
+  string player = 1;
+}
+
+// FinishedGameExpired is the event when a finished game's room has been open long enough to see the result.
+message FinishedGameExpired {}
 
 // Cards is a list of cards.
 message Cards {

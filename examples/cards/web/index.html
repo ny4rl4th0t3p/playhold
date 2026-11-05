@@ -60,6 +60,28 @@
             opacity: 1;
         }
 
+        .timer {
+            background: light-dark(#e0e0e0, #424242);
+            border-radius: 0.25rem;
+            height: 1.5rem;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .timer-fill {
+            height: 100%;
+        }
+
+        .timer-text {
+            font-variant-numeric: tabular-nums;
+            left: 0;
+            line-height: 1.5rem;
+            position: absolute;
+            right: 0;
+            text-align: center;
+            top: 0;
+        }
+
         #message {
             color: #c62828;
             min-height: 1.5rem;
@@ -87,6 +109,10 @@
 <section id="game" hidden>
     <p>Room code: <strong id="room"></strong></p>
     <p id="turn"></p>
+    <div id="timer" class="timer" role="timer" hidden>
+        <div id="timer-fill" class="timer-fill"></div>
+        <span id="timer-text" class="timer-text"></span>
+    </div>
     <div class="row">
         <button id="top" class="card" disabled></button>
         <p id="table"></p>

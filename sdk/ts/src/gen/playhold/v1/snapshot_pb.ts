@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file playhold/v1/snapshot.proto.
  */
 export const file_playhold_v1_snapshot: GenFile = /*@__PURE__*/
-  fileDesc("ChpwbGF5aG9sZC92MS9zbmFwc2hvdC5wcm90bxILcGxheWhvbGQudjEieAoMUm9vbVNuYXBzaG90Eg0KBXNlYXRzGAEgAygJEhEKCXJuZ19zdGF0ZRgCIAEoDBIYChBjbG9ja191bml4X25hbm9zGAMgASgDEiwKB21vZHVsZXMYBCADKAsyGy5wbGF5aG9sZC52MS5Nb2R1bGVTbmFwc2hvdCJACg5Nb2R1bGVTbmFwc2hvdBIOCgZtb2R1bGUYASABKAkSDwoHdmVyc2lvbhgCIAEoDRINCgVzdGF0ZRgDIAEoDEI1WjNnaXRodWIuY29tL255NHJsNHRoMHQzcC9wbGF5aG9sZC9pbnRlcm5hbC93aXJlO3dpcmViBnByb3RvMw");
+  fileDesc("ChpwbGF5aG9sZC92MS9zbmFwc2hvdC5wcm90bxILcGxheWhvbGQudjEiugEKDFJvb21TbmFwc2hvdBINCgVzZWF0cxgBIAMoCRIRCglybmdfc3RhdGUYAiABKAwSGAoQY2xvY2tfdW5peF9uYW5vcxgDIAEoAxIsCgdtb2R1bGVzGAQgAygLMhsucGxheWhvbGQudjEuTW9kdWxlU25hcHNob3QSKQoGdGltZXJzGAUgAygLMhkucGxheWhvbGQudjEuUGVuZGluZ1RpbWVyEhUKDWxhc3RfdGltZXJfaWQYBiABKAQiVQoMUGVuZGluZ1RpbWVyEgoKAmlkGAEgASgEEhYKDmR1ZV91bml4X25hbm9zGAIgASgDEhIKCmV2ZW50X3R5cGUYAyABKAkSDQoFZXZlbnQYBCABKAwiQAoOTW9kdWxlU25hcHNob3QSDgoGbW9kdWxlGAEgASgJEg8KB3ZlcnNpb24YAiABKA0SDQoFc3RhdGUYAyABKAxCNVozZ2l0aHViLmNvbS9ueTRybDR0aDB0M3AvcGxheWhvbGQvaW50ZXJuYWwvd2lyZTt3aXJlYgZwcm90bzM");
 
 /**
  * RoomSnapshot is everything needed to bring a room back. It's only ever stored, never sent to a client, because it
@@ -38,6 +38,16 @@ export type RoomSnapshot = Message<"playhold.v1.RoomSnapshot"> & {
    * @generated from field: repeated playhold.v1.ModuleSnapshot modules = 4;
    */
   modules: ModuleSnapshot[];
+
+  /**
+   * @generated from field: repeated playhold.v1.PendingTimer timers = 5;
+   */
+  timers: PendingTimer[];
+
+  /**
+   * @generated from field: uint64 last_timer_id = 6;
+   */
+  lastTimerId: bigint;
 };
 
 /**
@@ -46,6 +56,40 @@ export type RoomSnapshot = Message<"playhold.v1.RoomSnapshot"> & {
  */
 export const RoomSnapshotSchema: GenMessage<RoomSnapshot> = /*@__PURE__*/
   messageDesc(file_playhold_v1_snapshot, 0);
+
+/**
+ * PendingTimer is a timer that hasn't fired. The event is a Protobuf message, stored by its full name.
+ *
+ * @generated from message playhold.v1.PendingTimer
+ */
+export type PendingTimer = Message<"playhold.v1.PendingTimer"> & {
+  /**
+   * @generated from field: uint64 id = 1;
+   */
+  id: bigint;
+
+  /**
+   * @generated from field: int64 due_unix_nanos = 2;
+   */
+  dueUnixNanos: bigint;
+
+  /**
+   * @generated from field: string event_type = 3;
+   */
+  eventType: string;
+
+  /**
+   * @generated from field: bytes event = 4;
+   */
+  event: Uint8Array;
+};
+
+/**
+ * Describes the message playhold.v1.PendingTimer.
+ * Use `create(PendingTimerSchema)` to create a new message.
+ */
+export const PendingTimerSchema: GenMessage<PendingTimer> = /*@__PURE__*/
+  messageDesc(file_playhold_v1_snapshot, 1);
 
 /**
  * ModuleSnapshot is one module's state, in that module's own message at that schema version.
@@ -74,5 +118,5 @@ export type ModuleSnapshot = Message<"playhold.v1.ModuleSnapshot"> & {
  * Use `create(ModuleSnapshotSchema)` to create a new message.
  */
 export const ModuleSnapshotSchema: GenMessage<ModuleSnapshot> = /*@__PURE__*/
-  messageDesc(file_playhold_v1_snapshot, 1);
+  messageDesc(file_playhold_v1_snapshot, 2);
 

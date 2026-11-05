@@ -602,6 +602,91 @@ func TestRestoredGameShowsNobodyAnyHiddenCards(t *testing.T) {
 	assert.NotEmpty(t, first.latest.hand.GetCards())
 }
 
+// startTimedGame is a game with these times.
+func startTimedGame(t *testing.T, options cards.Options) *game {
+	t.Helper()
+	rt := playhold.NewRuntime(playhold.Config{
+		Logger:  slog.New(slog.DiscardHandler),
+		NewSeed: func() [32]byte { return testSeed },
+	})
+	typ, err := cards.NewRoomTypeWith(options)
+	require.NoError(t, err)
+	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1})
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	t.Cleanup(func() {
+		server.Close()
+		httpServer.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		defer cancel()
+		assert.NoError(t, rt.Shutdown(ctx))
+	})
+	return startGameOn(t, "ws"+strings.TrimPrefix(httpServer.URL, "http"))
+}
+
+func TestPlayerWhoRunsOutOfTimeDrawsAndPasses(t *testing.T) {
+	g := startTimedGame(t, cards.Options{TurnTime: 100 * time.Millisecond})
+	actor, waiting := g.current()
+	require.Len(t, actor.latest.hand.GetCards(), rules.HandSize)
+
+	actor.readState()
+	waiting.readState()
+
+	assert.Len(t, actor.latest.hand.GetCards(), rules.HandSize+1, "they drew")
+	assert.Equal(t, waiting.id, actor.latest.turns.GetCurrent(), "and passed")
+	g.checkConsistent()
+
+	// The next player's time starts in turn.
+	actor.readState()
+	waiting.readState()
+
+	assert.Len(t, waiting.latest.hand.GetCards(), rules.HandSize+1)
+	assert.Equal(t, actor.id, actor.latest.turns.GetCurrent())
+}
+
+func TestPlayerWhoAlreadyDrewOnlyPassesWhenTimeRunsOut(t *testing.T) {
+	g := startTimedGame(t, cards.Options{TurnTime: 300 * time.Millisecond})
+	actor, waiting := g.current()
+
+	actor.send(pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{})
+	actor.readState()
+	waiting.readState()
+	require.Len(t, actor.latest.hand.GetCards(), rules.HandSize+1)
+
+	actor.readState()
+	waiting.readState()
+
+	assert.Len(t, actor.latest.hand.GetCards(), rules.HandSize+1, "no second card")
+	assert.Equal(t, waiting.id, actor.latest.turns.GetCurrent())
+}
+
+func TestViewShowsTheTimeLeftInTheTurn(t *testing.T) {
+	turnTime := time.Hour
+	g := startTimedGame(t, cards.Options{TurnTime: turnTime})
+
+	turns := g.first.latest.turns
+	assert.Equal(t, turnTime.Milliseconds(), turns.GetTurnMillisTotal())
+	assert.Positive(t, turns.GetTurnMillisLeft())
+	assert.LessOrEqual(t, turns.GetTurnMillisLeft(), turnTime.Milliseconds())
+}
+
+func TestFinishedGameClosesItsRoomAfterAWhile(t *testing.T) {
+	g := startTimedGame(t, cards.Options{FinishedRoomTime: 50 * time.Millisecond})
+	for g.first.latest.turns.GetWinner() == "" {
+		g.move()
+	}
+
+	// The turn that closes the room is a turn like any other, so its view comes first, and RoomClosed comes last.
+	for _, s := range []*seat{g.first, g.other} {
+		frame := s.read()
+		for frame.GetClosed() == nil {
+			require.NotNil(t, frame.GetState(), "got %v", frame)
+			frame = s.read()
+		}
+		assert.Equal(t, wire.CloseReason_CLOSE_REASON_REQUESTED, frame.GetClosed().GetReason())
+	}
+}
+
 func TestThirdPlayerIsRefused(t *testing.T) {
 	g := startGame(t, testSeed)
 

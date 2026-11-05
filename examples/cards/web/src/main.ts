@@ -2,7 +2,7 @@ import {create, toBinary} from "@bufbuild/protobuf";
 import {CloseReason, PlayholdClient, type ClientStatus} from "playhold-sdk";
 
 import {HandsMessage, PlaySchema} from "./gen/cards/v1/cards_pb";
-import {cardLabel, isRed, isWild, readViews, suits, suitSymbol, turnText, type GameView} from "./view";
+import {cardLabel, isRed, isWild, readViews, suits, suitSymbol, timerBar, turnText, type GameView} from "./view";
 
 // The rules stay on the server: this page shows what the server sent, and offers the moves it said are possible.
 
@@ -34,6 +34,9 @@ const ui = {
     game: element("game"),
     room: element("room"),
     turn: element("turn"),
+    timer: element("timer"),
+    timerFill: element("timer-fill"),
+    timerText: element("timer-text"),
     top: element<HTMLButtonElement>("top"),
     table: element("table"),
     hand: element("hand"),
@@ -55,12 +58,18 @@ function serverUrl(): string {
 
 let game: GameView = {};
 let wild: string | undefined; // the eight waiting for a suit
+let turnEndsAt = 0; // on this browser's clock, worked out from the time left, so the two clocks needn't agree
+let turnTotalMs = 0;
+let timerFrozen = false;
 
 const client = new PlayholdClient({
     url: serverUrl(),
     onStatus: (status) => {
         ui.status.textContent = statusText[status];
         ui.reclaim.hidden = status !== "replaced";
+        if (status !== "joined") {
+            timerFrozen = true; // the server's count may be paused, so don't guess: the next state unfreezes it
+        }
         if (status === "joined") {
             ui.lobby.hidden = true;
             ui.game.hidden = false;
@@ -68,6 +77,9 @@ const client = new PlayholdClient({
     },
     onState: (views) => {
         game = readViews(views);
+        turnEndsAt = performance.now() + Number(game.turns?.turnMillisLeft ?? 0n);
+        turnTotalMs = Number(game.turns?.turnMillisTotal ?? 0n);
+        timerFrozen = false;
         render();
     },
     onError: (error) => {
@@ -116,7 +128,20 @@ function play(card: string, chosenSuit = ""): void {
     render();
 }
 
+/** Moves the turn timer along. A state from the server resets it to the true time left. */
+function renderTimer(): void {
+    ui.timer.hidden = turnTotalMs === 0;
+    if (turnTotalMs === 0 || timerFrozen) {
+        return;
+    }
+    const bar = timerBar(turnEndsAt - performance.now(), turnTotalMs);
+    ui.timerFill.style.width = bar.width;
+    ui.timerFill.style.background = bar.color;
+    ui.timerText.textContent = bar.text;
+}
+
 function render(): void {
+    renderTimer();
     const {deck, turns, hands} = game;
     ui.turn.textContent = turnText(turns, client.playerId);
 
@@ -179,6 +204,8 @@ ui.pass.addEventListener("click", () => {
     client.send("hands", HandsMessage.PASS, new Uint8Array());
 });
 ui.reclaim.addEventListener("click", () => client.connect());
+
+setInterval(renderTimer, 100);
 
 client.connect();
 const shared = new URLSearchParams(location.search).get("room");

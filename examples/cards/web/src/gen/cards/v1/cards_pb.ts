@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file cards/v1/cards.proto.
  */
 export const file_cards_v1_cards: GenFile = /*@__PURE__*/
-  fileDesc("ChRjYXJkcy92MS9jYXJkcy5wcm90bxIIY2FyZHMudjEiKQoEUGxheRIMCgRjYXJkGAEgASgJEhMKC2Nob3Nlbl9zdWl0GAIgASgJIgYKBERyYXciBgoEUGFzcyJACghEZWNrVmlldxILCgN0b3AYASABKAkSEwoLYWN0aXZlX3N1aXQYAiABKAkSEgoKZHJhd19jb3VudBgDIAEoDSJOCglUdXJuc1ZpZXcSDwoHc3RhcnRlZBgBIAEoCBIPCgdjdXJyZW50GAIgASgJEg4KBndpbm5lchgDIAEoCRIPCgdwbGF5ZXJzGAQgAygJIioKCU90aGVySGFuZBIOCgZwbGF5ZXIYASABKAkSDQoFY291bnQYAiABKA0iPwoJRGVja1N0YXRlEgwKBHBpbGUYASADKAkSDwoHZGlzY2FyZBgCIAMoCRITCgthY3RpdmVfc3VpdBgDIAEoCSI+CgpUdXJuc1N0YXRlEg8KB3BsYXllcnMYASADKAkSDwoHY3VycmVudBgCIAEoDRIOCgZ3aW5uZXIYAyABKAkiFgoFQ2FyZHMSDQoFY2FyZHMYASADKAkiiQEKCkhhbmRzU3RhdGUSLgoFaGFuZHMYASADKAsyHy5jYXJkcy52MS5IYW5kc1N0YXRlLkhhbmRzRW50cnkSDAoEZHJldxgCIAEoCBo9CgpIYW5kc0VudHJ5EgsKA2tleRgBIAEoCRIeCgV2YWx1ZRgCIAEoCzIPLmNhcmRzLnYxLkNhcmRzOgI4ASJ1CglIYW5kc1ZpZXcSDQoFY2FyZHMYASADKAkSEAoIcGxheWFibGUYAiADKAkSEAoIY2FuX2RyYXcYAyABKAgSEAoIY2FuX3Bhc3MYBCABKAgSIwoGb3RoZXJzGAUgAygLMhMuY2FyZHMudjEuT3RoZXJIYW5kKnUKDEhhbmRzTWVzc2FnZRIdChlIQU5EU19NRVNTQUdFX1VOU1BFQ0lGSUVEEAASFgoSSEFORFNfTUVTU0FHRV9QTEFZEAESFgoSSEFORFNfTUVTU0FHRV9EUkFXEAISFgoSSEFORFNfTUVTU0FHRV9QQVNTEANCN1o1Z2l0aHViLmNvbS9ueTRybDR0aDB0M3AvcGxheWhvbGQvZXhhbXBsZXMvY2FyZHMvcGI7cGJiBnByb3RvMw");
+  fileDesc("ChRjYXJkcy92MS9jYXJkcy5wcm90bxIIY2FyZHMudjEiKQoEUGxheRIMCgRjYXJkGAEgASgJEhMKC2Nob3Nlbl9zdWl0GAIgASgJIgYKBERyYXciBgoEUGFzcyJACghEZWNrVmlldxILCgN0b3AYASABKAkSEwoLYWN0aXZlX3N1aXQYAiABKAkSEgoKZHJhd19jb3VudBgDIAEoDSKDAQoJVHVybnNWaWV3Eg8KB3N0YXJ0ZWQYASABKAgSDwoHY3VycmVudBgCIAEoCRIOCgZ3aW5uZXIYAyABKAkSDwoHcGxheWVycxgEIAMoCRIYChB0dXJuX21pbGxpc19sZWZ0GAUgASgDEhkKEXR1cm5fbWlsbGlzX3RvdGFsGAYgASgDIioKCU90aGVySGFuZBIOCgZwbGF5ZXIYASABKAkSDQoFY291bnQYAiABKA0iPwoJRGVja1N0YXRlEgwKBHBpbGUYASADKAkSDwoHZGlzY2FyZBgCIAMoCRITCgthY3RpdmVfc3VpdBgDIAEoCSJSCgpUdXJuc1N0YXRlEg8KB3BsYXllcnMYASADKAkSDwoHY3VycmVudBgCIAEoDRIOCgZ3aW5uZXIYAyABKAkSEgoKdHVybl90aW1lchgEIAEoBCIdCgtUdXJuRXhwaXJlZBIOCgZwbGF5ZXIYASABKAkiFQoTRmluaXNoZWRHYW1lRXhwaXJlZCIWCgVDYXJkcxINCgVjYXJkcxgBIAMoCSKJAQoKSGFuZHNTdGF0ZRIuCgVoYW5kcxgBIAMoCzIfLmNhcmRzLnYxLkhhbmRzU3RhdGUuSGFuZHNFbnRyeRIMCgRkcmV3GAIgASgIGj0KCkhhbmRzRW50cnkSCwoDa2V5GAEgASgJEh4KBXZhbHVlGAIgASgLMg8uY2FyZHMudjEuQ2FyZHM6AjgBInUKCUhhbmRzVmlldxINCgVjYXJkcxgBIAMoCRIQCghwbGF5YWJsZRgCIAMoCRIQCghjYW5fZHJhdxgDIAEoCBIQCghjYW5fcGFzcxgEIAEoCBIjCgZvdGhlcnMYBSADKAsyEy5jYXJkcy52MS5PdGhlckhhbmQqdQoMSGFuZHNNZXNzYWdlEh0KGUhBTkRTX01FU1NBR0VfVU5TUEVDSUZJRUQQABIWChJIQU5EU19NRVNTQUdFX1BMQVkQARIWChJIQU5EU19NRVNTQUdFX0RSQVcQAhIWChJIQU5EU19NRVNTQUdFX1BBU1MQA0I3WjVnaXRodWIuY29tL255NHJsNHRoMHQzcC9wbGF5aG9sZC9leGFtcGxlcy9jYXJkcy9wYjtwYmIGcHJvdG8z");
 
 /**
  * Play puts a card from the player's hand on the discard pile.
@@ -122,6 +122,18 @@ export type TurnsView = Message<"cards.v1.TurnsView"> & {
    * @generated from field: repeated string players = 4;
    */
   players: string[];
+
+  /**
+   * turn_millis_left and turn_millis_total let a client show a countdown. Left is measured when this view was made.
+   *
+   * @generated from field: int64 turn_millis_left = 5;
+   */
+  turnMillisLeft: bigint;
+
+  /**
+   * @generated from field: int64 turn_millis_total = 6;
+   */
+  turnMillisTotal: bigint;
 };
 
 /**
@@ -204,6 +216,11 @@ export type TurnsState = Message<"cards.v1.TurnsState"> & {
    * @generated from field: string winner = 3;
    */
   winner: string;
+
+  /**
+   * @generated from field: uint64 turn_timer = 4;
+   */
+  turnTimer: bigint;
 };
 
 /**
@@ -212,6 +229,40 @@ export type TurnsState = Message<"cards.v1.TurnsState"> & {
  */
 export const TurnsStateSchema: GenMessage<TurnsState> = /*@__PURE__*/
   messageDesc(file_cards_v1_cards, 7);
+
+/**
+ * TurnExpired is the event when a player runs out of time.
+ *
+ * @generated from message cards.v1.TurnExpired
+ */
+export type TurnExpired = Message<"cards.v1.TurnExpired"> & {
+  /**
+   * @generated from field: string player = 1;
+   */
+  player: string;
+};
+
+/**
+ * Describes the message cards.v1.TurnExpired.
+ * Use `create(TurnExpiredSchema)` to create a new message.
+ */
+export const TurnExpiredSchema: GenMessage<TurnExpired> = /*@__PURE__*/
+  messageDesc(file_cards_v1_cards, 8);
+
+/**
+ * FinishedGameExpired is the event when a finished game's room has been open long enough to see the result.
+ *
+ * @generated from message cards.v1.FinishedGameExpired
+ */
+export type FinishedGameExpired = Message<"cards.v1.FinishedGameExpired"> & {
+};
+
+/**
+ * Describes the message cards.v1.FinishedGameExpired.
+ * Use `create(FinishedGameExpiredSchema)` to create a new message.
+ */
+export const FinishedGameExpiredSchema: GenMessage<FinishedGameExpired> = /*@__PURE__*/
+  messageDesc(file_cards_v1_cards, 9);
 
 /**
  * Cards is a list of cards.
@@ -230,7 +281,7 @@ export type Cards = Message<"cards.v1.Cards"> & {
  * Use `create(CardsSchema)` to create a new message.
  */
 export const CardsSchema: GenMessage<Cards> = /*@__PURE__*/
-  messageDesc(file_cards_v1_cards, 8);
+  messageDesc(file_cards_v1_cards, 10);
 
 /**
  * HandsState is everything the hands module saves, including every player's cards.
@@ -254,7 +305,7 @@ export type HandsState = Message<"cards.v1.HandsState"> & {
  * Use `create(HandsStateSchema)` to create a new message.
  */
 export const HandsStateSchema: GenMessage<HandsState> = /*@__PURE__*/
-  messageDesc(file_cards_v1_cards, 9);
+  messageDesc(file_cards_v1_cards, 11);
 
 /**
  * HandsView is what one player sees of the hands: their own cards, and only the size of the others.
@@ -293,7 +344,7 @@ export type HandsView = Message<"cards.v1.HandsView"> & {
  * Use `create(HandsViewSchema)` to create a new message.
  */
 export const HandsViewSchema: GenMessage<HandsView> = /*@__PURE__*/
-  messageDesc(file_cards_v1_cards, 10);
+  messageDesc(file_cards_v1_cards, 12);
 
 /**
  * HandsMessage lists the messages the hands module handles.

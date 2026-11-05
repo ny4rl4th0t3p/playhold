@@ -64,6 +64,17 @@ export function isWild(card: string): boolean {
     return parts(card).rank === "8";
 }
 
+/** What the turn timer looks like with this much time left: a bar going from green, through yellow, to red. */
+export function timerBar(leftMs: number, totalMs: number): {width: string; color: string; text: string} {
+    const fraction = totalMs > 0 ? Math.min(1, Math.max(0, leftMs / totalMs)) : 0;
+    const hue = Math.round(fraction * 120); // 120 is green, 60 yellow and 0 red
+    return {
+        width: `${(fraction * 100).toFixed(1)}%`,
+        color: `hsl(${hue} 70% 45%)`,
+        text: `${Math.ceil(Math.max(0, leftMs) / 1000)} s`,
+    };
+}
+
 /** Says whose turn it is, or how the game ended. */
 export function turnText(turns: TurnsView | undefined, playerId: string | undefined): string {
     if (!turns?.started) {

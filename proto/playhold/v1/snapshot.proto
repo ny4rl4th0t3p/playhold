@@ -11,6 +11,16 @@ message RoomSnapshot {
   bytes rng_state = 2;
   int64 clock_unix_nanos = 3;
   repeated ModuleSnapshot modules = 4;
+  repeated PendingTimer timers = 5;
+  uint64 last_timer_id = 6;
+}
+
+// PendingTimer is a timer that hasn't fired. The event is a Protobuf message, stored by its full name.
+message PendingTimer {
+  uint64 id = 1;
+  int64 due_unix_nanos = 2;
+  string event_type = 3;
+  bytes event = 4;
 }
 
 // ModuleSnapshot is one module's state, in that module's own message at that schema version.

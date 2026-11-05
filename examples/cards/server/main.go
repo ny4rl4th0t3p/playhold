@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -32,20 +33,47 @@ func main() {
 	emptyRoom := flag.Duration("empty-room-timeout", 0, "how long a room stays open with nobody connected; 0 uses the default")
 	maxRooms := flag.Int("max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
 	databaseURL := flag.String("database-url", "", "PostgreSQL to save games in; without it, a restart loses them")
+	timers := flag.String("timers-after-restart", "pause", "what happens to turn timers when the server comes back: pause, keep or cancel")
+	var options cards.Options
+	flag.DurationVar(&options.TurnTime, "turn-time", 0, "how long a player has for each turn; 0 uses the default")
+	flag.DurationVar(&options.FinishedRoomTime, "finished-room-time", 0, "how long a room stays open after its game ends; 0 uses the default")
 	flag.Parse()
 
-	if err := run(*addr, *web, *origins, *databaseURL, *maxPerIP, *maxRooms, *emptyRoom); err != nil {
+	policy, err := parseTimers(*timers)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cfg := &playhold.ServerConfig{
+		TimersAfterRestart: policy,
+		MaxConnsPerIP:      *maxPerIP,
+		MaxRooms:           *maxRooms,
+		EmptyRoomTimeout:   *emptyRoom,
+	}
+	if err := run(*addr, *web, *origins, *databaseURL, options, cfg); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(addr, web, origins, databaseURL string, maxPerIP, maxRooms int, emptyRoom time.Duration) error {
-	typ, err := cards.NewRoomType()
+func parseTimers(value string) (playhold.TimersAfterRestart, error) {
+	switch value {
+	case "pause":
+		return playhold.TimersPause, nil
+	case "keep":
+		return playhold.TimersKeepRunning, nil
+	case "cancel":
+		return playhold.TimersCancel, nil
+	default:
+		return 0, fmt.Errorf("unknown -timers-after-restart %q: use pause, keep or cancel", value)
+	}
+}
+
+func run(addr, web, origins, databaseURL string, options cards.Options, cfg *playhold.ServerConfig) error {
+	typ, err := cards.NewRoomTypeWith(options)
 	if err != nil {
 		return err
 	}
 	rt := playhold.NewRuntime(playhold.Config{})
-	cfg := &playhold.ServerConfig{RoomType: typ, MaxConnsPerIP: maxPerIP, MaxRooms: maxRooms, EmptyRoomTimeout: emptyRoom}
+	cfg.RoomType = typ
 	if databaseURL != "" {
 		records, err := postgres.Open(context.Background(), databaseURL)
 		if err != nil {

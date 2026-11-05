@@ -18,6 +18,12 @@ services:
       - ${MAX_ROOMS:-0}
       - -database-url
       - ${DATABASE_URL-postgres://postgres:playhold@postgres:5432/postgres?sslmode=disable}
+      - -turn-time
+      - ${TURN_TIME:-1m}
+      - -finished-room-time
+      - ${FINISHED_ROOM_TIME:-1m}
+      - -timers-after-restart
+      - ${TIMERS_AFTER_RESTART:-pause}
     ports:
       - "${BIND:-127.0.0.1}:8080:8080"
     # A small VPS. Change these to try other sizes.

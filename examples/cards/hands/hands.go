@@ -59,6 +59,7 @@ func (m Module) Register(r *playhold.Registry) {
 	playhold.State(r, key, func() *state { return &state{cards: make(map[playhold.PlayerID][]string)} })
 	playhold.Snapshot(r, key, 1, save, load)
 	playhold.On(r, m.deal)
+	playhold.On(r, m.turnExpired)
 	playhold.Handle(r, uint32(pb.HandsMessage_HANDS_MESSAGE_PLAY), m.play)
 	playhold.Handle(r, uint32(pb.HandsMessage_HANDS_MESSAGE_DRAW), m.draw)
 	playhold.Handle(r, uint32(pb.HandsMessage_HANDS_MESSAGE_PASS), m.pass)
@@ -88,6 +89,20 @@ func (m Module) deal(rc *playhold.RoomContext, event rules.GameStarted) {
 	for _, player := range event.Players {
 		s.cards[player] = m.Deck.Draw(rc, rules.HandSize)
 	}
+}
+
+// turnExpired moves the game on for a player who ran out of time: they draw, unless they already have, and pass.
+func (m Module) turnExpired(rc *playhold.RoomContext, event *pb.TurnExpired) {
+	player := playhold.PlayerID(event.GetPlayer())
+	if m.Turns.Current(rc) != player {
+		return
+	}
+	s := key.Get(rc)
+	if !s.drew {
+		s.cards[player] = append(s.cards[player], m.Deck.Draw(rc, 1)...)
+	}
+	s.drew = false
+	m.Turns.Advance(rc)
 }
 
 func (m Module) play(rc *playhold.RoomContext, msg *pb.Play) error {

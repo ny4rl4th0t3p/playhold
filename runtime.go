@@ -78,12 +78,13 @@ func (rt *Runtime) restoreRoom(
 	data []byte,
 	writer *snapshotWriter,
 	restart func(*Room) bool,
+	policy TimersAfterRestart,
 ) (*Room, error) {
 	room := newRoom(id, typ, &rt.cfg, rt.forget)
 	room.code = code
 	room.writer = writer
 	room.restart = restart
-	if err := room.applySnapshot(data); err != nil {
+	if err := room.applySnapshot(data, policy); err != nil {
 		return nil, err
 	}
 	if err := rt.register(room); err != nil {

@@ -12,7 +12,8 @@ A sample game for two players, built from three modules that don't import each o
 
 Each player starts with 7 cards. Play a card matching the top card's rank or the suit in play. An eight can always be
 played, and its player chooses the suit to continue with. If you don't want to play or can't, draw one card, then play
-or pass. The first player with no cards wins.
+or pass. You have a minute for each turn, and a player who runs out of time draws and passes. The first player with no
+cards wins, and the room closes a minute later. Both times can be changed, see below.
 
 ## Run, play and measure it
 
@@ -49,18 +50,21 @@ compare the trend with the bot's reports, which use the same UTC times:
 sh record-stats.sh
 ```
 
-| Setting              | Default                | What it does                                                                              |
-|----------------------|------------------------|-------------------------------------------------------------------------------------------|
-| `GAMES`              | 100                    | Games played at once, with two connections each                                           |
-| `THINK`              | 1s                     | How long a bot waits before each move                                                     |
-| `GAME_CPUS`          | 1                      | CPUs for the game server                                                                  |
-| `GAME_MEMORY`        | 1g                     | Memory for the game server, which sets its soft limit to about 80% of this                |
-| `EMPTY_ROOM_TIMEOUT` | 5m                     | How long a room stays open with nobody connected, including after its game ends           |
-| `MAX_ROOMS`          | 10,000                 | Most rooms at once, counting finished ones until they close; above it, joins get an error |
-| `IDLE`               | 0                      | Instead of playing, hold this many idle connections, to measure what one costs            |
-| `DATABASE_URL`       | The `postgres` service | Where games are saved. Set it empty to save nothing, for comparison                       |
-| `POSTGRES_CPUS`      | 1                      | CPUs for PostgreSQL                                                                       |
-| `POSTGRES_MEMORY`    | 1g                     | Memory for PostgreSQL                                                                     |
+| Setting                | Default                | What it does                                                                              |
+|------------------------|------------------------|-------------------------------------------------------------------------------------------|
+| `GAMES`                | 100                    | Games played at once, with two connections each                                           |
+| `THINK`                | 1s                     | How long a bot waits before each move                                                     |
+| `GAME_CPUS`            | 1                      | CPUs for the game server                                                                  |
+| `GAME_MEMORY`          | 1g                     | Memory for the game server, which sets its soft limit to about 80% of this                |
+| `EMPTY_ROOM_TIMEOUT`   | 5m                     | How long a room stays open with nobody connected, including after its game ends           |
+| `MAX_ROOMS`            | 10,000                 | Most rooms at once, counting finished ones until they close; above it, joins get an error |
+| `TURN_TIME`            | 1m                     | How long a player has for each turn                                                       |
+| `FINISHED_ROOM_TIME`   | 1m                     | How long a room stays open after its game ends                                            |
+| `TIMERS_AFTER_RESTART` | pause                  | What a server coming back does with turn timers: `pause`, `keep` or `cancel`              |
+| `IDLE`                 | 0                      | Instead of playing, hold this many idle connections, to measure what one costs            |
+| `DATABASE_URL`         | The `postgres` service | Where games are saved. Set it empty to save nothing, for comparison                       |
+| `POSTGRES_CPUS`        | 1                      | CPUs for PostgreSQL                                                                       |
+| `POSTGRES_MEMORY`      | 1g                     | Memory for PostgreSQL                                                                     |
 
 The bot prints finished games, failures, moves per second and how long the server took to answer a move, followed by the
 reason for any failures:

@@ -28,6 +28,8 @@ type ServerConfig struct {
 	// Store keeps what has to survive a restart, and every module with state then needs a Snapshot. Nil keeps guests in
 	// memory and doesn't save rooms, so a restart forgets both.
 	Store store.Store
+	// TimersAfterRestart says what happens to pending timers when the server comes back. The default is TimersPause.
+	TimersAfterRestart TimersAfterRestart
 	// EmptyRoomTimeout is how long a room stays open with nobody connected. The default is 5 minutes.
 	EmptyRoomTimeout time.Duration
 	// MaxRooms is the most rooms the server runs at once, counting finished ones until they close. Over it, joining a
@@ -88,6 +90,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	applyMemoryLimit(cfg.MemoryLimit, logger)
 
 	g := &gateway{guests: newGuests(records), lobby: newLobby(rt, cfg.RoomType, idle, maxRooms, writer), logger: logger}
+	g.lobby.timers = cfg.TimersAfterRestart
 	if writer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
 		defer cancel()

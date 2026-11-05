@@ -147,6 +147,8 @@ type input struct {
 	result func(err error)
 	// noViews skips sending views and saving a snapshot after this input, because it can't have changed the game.
 	noViews bool
+	// timerEvent names the event, if a timer started this input, so a crash can say what caused it.
+	timerEvent string
 }
 
 // viewSink receives a player's room state. Its method must not block.
@@ -180,6 +182,13 @@ type Room struct {
 	clock    func() time.Time
 	now      time.Time
 	watchdog *time.Timer
+
+	// Also owned by the room's goroutine.
+	timers      []roomTimer // soonest first
+	lastTimerID TimerID
+	alarm       *time.Timer
+	alarmSet    bool
+	alarmDue    time.Time
 
 	stuckTimeout time.Duration
 	stuck        atomic.Bool // set if the watchdog gave up on this room's goroutine
@@ -338,7 +347,7 @@ func (r *Room) abandon() {
 
 // applySnapshot fills a new room from a saved one. A module with no saved state, one added since, starts fresh. A
 // module's load function is game code, so a panic there is reported as a room that can't be restored.
-func (r *Room) applySnapshot(data []byte) (err error) {
+func (r *Room) applySnapshot(data []byte, policy TimersAfterRestart) (err error) {
 	defer func() {
 		if v := recover(); v != nil {
 			r.logger.Error("restoring room panicked", "panic", v, "stack", string(debug.Stack()))
@@ -358,6 +367,11 @@ func (r *Room) applySnapshot(data []byte) (err error) {
 	for _, player := range snapshot.GetSeats() {
 		r.seats = append(r.seats, PlayerID(player))
 	}
+	if err := r.decodeTimers(snapshot.GetTimers()); err != nil {
+		return err
+	}
+	r.lastTimerID = TimerID(snapshot.GetLastTimerId())
+	r.applyRestartPolicy(policy)
 
 	for _, slot := range r.typ.slots {
 		r.slots[slot.index] = slot.init()
@@ -402,6 +416,8 @@ func (r *Room) saveSnapshot() {
 		RngState:       rngState,
 		ClockUnixNanos: r.now.UnixNano(),
 		Modules:        make([]*wire.ModuleSnapshot, 0, len(r.typ.snapshots)),
+		Timers:         r.encodeTimers(),
+		LastTimerId:    uint64(r.lastTimerID),
 	}
 	for _, player := range r.seats {
 		snapshot.Seats = append(snapshot.Seats, string(player))
@@ -441,6 +457,7 @@ func (r *Room) finishSnapshot(reason CloseReason) {
 			r.logger.Error("saving room at shutdown panicked", "panic", v, "stack", string(debug.Stack()))
 		}
 	}()
+	r.now = r.clock() // so a pause after this counts only the time the server was really down
 	r.saveSnapshot()
 }
 
@@ -497,6 +514,9 @@ func (r *Room) deliverEvents(player PlayerID) {
 func (r *Room) run() {
 	r.watchdog = time.AfterFunc(r.stuckTimeout, r.abandon)
 	r.watchdog.Stop()
+	r.alarm = time.NewTimer(r.stuckTimeout)
+	r.alarm.Stop()
+	defer r.alarm.Stop()
 
 	reason := r.loop()
 	r.callClose(reason)
@@ -512,12 +532,17 @@ func (r *Room) loop() CloseReason {
 			return r.stopReason
 		default:
 		}
+		r.armAlarm()
 		select {
 		case <-r.stop:
 			return r.stopReason
 		case in := <-r.inbox:
 			if panicked := r.turn(in); panicked {
 				r.reportFailedInput(in)
+				return ClosePanic
+			}
+		case <-r.alarm.C:
+			if panicked := r.fireNext(); panicked {
 				return ClosePanic
 			}
 		}
@@ -542,7 +567,8 @@ func (r *Room) turn(in input) (panicked bool) {
 	defer func() {
 		if v := recover(); v != nil {
 			panicked = true
-			r.logger.Error("room handler panicked", "player", string(in.player), "panic", v, "stack", string(debug.Stack()))
+			r.logger.Error("room handler panicked",
+				"player", string(in.player), "timer_event", in.timerEvent, "panic", v, "stack", string(debug.Stack()))
 		}
 	}()
 	r.startWork()

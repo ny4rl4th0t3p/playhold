@@ -43,6 +43,7 @@ type session struct {
 	code   string
 	joined bool
 	failed chan struct{} // closed if the Join fails, to stop watching the room
+	result func(error)   // answers the Join, whichever copy of the room seats the player
 }
 
 func (s *session) frame(frame *wire.ClientFrame) {
@@ -140,12 +141,12 @@ func (s *session) join(seq uint64, code string) {
 	}
 
 	failed := make(chan struct{})
+	result := func(err error) { s.seated(seq, code, err) }
 	s.mu.Lock()
-	s.room, s.code, s.joined, s.failed = room, code, false, failed
+	s.room, s.code, s.joined, s.failed, s.result = room, code, false, failed, result
 	s.mu.Unlock()
 	go s.watchRoom(room, failed)
 
-	result := func(err error) { s.seated(seq, code, err) }
 	if err := room.seat(s.player, s.conn, result); err != nil {
 		result(err)
 	}
@@ -169,6 +170,12 @@ func (s *session) seated(seq uint64, code string, err error) {
 	if room != nil { // otherwise the connection has already ended
 		close(failed)
 		s.gateway.lobby.leave(code, room)
+	}
+	if errors.Is(err, ErrRoomClosed) {
+		// The room stopped just as the player arrived, and it may be coming back after a crash or a restart. A client
+		// forgets a room that refuses it, so this asks it to try again, and a room that's really gone becomes a new one.
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, "the room is restarting")
+		return
 	}
 	s.conn.SendError(seq, wireErrorCode(err), err.Error())
 }
@@ -202,7 +209,8 @@ func (s *session) watchRoom(room *Room, failed <-chan struct{}) {
 	}
 }
 
-// follow moves this connection to the copy of its room restored after a crash, which sends the player a full view.
+// follow moves this connection to the copy of its room restored after a crash, which sends the player a full view. A
+// Join still in the old room's queue was dropped with it, so this seat answers that Join.
 func (s *session) follow(old, next *Room) {
 	s.mu.Lock()
 	if s.room != old {
@@ -210,9 +218,18 @@ func (s *session) follow(old, next *Room) {
 		return
 	}
 	s.room = next
+	var result func(error)
+	if !s.joined {
+		result = s.result
+	}
 	s.mu.Unlock()
 
-	if err := next.seat(s.player, s.conn, nil); err != nil {
+	err := next.seat(s.player, s.conn, result)
+	switch {
+	case err == nil:
+	case result != nil:
+		result(err)
+	default:
 		s.gateway.logger.Warn("rejoining a restored room failed", "player", string(s.player), "error", err)
 	}
 }

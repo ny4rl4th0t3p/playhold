@@ -31,6 +31,7 @@ func main() {
 	origins := flag.String("origins", "", "comma-separated web origins allowed to connect, besides this server's own")
 	maxPerIP := flag.Int("max-conns-per-ip", 0, "most connections from one IP address; 0 uses the default")
 	emptyRoom := flag.Duration("empty-room-timeout", 0, "how long a room stays open with nobody connected; 0 uses the default")
+	grace := flag.Duration("disconnect-grace", 0, "how long a player can be disconnected before others are told; 0 uses the default")
 	maxRooms := flag.Int("max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
 	databaseURL := flag.String("database-url", "", "PostgreSQL to save games in; without it, a restart loses them")
 	timers := flag.String("timers-after-restart", "pause", "what happens to turn timers when the server comes back: pause, keep or cancel")
@@ -50,6 +51,7 @@ func main() {
 		MaxConnsPerIP:      *maxPerIP,
 		MaxRooms:           *maxRooms,
 		EmptyRoomTimeout:   *emptyRoom,
+		DisconnectGrace:    *grace,
 	}
 	if err := run(*addr, *web, *origins, *databaseURL, options, cfg, *shutdownTimeout); err != nil {
 		log.Fatal(err)

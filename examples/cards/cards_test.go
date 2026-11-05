@@ -80,13 +80,21 @@ func startServer(t *testing.T, seed [32]byte) string {
 // startServerWith returns the server's URL, and a function that stops it, as a deploy would.
 func startServerWith(t *testing.T, seed [32]byte, records store.Store) (url string, stop func()) {
 	t.Helper()
+	return startConfigured(t, seed, cards.Options{}, &playhold.ServerConfig{Store: records})
+}
+
+// startConfigured is startServerWith with the game's options and the server's config.
+func startConfigured(t *testing.T, seed [32]byte, options cards.Options, cfg *playhold.ServerConfig) (url string, stop func()) {
+	t.Helper()
 	rt := playhold.NewRuntime(playhold.Config{
 		Logger:  slog.New(slog.DiscardHandler),
 		NewSeed: func() [32]byte { return seed },
 	})
-	typ, err := cards.NewRoomType()
+	typ, err := cards.NewRoomTypeWith(options)
 	require.NoError(t, err)
-	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, Store: records, MemoryLimit: -1})
+	cfg.RoomType = typ
+	cfg.MemoryLimit = -1
+	server, err := playhold.NewServer(rt, cfg)
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
 	stop = func() {
@@ -605,23 +613,8 @@ func TestRestoredGameShowsNobodyAnyHiddenCards(t *testing.T) {
 // startTimedGame is a game with these times.
 func startTimedGame(t *testing.T, options cards.Options) *game {
 	t.Helper()
-	rt := playhold.NewRuntime(playhold.Config{
-		Logger:  slog.New(slog.DiscardHandler),
-		NewSeed: func() [32]byte { return testSeed },
-	})
-	typ, err := cards.NewRoomTypeWith(options)
-	require.NoError(t, err)
-	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1})
-	require.NoError(t, err)
-	httpServer := httptest.NewServer(server)
-	t.Cleanup(func() {
-		server.Close()
-		httpServer.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-		defer cancel()
-		assert.NoError(t, rt.Shutdown(ctx))
-	})
-	return startGameOn(t, "ws"+strings.TrimPrefix(httpServer.URL, "http"))
+	url, _ := startConfigured(t, testSeed, options, &playhold.ServerConfig{})
+	return startGameOn(t, url)
 }
 
 func TestPlayerWhoRunsOutOfTimeDrawsAndPasses(t *testing.T) {
@@ -685,6 +678,48 @@ func TestFinishedGameClosesItsRoomAfterAWhile(t *testing.T) {
 		}
 		assert.Equal(t, wire.CloseReason_CLOSE_REASON_REQUESTED, frame.GetClosed().GetReason())
 	}
+}
+
+func TestOtherPlayerSeesSomeoneGoAndComeBack(t *testing.T) {
+	url, _ := startConfigured(t, testSeed, cards.Options{}, &playhold.ServerConfig{DisconnectGrace: 50 * time.Millisecond})
+	g := startGameOn(t, url)
+	assert.Empty(t, g.first.latest.turns.GetAway())
+
+	require.NoError(t, g.other.ws.CloseNow())
+	g.first.readState()
+	assert.Equal(t, []string{g.other.id}, g.first.latest.turns.GetAway())
+
+	back := connect(t, url, g.other.id, g.other.secret)
+	back.join()
+	back.readState()
+	g.first.readState()
+	assert.Empty(t, g.first.latest.turns.GetAway())
+	assert.Empty(t, back.latest.turns.GetAway())
+}
+
+func TestPlayerWhoWasAwayIsStillAwayAfterARestart(t *testing.T) {
+	records := memory.New()
+	url, stop := startConfigured(t, testSeed, cards.Options{}, &playhold.ServerConfig{
+		Store:           records,
+		DisconnectGrace: 50 * time.Millisecond,
+	})
+	g := startGameOn(t, url)
+	require.NoError(t, g.other.ws.CloseNow())
+	g.first.readState()
+	require.Equal(t, []string{g.other.id}, g.first.latest.turns.GetAway())
+	stop()
+
+	newURL, _ := startServerWith(t, [32]byte{}, records)
+	first := connect(t, newURL, g.first.id, g.first.secret)
+	first.join()
+	first.readState()
+	assert.Equal(t, []string{g.other.id}, first.latest.turns.GetAway())
+
+	back := connect(t, newURL, g.other.id, g.other.secret)
+	back.join()
+	back.readState()
+	first.readState()
+	assert.Empty(t, first.latest.turns.GetAway())
 }
 
 func TestPageFromBeforeSchemasIsToldToUpdate(t *testing.T) {

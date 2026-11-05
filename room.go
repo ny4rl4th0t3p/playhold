@@ -190,6 +190,11 @@ type Room struct {
 	alarmSet    bool
 	alarmDue    time.Time
 
+	// Also owned by the room's goroutine.
+	grace  time.Duration // how long a player has to come back. Zero means nothing tracks their connections
+	graces []graceTimer  // soonest first
+	away   []PlayerID    // their PlayerDisconnected has fired
+
 	stuckTimeout time.Duration
 	stuck        atomic.Bool // set if the watchdog gave up on this room's goroutine
 	draining     atomic.Bool // set if the server is about to stop, so no new players
@@ -265,6 +270,22 @@ func (r *Room) submit(in input) error {
 	}
 }
 
+// submitWait is submit for inputs that can't be refused, because no client is going to send them again. It waits for
+// space in the queue, which holds up only the caller, until the room takes the input or closes.
+func (r *Room) submitWait(in input) error {
+	select {
+	case <-r.stop:
+		return ErrRoomClosed
+	default:
+	}
+	select {
+	case r.inbox <- in:
+		return nil
+	case <-r.stop:
+		return ErrRoomClosed
+	}
+}
+
 // dispatch queues a message for the handler registered by the named module. The result, if set, receives the
 // handler's error on the room's goroutine.
 func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byte, result func(error)) error {
@@ -279,9 +300,10 @@ func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byt
 
 // seat queues a request to seat the player, who keeps any seat they already have. From then on the sink, if set,
 // receives the player's views, starting with a full view at the end of this turn. The result receives the outcome
-// on the room's goroutine. It isn't called if the room closes first.
+// on the room's goroutine. It isn't called if the room closes first. It waits for space in the queue, because a busy
+// room must not turn away players coming back to it after a restart, all at once.
 func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
-	return r.submit(input{player: player, result: result, run: func(rc *RoomContext) error {
+	return r.submitWait(input{player: player, result: result, run: func(rc *RoomContext) error {
 		if !slices.Contains(r.seats, player) {
 			if r.draining.Load() {
 				return ErrDraining
@@ -294,17 +316,19 @@ func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 		}
 		if sink != nil {
 			r.viewers[player] = sink
+			r.playerBack(rc, player)
 		}
 		return nil
 	}})
 }
 
-// removeViewer stops sending views to the sink, unless the player has since moved to a newer one. If the request
-// can't be queued, the old sink stays until it is replaced or the room closes, which only wastes a little work.
+// removeViewer stops sending views to the sink and starts the player's grace period, unless the player has since moved
+// to a newer sink. It waits for space in the queue, because a lost request would mean the game never hears they left.
 func (r *Room) removeViewer(player PlayerID, sink viewSink) {
-	_ = r.submit(input{player: player, noViews: true, run: func(_ *RoomContext) error {
+	_ = r.submitWait(input{player: player, noViews: true, run: func(_ *RoomContext) error {
 		if r.viewers[player] == sink {
 			delete(r.viewers, player)
+			r.startGrace(player)
 		}
 		return nil
 	}})
@@ -371,6 +395,9 @@ func (r *Room) applySnapshot(data []byte, policy TimersAfterRestart) (err error)
 	for _, player := range snapshot.GetSeats() {
 		r.seats = append(r.seats, PlayerID(player))
 	}
+	for _, player := range snapshot.GetAway() {
+		r.away = append(r.away, PlayerID(player))
+	}
 	if err := r.decodeTimers(snapshot.GetTimers()); err != nil {
 		return err
 	}
@@ -425,6 +452,9 @@ func (r *Room) saveSnapshot() {
 	}
 	for _, player := range r.seats {
 		snapshot.Seats = append(snapshot.Seats, string(player))
+	}
+	for _, player := range r.away {
+		snapshot.Away = append(snapshot.Away, string(player))
 	}
 	for i := range r.typ.snapshots {
 		module := &r.typ.snapshots[i]

@@ -1,8 +1,19 @@
 import {create, toBinary} from "@bufbuild/protobuf";
-import {CloseReason, PlayholdClient, type ClientStatus} from "playhold-sdk";
+import {CloseReason, ErrorCode, PlayholdClient, type ClientStatus} from "playhold-sdk";
 
 import {HandsMessage, PlaySchema, SchemaVersion} from "./gen/cards/v1/cards_pb";
-import {cardLabel, isRed, isWild, readViews, suits, suitSymbol, timerBar, turnText, type GameView} from "./view";
+import {
+    cardLabel,
+    isRed,
+    isWild,
+    otherPlayerAway,
+    readViews,
+    suits,
+    suitSymbol,
+    timerBar,
+    turnText,
+    type GameView,
+} from "./view";
 
 // The rules stay on the server: this page shows what the server sent, and offers the moves it said are possible.
 
@@ -36,6 +47,7 @@ const ui = {
     game: element("game"),
     room: element("room"),
     turn: element("turn"),
+    away: element("away"),
     timer: element("timer"),
     timerFill: element("timer-fill"),
     timerText: element("timer-text"),
@@ -75,6 +87,7 @@ const client = new PlayholdClient({
             timerFrozen = true; // the server's count may be paused, so don't guess: the next state unfreezes it
         }
         if (status === "joined") {
+            ui.message.textContent = ""; // anything said while getting here no longer applies
             ui.lobby.hidden = true;
             ui.game.hidden = false;
         }
@@ -88,8 +101,9 @@ const client = new PlayholdClient({
     },
     onError: (error) => {
         ui.message.textContent = error.message;
-        if (client.status === "connected") {
-            showLobby(); // the room refused this player
+        // The room refused this player, unless the server only asked them to try again, which the client is about to do.
+        if (client.status === "connected" && error.code !== ErrorCode.UNAVAILABLE) {
+            showLobby();
         }
     },
     onRoomClosed: (reason) => {
@@ -148,6 +162,7 @@ function render(): void {
     renderTimer();
     const {deck, turns, hands} = game;
     ui.turn.textContent = turnText(turns, client.playerId);
+    ui.away.hidden = !otherPlayerAway(turns, client.playerId);
 
     const top = deck?.top ?? "";
     ui.top.textContent = top === "" ? "–" : cardLabel(top);

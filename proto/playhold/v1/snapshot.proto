@@ -13,6 +13,8 @@ message RoomSnapshot {
   repeated ModuleSnapshot modules = 4;
   repeated PendingTimer timers = 5;
   uint64 last_timer_id = 6;
+  // away lists the seated players whose PlayerDisconnected has fired, so they get a PlayerReturned when they come back.
+  repeated string away = 7;
 }
 
 // PendingTimer is a timer that hasn't fired. The event is a Protobuf message, stored by its full name.

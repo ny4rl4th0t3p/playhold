@@ -24,6 +24,8 @@ services:
       - ${FINISHED_ROOM_TIME:-1m}
       - -timers-after-restart
       - ${TIMERS_AFTER_RESTART:-pause}
+      - -disconnect-grace
+      - ${DISCONNECT_GRACE:-1m}
       - -shutdown-timeout
       - ${SHUTDOWN_TIMEOUT:-8s}
     # Docker kills the process after this, so it has to be longer than the shutdown timeout.

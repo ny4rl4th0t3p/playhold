@@ -321,8 +321,10 @@ type TurnsView struct {
 	// turn_millis_left and turn_millis_total let a client show a countdown. Left is measured when this view was made.
 	TurnMillisLeft  int64 `protobuf:"varint,5,opt,name=turn_millis_left,json=turnMillisLeft,proto3" json:"turn_millis_left,omitempty"`
 	TurnMillisTotal int64 `protobuf:"varint,6,opt,name=turn_millis_total,json=turnMillisTotal,proto3" json:"turn_millis_total,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// away lists the players who have been disconnected for longer than the grace period.
+	Away          []string `protobuf:"bytes,7,rep,name=away,proto3" json:"away,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TurnsView) Reset() {
@@ -395,6 +397,13 @@ func (x *TurnsView) GetTurnMillisTotal() int64 {
 		return x.TurnMillisTotal
 	}
 	return 0
+}
+
+func (x *TurnsView) GetAway() []string {
+	if x != nil {
+		return x.Away
+	}
+	return nil
 }
 
 // OtherHand is what a player sees of someone else's hand.
@@ -518,6 +527,7 @@ type TurnsState struct {
 	Current       uint32                 `protobuf:"varint,2,opt,name=current,proto3" json:"current,omitempty"`
 	Winner        string                 `protobuf:"bytes,3,opt,name=winner,proto3" json:"winner,omitempty"`
 	TurnTimer     uint64                 `protobuf:"varint,4,opt,name=turn_timer,json=turnTimer,proto3" json:"turn_timer,omitempty"`
+	Away          []string               `protobuf:"bytes,5,rep,name=away,proto3" json:"away,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -578,6 +588,13 @@ func (x *TurnsState) GetTurnTimer() uint64 {
 		return x.TurnTimer
 	}
 	return 0
+}
+
+func (x *TurnsState) GetAway() []string {
+	if x != nil {
+		return x.Away
+	}
+	return nil
 }
 
 // TurnExpired is the event when a player runs out of time.
@@ -853,14 +870,15 @@ const file_cards_v1_cards_proto_rawDesc = "" +
 	"\vactive_suit\x18\x02 \x01(\tR\n" +
 	"activeSuit\x12\x1d\n" +
 	"\n" +
-	"draw_count\x18\x03 \x01(\rR\tdrawCount\"\xc7\x01\n" +
+	"draw_count\x18\x03 \x01(\rR\tdrawCount\"\xdb\x01\n" +
 	"\tTurnsView\x12\x18\n" +
 	"\astarted\x18\x01 \x01(\bR\astarted\x12\x18\n" +
 	"\acurrent\x18\x02 \x01(\tR\acurrent\x12\x16\n" +
 	"\x06winner\x18\x03 \x01(\tR\x06winner\x12\x18\n" +
 	"\aplayers\x18\x04 \x03(\tR\aplayers\x12(\n" +
 	"\x10turn_millis_left\x18\x05 \x01(\x03R\x0eturnMillisLeft\x12*\n" +
-	"\x11turn_millis_total\x18\x06 \x01(\x03R\x0fturnMillisTotal\"9\n" +
+	"\x11turn_millis_total\x18\x06 \x01(\x03R\x0fturnMillisTotal\x12\x12\n" +
+	"\x04away\x18\a \x03(\tR\x04away\"9\n" +
 	"\tOtherHand\x12\x16\n" +
 	"\x06player\x18\x01 \x01(\tR\x06player\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\rR\x05count\"Z\n" +
@@ -868,14 +886,15 @@ const file_cards_v1_cards_proto_rawDesc = "" +
 	"\x04pile\x18\x01 \x03(\tR\x04pile\x12\x18\n" +
 	"\adiscard\x18\x02 \x03(\tR\adiscard\x12\x1f\n" +
 	"\vactive_suit\x18\x03 \x01(\tR\n" +
-	"activeSuit\"w\n" +
+	"activeSuit\"\x8b\x01\n" +
 	"\n" +
 	"TurnsState\x12\x18\n" +
 	"\aplayers\x18\x01 \x03(\tR\aplayers\x12\x18\n" +
 	"\acurrent\x18\x02 \x01(\rR\acurrent\x12\x16\n" +
 	"\x06winner\x18\x03 \x01(\tR\x06winner\x12\x1d\n" +
 	"\n" +
-	"turn_timer\x18\x04 \x01(\x04R\tturnTimer\"%\n" +
+	"turn_timer\x18\x04 \x01(\x04R\tturnTimer\x12\x12\n" +
+	"\x04away\x18\x05 \x03(\tR\x04away\"%\n" +
 	"\vTurnExpired\x12\x16\n" +
 	"\x06player\x18\x01 \x01(\tR\x06player\"\x15\n" +
 	"\x13FinishedGameExpired\"\x1d\n" +

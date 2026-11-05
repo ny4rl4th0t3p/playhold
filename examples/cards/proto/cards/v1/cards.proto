@@ -48,6 +48,8 @@ message TurnsView {
   // turn_millis_left and turn_millis_total let a client show a countdown. Left is measured when this view was made.
   int64 turn_millis_left = 5;
   int64 turn_millis_total = 6;
+  // away lists the players who have been disconnected for longer than the grace period.
+  repeated string away = 7;
 }
 
 // OtherHand is what a player sees of someone else's hand.
@@ -69,6 +71,7 @@ message TurnsState {
   uint32 current = 2;
   string winner = 3;
   uint64 turn_timer = 4;
+  repeated string away = 5;
 }
 
 // TurnExpired is the event when a player runs out of time.

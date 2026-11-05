@@ -112,16 +112,31 @@ func (r *Room) insertTimer(timer roomTimer) {
 	r.timers = slices.Insert(r.timers, at, timer)
 }
 
-// armAlarm makes sure the alarm goes off for the soonest timer. It runs before the room waits for more work.
+// nextDue returns when the soonest timer or grace period ends.
+func (r *Room) nextDue() (due time.Time, ok bool) {
+	switch {
+	case len(r.timers) == 0 && len(r.graces) == 0:
+		return time.Time{}, false
+	case len(r.graces) == 0:
+		return r.timers[0].due, true
+	case len(r.timers) == 0 || r.graces[0].due.Before(r.timers[0].due):
+		return r.graces[0].due, true
+	default:
+		return r.timers[0].due, true
+	}
+}
+
+// armAlarm makes sure the alarm goes off for the soonest timer or grace period. It runs before the room waits for more
+// work.
 func (r *Room) armAlarm() {
-	if len(r.timers) == 0 {
+	due, ok := r.nextDue()
+	if !ok {
 		if r.alarmSet {
 			r.alarm.Stop()
 			r.alarmSet = false
 		}
 		return
 	}
-	due := r.timers[0].due
 	if r.alarmSet && due.Equal(r.alarmDue) {
 		return
 	}
@@ -129,12 +144,16 @@ func (r *Room) armAlarm() {
 	r.alarmSet, r.alarmDue = true, due
 }
 
-// fireNext runs a turn for the soonest timer, if it's due, and reports whether that turn panicked. The timer is removed
-// first, but the last snapshot still has it, so a timer that crashes the room fires again after it's restored, until
-// the room's restart limit closes it.
+// fireNext runs a turn for the soonest timer or grace period, if one is due, and reports whether that turn panicked. A
+// timer is removed first, but the last snapshot still has it, so a timer that crashes the room fires again after it's
+// restored, until the room's restart limit closes it.
 func (r *Room) fireNext() (panicked bool) {
 	r.alarmSet = false
-	if len(r.timers) == 0 || r.timers[0].due.After(r.clock()) {
+	now := r.clock()
+	if len(r.timers) == 0 || r.timers[0].due.After(now) {
+		if len(r.graces) > 0 && !r.graces[0].due.After(now) {
+			return r.fireGrace()
+		}
 		return false
 	}
 	timer := r.timers[0]

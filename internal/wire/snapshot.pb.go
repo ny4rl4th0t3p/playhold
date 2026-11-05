@@ -31,8 +31,10 @@ type RoomSnapshot struct {
 	Modules        []*ModuleSnapshot      `protobuf:"bytes,4,rep,name=modules,proto3" json:"modules,omitempty"`
 	Timers         []*PendingTimer        `protobuf:"bytes,5,rep,name=timers,proto3" json:"timers,omitempty"`
 	LastTimerId    uint64                 `protobuf:"varint,6,opt,name=last_timer_id,json=lastTimerId,proto3" json:"last_timer_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// away lists the seated players whose PlayerDisconnected has fired, so they get a PlayerReturned when they come back.
+	Away          []string `protobuf:"bytes,7,rep,name=away,proto3" json:"away,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RoomSnapshot) Reset() {
@@ -105,6 +107,13 @@ func (x *RoomSnapshot) GetLastTimerId() uint64 {
 		return x.LastTimerId
 	}
 	return 0
+}
+
+func (x *RoomSnapshot) GetAway() []string {
+	if x != nil {
+		return x.Away
+	}
+	return nil
 }
 
 // PendingTimer is a timer that hasn't fired. The event is a Protobuf message, stored by its full name.
@@ -241,14 +250,15 @@ var File_playhold_v1_snapshot_proto protoreflect.FileDescriptor
 
 const file_playhold_v1_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"\x1aplayhold/v1/snapshot.proto\x12\vplayhold.v1\"\xf9\x01\n" +
+	"\x1aplayhold/v1/snapshot.proto\x12\vplayhold.v1\"\x8d\x02\n" +
 	"\fRoomSnapshot\x12\x14\n" +
 	"\x05seats\x18\x01 \x03(\tR\x05seats\x12\x1b\n" +
 	"\trng_state\x18\x02 \x01(\fR\brngState\x12(\n" +
 	"\x10clock_unix_nanos\x18\x03 \x01(\x03R\x0eclockUnixNanos\x125\n" +
 	"\amodules\x18\x04 \x03(\v2\x1b.playhold.v1.ModuleSnapshotR\amodules\x121\n" +
 	"\x06timers\x18\x05 \x03(\v2\x19.playhold.v1.PendingTimerR\x06timers\x12\"\n" +
-	"\rlast_timer_id\x18\x06 \x01(\x04R\vlastTimerId\"y\n" +
+	"\rlast_timer_id\x18\x06 \x01(\x04R\vlastTimerId\x12\x12\n" +
+	"\x04away\x18\a \x03(\tR\x04away\"y\n" +
 	"\fPendingTimer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12$\n" +
 	"\x0edue_unix_nanos\x18\x02 \x01(\x03R\fdueUnixNanos\x12\x1d\n" +

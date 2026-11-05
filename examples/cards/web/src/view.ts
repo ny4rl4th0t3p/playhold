@@ -75,6 +75,11 @@ export function timerBar(leftMs: number, totalMs: number): {width: string; color
     };
 }
 
+/** Whether to say the other player has gone. It stops mattering once the game is over. */
+export function otherPlayerAway(turns: TurnsView | undefined, playerId: string | undefined): boolean {
+    return turns !== undefined && turns.winner === "" && turns.away.some((player) => player !== playerId);
+}
+
 /** Says whose turn it is, or how the game ended. */
 export function turnText(turns: TurnsView | undefined, playerId: string | undefined): string {
     if (!turns?.started) {

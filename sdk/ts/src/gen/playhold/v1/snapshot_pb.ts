@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file playhold/v1/snapshot.proto.
  */
 export const file_playhold_v1_snapshot: GenFile = /*@__PURE__*/
-  fileDesc("ChpwbGF5aG9sZC92MS9zbmFwc2hvdC5wcm90bxILcGxheWhvbGQudjEiugEKDFJvb21TbmFwc2hvdBINCgVzZWF0cxgBIAMoCRIRCglybmdfc3RhdGUYAiABKAwSGAoQY2xvY2tfdW5peF9uYW5vcxgDIAEoAxIsCgdtb2R1bGVzGAQgAygLMhsucGxheWhvbGQudjEuTW9kdWxlU25hcHNob3QSKQoGdGltZXJzGAUgAygLMhkucGxheWhvbGQudjEuUGVuZGluZ1RpbWVyEhUKDWxhc3RfdGltZXJfaWQYBiABKAQiVQoMUGVuZGluZ1RpbWVyEgoKAmlkGAEgASgEEhYKDmR1ZV91bml4X25hbm9zGAIgASgDEhIKCmV2ZW50X3R5cGUYAyABKAkSDQoFZXZlbnQYBCABKAwiQAoOTW9kdWxlU25hcHNob3QSDgoGbW9kdWxlGAEgASgJEg8KB3ZlcnNpb24YAiABKA0SDQoFc3RhdGUYAyABKAxCNVozZ2l0aHViLmNvbS9ueTRybDR0aDB0M3AvcGxheWhvbGQvaW50ZXJuYWwvd2lyZTt3aXJlYgZwcm90bzM");
+  fileDesc("ChpwbGF5aG9sZC92MS9zbmFwc2hvdC5wcm90bxILcGxheWhvbGQudjEiyAEKDFJvb21TbmFwc2hvdBINCgVzZWF0cxgBIAMoCRIRCglybmdfc3RhdGUYAiABKAwSGAoQY2xvY2tfdW5peF9uYW5vcxgDIAEoAxIsCgdtb2R1bGVzGAQgAygLMhsucGxheWhvbGQudjEuTW9kdWxlU25hcHNob3QSKQoGdGltZXJzGAUgAygLMhkucGxheWhvbGQudjEuUGVuZGluZ1RpbWVyEhUKDWxhc3RfdGltZXJfaWQYBiABKAQSDAoEYXdheRgHIAMoCSJVCgxQZW5kaW5nVGltZXISCgoCaWQYASABKAQSFgoOZHVlX3VuaXhfbmFub3MYAiABKAMSEgoKZXZlbnRfdHlwZRgDIAEoCRINCgVldmVudBgEIAEoDCJACg5Nb2R1bGVTbmFwc2hvdBIOCgZtb2R1bGUYASABKAkSDwoHdmVyc2lvbhgCIAEoDRINCgVzdGF0ZRgDIAEoDEI1WjNnaXRodWIuY29tL255NHJsNHRoMHQzcC9wbGF5aG9sZC9pbnRlcm5hbC93aXJlO3dpcmViBnByb3RvMw");
 
 /**
  * RoomSnapshot is everything needed to bring a room back. It's only ever stored, never sent to a client, because it
@@ -48,6 +48,13 @@ export type RoomSnapshot = Message<"playhold.v1.RoomSnapshot"> & {
    * @generated from field: uint64 last_timer_id = 6;
    */
   lastTimerId: bigint;
+
+  /**
+   * away lists the seated players whose PlayerDisconnected has fired, so they get a PlayerReturned when they come back.
+   *
+   * @generated from field: repeated string away = 7;
+   */
+  away: string[];
 };
 
 /**

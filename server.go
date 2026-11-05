@@ -18,6 +18,7 @@ import (
 const (
 	defaultEmptyRoomTimeout = 5 * time.Minute
 	defaultMaxRooms         = 10_000
+	defaultDisconnectGrace  = time.Minute
 	restoreTimeout          = time.Minute
 	closeTimeout            = 10 * time.Second
 	readyTimeout            = 2 * time.Second
@@ -32,7 +33,11 @@ type ServerConfig struct {
 	Store store.Store
 	// TimersAfterRestart says what happens to pending timers when the server comes back. The default is TimersPause.
 	TimersAfterRestart TimersAfterRestart
-	// EmptyRoomTimeout is how long a room stays open with nobody connected. The default is 5 minutes.
+	// DisconnectGrace is how long a seated player has to come back before the game gets a PlayerDisconnected. The default
+	// is 1 minute. It starts over when the server restarts, since that's what cut everyone off.
+	DisconnectGrace time.Duration
+	// EmptyRoomTimeout is how long a room stays open with nobody connected. The default is 5 minutes. A room closing
+	// doesn't wait for the grace periods, so keep this longer than DisconnectGrace if the game cares about those events.
 	EmptyRoomTimeout time.Duration
 	// MaxRooms is the most rooms the server runs at once, counting finished ones until they close. Over it, joining a
 	// new code gets an error, and existing rooms carry on. The default is 10,000.
@@ -96,6 +101,10 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 
 	g := &gateway{guests: newGuests(records), lobby: newLobby(rt, cfg.RoomType, idle, maxRooms, writer), logger: logger}
 	g.lobby.timers = cfg.TimersAfterRestart
+	g.lobby.grace = cfg.DisconnectGrace
+	if g.lobby.grace <= 0 {
+		g.lobby.grace = defaultDisconnectGrace
+	}
 	if writer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
 		defer cancel()

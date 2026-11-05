@@ -2,6 +2,7 @@
 package turns
 
 import (
+	"slices"
 	"time"
 
 	"github.com/ny4rl4th0t3p/playhold"
@@ -16,6 +17,7 @@ type state struct {
 	current   int
 	winner    playhold.PlayerID
 	turnTimer playhold.TimerID
+	away      []playhold.PlayerID
 }
 
 // Module registers the turn order with a room.
@@ -40,33 +42,56 @@ func (m Module) Register(r *playhold.Registry) {
 	playhold.On(r, m.playerJoined)
 	playhold.On(r, m.playerWon)
 	playhold.On(r, finishedGameExpired)
+	playhold.On(r, playerDisconnected)
+	playhold.On(r, playerReturned)
 	playhold.View(r, m.view)
 }
 
-func save(s *state) *pb.TurnsState {
-	players := make([]string, 0, len(s.players))
-	for _, player := range s.players {
-		players = append(players, string(player))
+func toStrings(players []playhold.PlayerID) []string {
+	out := make([]string, 0, len(players))
+	for _, player := range players {
+		out = append(out, string(player))
 	}
+	return out
+}
+
+func toPlayers(ids []string) []playhold.PlayerID {
+	out := make([]playhold.PlayerID, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, playhold.PlayerID(id))
+	}
+	return out
+}
+
+func save(s *state) *pb.TurnsState {
 	return &pb.TurnsState{
-		Players:   players,
+		Players:   toStrings(s.players),
 		Current:   uint32(s.current), //nolint:gosec // an index into a short list
 		Winner:    string(s.winner),
 		TurnTimer: uint64(s.turnTimer),
+		Away:      toStrings(s.away),
 	}
 }
 
 func load(msg *pb.TurnsState) *state {
-	players := make([]playhold.PlayerID, 0, len(msg.GetPlayers()))
-	for _, player := range msg.GetPlayers() {
-		players = append(players, playhold.PlayerID(player))
-	}
 	return &state{
-		players:   players,
+		players:   toPlayers(msg.GetPlayers()),
 		current:   int(msg.GetCurrent()),
 		winner:    playhold.PlayerID(msg.GetWinner()),
 		turnTimer: playhold.TimerID(msg.GetTurnTimer()),
+		away:      toPlayers(msg.GetAway()),
 	}
+}
+
+// playerDisconnected only shows that they've gone. The turn timer already keeps the game moving without them.
+func playerDisconnected(rc *playhold.RoomContext, event playhold.PlayerDisconnected) {
+	s := key.Get(rc)
+	s.away = append(s.away, event.Player)
+}
+
+func playerReturned(rc *playhold.RoomContext, event playhold.PlayerReturned) {
+	s := key.Get(rc)
+	s.away = slices.DeleteFunc(s.away, func(player playhold.PlayerID) bool { return player == event.Player })
 }
 
 // playerJoined starts the game once the room is full. Whoever arrived first goes first.
@@ -98,15 +123,12 @@ func startTurnTimer(rc *playhold.RoomContext, s *state, turnTime time.Duration) 
 
 func (m Module) view(rc *playhold.RoomContext) *pb.TurnsView {
 	s := key.Get(rc)
-	players := make([]string, 0, len(s.players))
-	for _, player := range s.players {
-		players = append(players, string(player))
-	}
 	view := &pb.TurnsView{
 		Started: len(s.players) > 0,
 		Current: string(current(s)),
 		Winner:  string(s.winner),
-		Players: players,
+		Players: toStrings(s.players),
+		Away:    toStrings(s.away),
 	}
 	if left, pending := rc.TimerLeft(s.turnTimer); pending && view.GetCurrent() != "" {
 		view.TurnMillisLeft = left.Milliseconds()

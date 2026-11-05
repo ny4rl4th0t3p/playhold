@@ -34,6 +34,7 @@ type lobby struct {
 	maxRooms int
 	writer   *snapshotWriter // nil if rooms aren't saved
 	timers   TimersAfterRestart
+	grace    time.Duration
 
 	mu       sync.Mutex
 	rooms    map[string]*lobbyRoom
@@ -71,6 +72,7 @@ func (l *lobby) enter(code string) (*Room, error) {
 		if err != nil {
 			return nil, err
 		}
+		room.startSessions(l.grace)
 		entry.room = room
 		l.rooms[code] = entry
 		go l.watch(code, entry)
@@ -189,6 +191,7 @@ func (l *lobby) restart(code string, entry *lobbyRoom, old *Room) bool {
 		return false
 	}
 	next.draining.Store(l.draining)
+	next.startSessions(l.grace) // the players still connected come back as soon as their sessions follow the room
 	entry.restarts = append(entry.restarts, now)
 	old.logger.Error("room crashed, restored from its last snapshot",
 		"reason", old.reason.String(), "restarts", len(entry.restarts), "limit", maxRestarts, "window", restartWindow)
@@ -237,6 +240,7 @@ func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 			l.rt.logger.Error("skipping a saved room that can't be restored", "room", record.ID, "error", err)
 			continue
 		}
+		room.startSessions(l.grace)
 		entry.room = room
 		l.rooms[record.Code] = entry
 		l.startIdleTimer(entry)

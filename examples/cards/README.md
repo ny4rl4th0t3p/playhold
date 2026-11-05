@@ -13,7 +13,8 @@ A sample game for two players, built from three modules that don't import each o
 Each player starts with 7 cards. Play a card matching the top card's rank or the suit in play. An eight can always be
 played, and its player chooses the suit to continue with. If you don't want to play or can't, draw one card, then play
 or pass. You have a minute for each turn, and a player who runs out of time draws and passes. The first player with no
-cards wins, and the room closes a minute later. Both times can be changed, see below.
+cards wins, and the room closes a minute later. Both times can be changed, see below. If a player stays disconnected for
+a minute, the other player sees a message saying so until they're back.
 
 ## Run, play and measure it
 
@@ -64,6 +65,7 @@ sh record-stats.sh
 | `TURN_TIME`            | 1m                     | How long a player has for each turn                                                       |
 | `FINISHED_ROOM_TIME`   | 1m                     | How long a room stays open after its game ends                                            |
 | `TIMERS_AFTER_RESTART` | pause                  | What a server coming back does with turn timers: `pause`, `keep` or `cancel`              |
+| `DISCONNECT_GRACE`     | 1m                     | How long a player can be disconnected before the other player is told                     |
 | `SHUTDOWN_TIMEOUT`     | 8s                     | How long to wait for games to be saved before exiting                                     |
 | `STOP_GRACE_PERIOD`    | 10s                    | How long Docker waits before killing the server; keep it above `SHUTDOWN_TIMEOUT`         |
 | `IDLE`                 | 0                      | Instead of playing, hold this many idle connections, to measure what one costs            |

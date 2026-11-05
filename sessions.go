@@ -1,0 +1,69 @@
+package playhold
+
+import (
+	"slices"
+	"time"
+)
+
+// PlayerDisconnected is the event emitted when a seated player has been gone for the whole grace period, set by
+// ServerConfig.DisconnectGrace. The player keeps their seat, because the game decides what being away means. A connection
+// that drops and returns in time emits nothing. Player, like rc.Player, is the player who left.
+type PlayerDisconnected struct {
+	Player PlayerID
+}
+
+// PlayerReturned is the event emitted when a player comes back after their PlayerDisconnected. Player, like rc.Player, is
+// the player who returned.
+type PlayerReturned struct {
+	Player PlayerID
+}
+
+// graceTimer is how long a player who lost their connection has left to come back.
+type graceTimer struct {
+	player PlayerID
+	due    time.Time
+}
+
+// startSessions turns on the grace period. Every seated player starts one, because a room that has just been restored
+// has no connections yet, and anyone who doesn't come back has to be noticed. It's the room's first input, so it can't
+// be refused for a full queue.
+func (r *Room) startSessions(grace time.Duration) {
+	_ = r.submit(input{noViews: true, run: func(_ *RoomContext) error {
+		r.grace = grace
+		for _, player := range r.seats {
+			if !slices.Contains(r.away, player) {
+				r.startGrace(player)
+			}
+		}
+		return nil
+	}})
+}
+
+// startGrace keeps r.graces soonest first, since every grace period is the same length and starts at the current turn.
+func (r *Room) startGrace(player PlayerID) {
+	if r.grace > 0 {
+		r.graces = append(r.graces, graceTimer{player: player, due: r.now.Add(r.grace)})
+	}
+}
+
+// playerBack ends the player's absence. The game only hears about it if it heard they had gone.
+func (r *Room) playerBack(rc *RoomContext, player PlayerID) {
+	r.graces = slices.DeleteFunc(r.graces, func(g graceTimer) bool { return g.player == player })
+	if at := slices.Index(r.away, player); at >= 0 {
+		r.away = slices.Delete(r.away, at, at+1)
+		rc.Emit(PlayerReturned{Player: player})
+	}
+}
+
+// fireGrace runs a turn for the soonest grace period, and reports whether that turn panicked. The last snapshot doesn't
+// have the player as away, so a handler that crashes the room fires again after it's restored, until the room's restart
+// limit closes it.
+func (r *Room) fireGrace() (panicked bool) {
+	player := r.graces[0].player
+	r.graces = slices.Delete(r.graces, 0, 1)
+	return r.turn(input{player: player, timerEvent: "PlayerDisconnected", run: func(rc *RoomContext) error {
+		r.away = append(r.away, player)
+		rc.Emit(PlayerDisconnected{Player: player})
+		return nil
+	}})
+}

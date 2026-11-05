@@ -2,7 +2,7 @@ import {create, toBinary} from "@bufbuild/protobuf";
 import {describe, expect, it} from "vitest";
 
 import {DeckViewSchema, HandsViewSchema, TurnsViewSchema} from "./gen/cards/v1/cards_pb";
-import {cardLabel, isRed, isWild, readViews, suitSymbol, timerBar, turnText} from "./view";
+import {cardLabel, isRed, isWild, otherPlayerAway, readViews, suitSymbol, timerBar, turnText} from "./view";
 
 describe("readViews", () => {
     it("decodes each module's view, and ignores unknown modules", () => {
@@ -57,6 +57,20 @@ describe("timerBar", () => {
 
     it("copes with no total", () => {
         expect(timerBar(1_000, 0).width).toBe("0.0%");
+    });
+});
+
+describe("otherPlayerAway", () => {
+    const turns = (away: string[], winner = "") => create(TurnsViewSchema, {away, winner});
+
+    it.each([
+        ["before any view", undefined, false],
+        ["everyone here", turns([]), false],
+        ["the other player gone", turns(["them"]), true],
+        ["only this player listed", turns(["me"]), false],
+        ["the game over", turns(["them"], "me"), false],
+    ])("%s", (_, view, away) => {
+        expect(otherPlayerAway(view, "me")).toBe(away);
     });
 });
 

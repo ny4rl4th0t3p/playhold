@@ -192,6 +192,7 @@ type Room struct {
 
 	stuckTimeout time.Duration
 	stuck        atomic.Bool // set if the watchdog gave up on this room's goroutine
+	draining     atomic.Bool // set if the server is about to stop, so no new players
 
 	stopOnce   sync.Once
 	stop       chan struct{} // closed only by requestStop
@@ -282,6 +283,9 @@ func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byt
 func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 	return r.submit(input{player: player, result: result, run: func(rc *RoomContext) error {
 		if !slices.Contains(r.seats, player) {
+			if r.draining.Load() {
+				return ErrDraining
+			}
 			if limit := r.typ.cfg.MaxPlayers; limit > 0 && len(r.seats) >= limit {
 				return ErrRoomFull
 			}
@@ -626,6 +630,9 @@ func (r *Room) finish(reason CloseReason) {
 func (r *Room) restartOrForget() {
 	if r.writer == nil {
 		return
+	}
+	if r.stopReason == CloseShutdown {
+		return // it got stuck while the server was stopping, so it can't restart now, but its last snapshot can next time
 	}
 	if r.restart == nil || !r.restart(r) {
 		r.writer.forget(string(r.id))

@@ -51,6 +51,14 @@ func (s *Store) Close() {
 	s.pool.Close()
 }
 
+// Ping implements store.Store.
+func (s *Store) Ping(ctx context.Context) error {
+	if err := s.pool.Ping(ctx); err != nil {
+		return fmt.Errorf("postgres: ping: %w", err)
+	}
+	return nil
+}
+
 // SaveGuest implements store.Store.
 func (s *Store) SaveGuest(ctx context.Context, player string, secretHash []byte) error {
 	_, err := s.pool.Exec(ctx, `

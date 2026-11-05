@@ -23,6 +23,9 @@ func New() *Store {
 	return &Store{guests: make(map[string][]byte), rooms: make(map[string]store.RoomRecord)}
 }
 
+// Ping implements store.Store.
+func (*Store) Ping(_ context.Context) error { return nil }
+
 // WriteRooms implements store.Store.
 func (s *Store) WriteRooms(_ context.Context, saves []store.RoomRecord, deletes []string) error {
 	s.mu.Lock()

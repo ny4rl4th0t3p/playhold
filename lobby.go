@@ -21,6 +21,10 @@ const (
 // ErrTooManyRooms means the server won't create another room. Rooms that already exist can still be joined.
 var ErrTooManyRooms = errors.New("playhold: too many rooms")
 
+// ErrDraining means the server is about to stop, and isn't taking new rooms or players. Players who already have a seat
+// can still come back to it.
+var ErrDraining = errors.New("playhold: the server is about to restart")
+
 // lobby maps room codes to rooms. It creates a room when a code is first used, up to a limit, since anyone can ask for
 // one with a new code. It closes a room once nobody has been connected to it for the idle time, which frees its code.
 type lobby struct {
@@ -31,8 +35,9 @@ type lobby struct {
 	writer   *snapshotWriter // nil if rooms aren't saved
 	timers   TimersAfterRestart
 
-	mu    sync.Mutex
-	rooms map[string]*lobbyRoom
+	mu       sync.Mutex
+	rooms    map[string]*lobbyRoom
+	draining bool
 }
 
 // lobbyRoom is one code's room. A room restored after a crash takes over the same entry, so its connections stay counted.
@@ -58,6 +63,9 @@ func (l *lobby) enter(code string) (*Room, error) {
 		return nil, ErrTooManyRooms
 	}
 	if !ok || entry.room.closed() {
+		if l.draining {
+			return nil, ErrDraining
+		}
 		entry = &lobbyRoom{}
 		room, err := l.rt.createRoom(l.typ, code, l.writer, l.restarter(code, entry))
 		if err != nil {
@@ -73,6 +81,22 @@ func (l *lobby) enter(code string) (*Room, error) {
 		entry.timer = nil
 	}
 	return entry.room, nil
+}
+
+// drain stops new rooms and new players. Rooms already running carry on.
+func (l *lobby) drain() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.draining = true
+	for _, entry := range l.rooms {
+		entry.room.draining.Store(true)
+	}
+}
+
+func (l *lobby) isDraining() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.draining
 }
 
 // leave ends a connection's count on the room. It goes by the room's ID, because a room restored after a crash is the
@@ -164,6 +188,7 @@ func (l *lobby) restart(code string, entry *lobbyRoom, old *Room) bool {
 		old.logger.Error("restoring crashed room failed", "error", err)
 		return false
 	}
+	next.draining.Store(l.draining)
 	entry.restarts = append(entry.restarts, now)
 	old.logger.Error("room crashed, restored from its last snapshot",
 		"reason", old.reason.String(), "restarts", len(entry.restarts), "limit", maxRestarts, "window", restartWindow)

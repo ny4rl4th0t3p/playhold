@@ -127,6 +127,9 @@ func (s *session) join(seq uint64, code string) {
 	case errors.Is(err, ErrTooManyRooms):
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_SERVER_FULL, "the server has no space for more games")
 		return
+	case errors.Is(err, ErrDraining):
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, err.Error())
+		return
 	case err != nil:
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_REJECTED, "the room could not be created")
 		return
@@ -176,6 +179,9 @@ func (s *session) watchRoom(room *Room, failed <-chan struct{}) {
 			s.mu.Unlock()
 			if !current {
 				return // the connection has ended, or moved on from this room
+			}
+			if room.Wait() == CloseShutdown {
+				return // the room will be back, so the client should reconnect to it, not forget it
 			}
 			next := s.gateway.lobby.replacement(code, room)
 			if next == nil {
@@ -272,6 +278,8 @@ func wireErrorCode(err error) wire.ErrorCode {
 		return wire.ErrorCode_ERROR_CODE_ROOM_CLOSED
 	case errors.Is(err, ErrRoomFull):
 		return wire.ErrorCode_ERROR_CODE_ROOM_FULL
+	case errors.Is(err, ErrDraining):
+		return wire.ErrorCode_ERROR_CODE_UNAVAILABLE
 	default:
 		return wire.ErrorCode_ERROR_CODE_REJECTED
 	}

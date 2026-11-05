@@ -24,6 +24,10 @@ services:
       - ${FINISHED_ROOM_TIME:-1m}
       - -timers-after-restart
       - ${TIMERS_AFTER_RESTART:-pause}
+      - -shutdown-timeout
+      - ${SHUTDOWN_TIMEOUT:-8s}
+    # Docker kills the process after this, so it has to be longer than the shutdown timeout.
+    stop_grace_period: ${STOP_GRACE_PERIOD:-10s}
     ports:
       - "${BIND:-127.0.0.1}:8080:8080"
     # A small VPS. Change these to try other sizes.

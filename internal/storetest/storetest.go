@@ -18,6 +18,7 @@ func Run(t *testing.T, newStore func(t *testing.T) store.Store) {
 		name string
 		test func(t *testing.T, s store.Store)
 	}{
+		{name: "ping", test: func(t *testing.T, s store.Store) { require.NoError(t, s.Ping(t.Context())) }},
 		{name: "unknown guest", test: unknownGuest},
 		{name: "saved guest", test: savedGuest},
 		{name: "saving again replaces", test: savingAgainReplaces},

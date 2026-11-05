@@ -22,6 +22,9 @@ type RoomRecord struct {
 //
 // Implementations must be safe for concurrent use.
 type Store interface {
+	// Ping reports whether the store can be reached.
+	Ping(ctx context.Context) error
+
 	// SaveGuest records a guest's secret hash, replacing any earlier one.
 	SaveGuest(ctx context.Context, player string, secretHash []byte) error
 	// GuestSecretHash returns a guest's secret hash, or ErrNotFound.

@@ -18,6 +18,8 @@ var errStoreDown = errors.New("store is down")
 // downStore is a Store whose database went down after the server started, which is why loading still works.
 type downStore struct{}
 
+func (downStore) Ping(_ context.Context) error { return errStoreDown }
+
 func (downStore) SaveGuest(_ context.Context, _ string, _ []byte) error { return errStoreDown }
 
 func (downStore) GuestSecretHash(_ context.Context, _ string) ([]byte, error) {

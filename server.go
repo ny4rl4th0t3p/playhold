@@ -19,6 +19,8 @@ const (
 	defaultEmptyRoomTimeout = 5 * time.Minute
 	defaultMaxRooms         = 10_000
 	restoreTimeout          = time.Minute
+	closeTimeout            = 10 * time.Second
+	readyTimeout            = 2 * time.Second
 )
 
 // ServerConfig configures a Server. Zero values use the defaults.
@@ -57,6 +59,9 @@ type ServerConfig struct {
 type Server struct {
 	transport *transport.Server
 	writer    *snapshotWriter // nil if rooms aren't saved
+	rt        *Runtime
+	lobby     *lobby
+	records   store.Store
 }
 
 // NewServer returns a Server that runs its rooms on rt. With a store, it first brings back every room saved there, and
@@ -100,7 +105,10 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		}
 	}
 	return &Server{
-		writer: writer,
+		writer:  writer,
+		rt:      rt,
+		lobby:   g.lobby,
+		records: records,
 		transport: transport.NewServer(&transport.Config{
 			MaxMessageBytes:  cfg.MaxMessageBytes,
 			MaxConns:         cfg.MaxConns,
@@ -115,15 +123,57 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 // ServeHTTP upgrades the request to a WebSocket and serves it until the connection ends.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.transport.ServeHTTP(w, r) }
 
-// Close disconnects every client, refuses new ones and writes the snapshots waiting to be saved. Rooms keep running until
-// the Runtime shuts down, but anything they save after this isn't written.
-func (s *Server) Close() {
-	s.transport.Close()
+// Drain stops new rooms and new players, and makes Ready fail, so a load balancer stops sending players here. Rooms carry
+// on, and players with a seat can still come back to it. Clients asked to wait get an error that makes them retry, which
+// reaches the next server once this one has gone.
+func (s *Server) Drain() { s.lobby.drain() }
+
+// Shutdown stops the server without losing a match: it drains, closes every room, which saves it, writes everything
+// waiting to be saved, and only then disconnects the clients, who reconnect and find their rooms again on the next server.
+// It also shuts down the Runtime. It returns the context's error if a room didn't finish in time, though it still does
+// the rest. It's safe to call more than once.
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.Drain()
+	err := s.rt.Shutdown(ctx)
 	if s.writer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), snapshotWriteTimeout)
-		defer cancel()
 		s.writer.close(ctx)
 	}
+	s.transport.Close()
+	return err
+}
+
+// Close is Shutdown with a default time limit, for when nothing is waiting on the result.
+func (s *Server) Close() {
+	ctx, cancel := context.WithTimeout(context.Background(), closeTimeout)
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
+		s.rt.logger.Warn("server shutdown", "error", err)
+	}
+}
+
+// Live answers a liveness check: the process is up. It always succeeds, because restarting a server doesn't help with
+// anything Ready would report.
+func (*Server) Live(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok\n"))
+}
+
+// Ready answers a readiness check: whether this server should be sent players. It fails while draining, and while the
+// store can't be reached, since then new players can't be identified and games aren't being saved.
+func (s *Server) Ready(w http.ResponseWriter, r *http.Request) {
+	if s.lobby.isDraining() {
+		http.Error(w, "draining", http.StatusServiceUnavailable)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
+	defer cancel()
+	if err := s.records.Ping(ctx); err != nil {
+		s.rt.logger.Warn("readiness check failed", "error", err)
+		http.Error(w, "store unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok\n"))
 }
 
 // applyMemoryLimit sets the soft memory limit, which makes the garbage collector work harder before the machine

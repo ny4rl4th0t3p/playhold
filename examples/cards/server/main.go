@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	readHeaderTimeout = 5 * time.Second
-	shutdownTimeout   = 5 * time.Second
+	readHeaderTimeout      = 5 * time.Second
+	defaultShutdownTimeout = 8 * time.Second
 )
 
 func main() {
@@ -34,6 +34,8 @@ func main() {
 	maxRooms := flag.Int("max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
 	databaseURL := flag.String("database-url", "", "PostgreSQL to save games in; without it, a restart loses them")
 	timers := flag.String("timers-after-restart", "pause", "what happens to turn timers when the server comes back: pause, keep or cancel")
+	shutdownTimeout := flag.Duration("shutdown-timeout", defaultShutdownTimeout,
+		"how long to wait for games to be saved before exiting; keep it below what your service manager allows")
 	var options cards.Options
 	flag.DurationVar(&options.TurnTime, "turn-time", 0, "how long a player has for each turn; 0 uses the default")
 	flag.DurationVar(&options.FinishedRoomTime, "finished-room-time", 0, "how long a room stays open after its game ends; 0 uses the default")
@@ -49,7 +51,7 @@ func main() {
 		MaxRooms:           *maxRooms,
 		EmptyRoomTimeout:   *emptyRoom,
 	}
-	if err := run(*addr, *web, *origins, *databaseURL, options, cfg); err != nil {
+	if err := run(*addr, *web, *origins, *databaseURL, options, cfg, *shutdownTimeout); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -67,7 +69,7 @@ func parseTimers(value string) (playhold.TimersAfterRestart, error) {
 	}
 }
 
-func run(addr, web, origins, databaseURL string, options cards.Options, cfg *playhold.ServerConfig) error {
+func run(addr, web, origins, databaseURL string, options cards.Options, cfg *playhold.ServerConfig, shutdownTimeout time.Duration) error {
 	typ, err := cards.NewRoomTypeWith(options)
 	if err != nil {
 		return err
@@ -92,6 +94,8 @@ func run(addr, web, origins, databaseURL string, options cards.Options, cfg *pla
 
 	mux := http.NewServeMux()
 	mux.Handle("/ws", server)
+	mux.HandleFunc("/healthz", server.Live)
+	mux.HandleFunc("/readyz", server.Ready)
 	if web != "" {
 		mux.Handle("/", http.FileServer(http.Dir(web)))
 	}
@@ -99,28 +103,34 @@ func run(addr, web, origins, databaseURL string, options cards.Options, cfg *pla
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	go func() {
-		<-ctx.Done()
-		shutdown(httpServer, server, rt)
-	}()
-
+	serving := make(chan error, 1)
+	go func() { serving <- httpServer.ListenAndServe() }()
 	slog.Info("listening", "addr", addr, "memory_limit_bytes", debug.SetMemoryLimit(-1))
-	if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+
+	select {
+	case err := <-serving:
+		return err // it never started, for example because the port is taken, so no player has anything to save
+	case <-ctx.Done():
+	}
+
+	stop() // from here, a second signal kills the process, as a way out if the shutdown hangs
+	shutdown(httpServer, server, shutdownTimeout)
+	// The store closes after this, so everything has to be written by now.
+	if err := <-serving; !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
-	<-ctx.Done()
 	return nil
 }
 
-func shutdown(httpServer *http.Server, server *playhold.Server, rt *playhold.Runtime) {
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+// shutdown saves the games first, while the HTTP server is still answering health checks.
+func shutdown(httpServer *http.Server, server *playhold.Server, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	server.Close()
+	if err := server.Shutdown(ctx); err != nil {
+		slog.Warn("game server shutdown", "error", err)
+	}
 	if err := httpServer.Shutdown(ctx); err != nil {
 		slog.Warn("http server shutdown", "error", err)
-	}
-	if err := rt.Shutdown(ctx); err != nil {
-		slog.Warn("rooms shutdown", "error", err)
 	}
 }

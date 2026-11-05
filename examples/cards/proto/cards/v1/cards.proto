@@ -4,6 +4,13 @@ package cards.v1;
 
 option go_package = "github.com/ny4rl4th0t3p/playhold/examples/cards/pb;pb";
 
+// SchemaVersion is the version of the game's messages and views, which the server and page are built with. Raise it
+// when a change means older pages can't play.
+enum SchemaVersion {
+  SCHEMA_VERSION_UNSPECIFIED = 0;
+  SCHEMA_VERSION_CURRENT = 1;
+}
+
 // HandsMessage lists the messages the hands module handles.
 enum HandsMessage {
   HANDS_MESSAGE_UNSPECIFIED = 0;

@@ -21,6 +21,54 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// SchemaVersion is the version of the game's messages and views, which the server and page are built with. Raise it
+// when a change means older pages can't play.
+type SchemaVersion int32
+
+const (
+	SchemaVersion_SCHEMA_VERSION_UNSPECIFIED SchemaVersion = 0
+	SchemaVersion_SCHEMA_VERSION_CURRENT     SchemaVersion = 1
+)
+
+// Enum value maps for SchemaVersion.
+var (
+	SchemaVersion_name = map[int32]string{
+		0: "SCHEMA_VERSION_UNSPECIFIED",
+		1: "SCHEMA_VERSION_CURRENT",
+	}
+	SchemaVersion_value = map[string]int32{
+		"SCHEMA_VERSION_UNSPECIFIED": 0,
+		"SCHEMA_VERSION_CURRENT":     1,
+	}
+)
+
+func (x SchemaVersion) Enum() *SchemaVersion {
+	p := new(SchemaVersion)
+	*p = x
+	return p
+}
+
+func (x SchemaVersion) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SchemaVersion) Descriptor() protoreflect.EnumDescriptor {
+	return file_cards_v1_cards_proto_enumTypes[0].Descriptor()
+}
+
+func (SchemaVersion) Type() protoreflect.EnumType {
+	return &file_cards_v1_cards_proto_enumTypes[0]
+}
+
+func (x SchemaVersion) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SchemaVersion.Descriptor instead.
+func (SchemaVersion) EnumDescriptor() ([]byte, []int) {
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{0}
+}
+
 // HandsMessage lists the messages the hands module handles.
 type HandsMessage int32
 
@@ -58,11 +106,11 @@ func (x HandsMessage) String() string {
 }
 
 func (HandsMessage) Descriptor() protoreflect.EnumDescriptor {
-	return file_cards_v1_cards_proto_enumTypes[0].Descriptor()
+	return file_cards_v1_cards_proto_enumTypes[1].Descriptor()
 }
 
 func (HandsMessage) Type() protoreflect.EnumType {
-	return &file_cards_v1_cards_proto_enumTypes[0]
+	return &file_cards_v1_cards_proto_enumTypes[1]
 }
 
 func (x HandsMessage) Number() protoreflect.EnumNumber {
@@ -71,7 +119,7 @@ func (x HandsMessage) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use HandsMessage.Descriptor instead.
 func (HandsMessage) EnumDescriptor() ([]byte, []int) {
-	return file_cards_v1_cards_proto_rawDescGZIP(), []int{0}
+	return file_cards_v1_cards_proto_rawDescGZIP(), []int{1}
 }
 
 // Play puts a card from the player's hand on the discard pile.
@@ -846,7 +894,10 @@ const file_cards_v1_cards_proto_rawDesc = "" +
 	"\bplayable\x18\x02 \x03(\tR\bplayable\x12\x19\n" +
 	"\bcan_draw\x18\x03 \x01(\bR\acanDraw\x12\x19\n" +
 	"\bcan_pass\x18\x04 \x01(\bR\acanPass\x12+\n" +
-	"\x06others\x18\x05 \x03(\v2\x13.cards.v1.OtherHandR\x06others*u\n" +
+	"\x06others\x18\x05 \x03(\v2\x13.cards.v1.OtherHandR\x06others*K\n" +
+	"\rSchemaVersion\x12\x1e\n" +
+	"\x1aSCHEMA_VERSION_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16SCHEMA_VERSION_CURRENT\x10\x01*u\n" +
 	"\fHandsMessage\x12\x1d\n" +
 	"\x19HANDS_MESSAGE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12HANDS_MESSAGE_PLAY\x10\x01\x12\x16\n" +
@@ -865,29 +916,30 @@ func file_cards_v1_cards_proto_rawDescGZIP() []byte {
 	return file_cards_v1_cards_proto_rawDescData
 }
 
-var file_cards_v1_cards_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_cards_v1_cards_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_cards_v1_cards_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_cards_v1_cards_proto_goTypes = []any{
-	(HandsMessage)(0),           // 0: cards.v1.HandsMessage
-	(*Play)(nil),                // 1: cards.v1.Play
-	(*Draw)(nil),                // 2: cards.v1.Draw
-	(*Pass)(nil),                // 3: cards.v1.Pass
-	(*DeckView)(nil),            // 4: cards.v1.DeckView
-	(*TurnsView)(nil),           // 5: cards.v1.TurnsView
-	(*OtherHand)(nil),           // 6: cards.v1.OtherHand
-	(*DeckState)(nil),           // 7: cards.v1.DeckState
-	(*TurnsState)(nil),          // 8: cards.v1.TurnsState
-	(*TurnExpired)(nil),         // 9: cards.v1.TurnExpired
-	(*FinishedGameExpired)(nil), // 10: cards.v1.FinishedGameExpired
-	(*Cards)(nil),               // 11: cards.v1.Cards
-	(*HandsState)(nil),          // 12: cards.v1.HandsState
-	(*HandsView)(nil),           // 13: cards.v1.HandsView
-	nil,                         // 14: cards.v1.HandsState.HandsEntry
+	(SchemaVersion)(0),          // 0: cards.v1.SchemaVersion
+	(HandsMessage)(0),           // 1: cards.v1.HandsMessage
+	(*Play)(nil),                // 2: cards.v1.Play
+	(*Draw)(nil),                // 3: cards.v1.Draw
+	(*Pass)(nil),                // 4: cards.v1.Pass
+	(*DeckView)(nil),            // 5: cards.v1.DeckView
+	(*TurnsView)(nil),           // 6: cards.v1.TurnsView
+	(*OtherHand)(nil),           // 7: cards.v1.OtherHand
+	(*DeckState)(nil),           // 8: cards.v1.DeckState
+	(*TurnsState)(nil),          // 9: cards.v1.TurnsState
+	(*TurnExpired)(nil),         // 10: cards.v1.TurnExpired
+	(*FinishedGameExpired)(nil), // 11: cards.v1.FinishedGameExpired
+	(*Cards)(nil),               // 12: cards.v1.Cards
+	(*HandsState)(nil),          // 13: cards.v1.HandsState
+	(*HandsView)(nil),           // 14: cards.v1.HandsView
+	nil,                         // 15: cards.v1.HandsState.HandsEntry
 }
 var file_cards_v1_cards_proto_depIdxs = []int32{
-	14, // 0: cards.v1.HandsState.hands:type_name -> cards.v1.HandsState.HandsEntry
-	6,  // 1: cards.v1.HandsView.others:type_name -> cards.v1.OtherHand
-	11, // 2: cards.v1.HandsState.HandsEntry.value:type_name -> cards.v1.Cards
+	15, // 0: cards.v1.HandsState.hands:type_name -> cards.v1.HandsState.HandsEntry
+	7,  // 1: cards.v1.HandsView.others:type_name -> cards.v1.OtherHand
+	12, // 2: cards.v1.HandsState.HandsEntry.value:type_name -> cards.v1.Cards
 	3,  // [3:3] is the sub-list for method output_type
 	3,  // [3:3] is the sub-list for method input_type
 	3,  // [3:3] is the sub-list for extension type_name
@@ -905,7 +957,7 @@ func file_cards_v1_cards_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cards_v1_cards_proto_rawDesc), len(file_cards_v1_cards_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,

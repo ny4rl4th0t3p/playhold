@@ -34,9 +34,11 @@ export interface SocketLike {
  * - `connected`: the server knows this player, who isn't in a room.
  * - `joined`: in a room, and messages can be sent.
  * - `replaced`: this player connected somewhere newer, such as another tab. It stays stopped until `connect`.
- * - `closed`: stopped by `close`, or because the server doesn't speak this protocol version.
+ * - `closed`: stopped by `close`.
+ * - `updateRequired`: this client is too old for the server, and has stopped. The player needs a newer one, such as by
+ *   reloading the page.
  */
-export type ClientStatus = "disconnected" | "connecting" | "connected" | "joined" | "replaced" | "closed";
+export type ClientStatus = "disconnected" | "connecting" | "connected" | "joined" | "replaced" | "closed" | "updateRequired";
 
 export interface ClientHandlers {
   onStatus?(status: ClientStatus): void;
@@ -50,6 +52,8 @@ export interface ClientHandlers {
 
 export interface ClientOptions extends ClientHandlers {
   url: string;
+  /** Which version of each module's messages this client was built for, so the server can tell if it's too old. */
+  schemaVersions?: Record<string, number>;
   /** Where the guest's identity is kept. The default is localStorage, shared by this browser's tabs. */
   storage?: IdentityStorage;
   storageKey?: string;
@@ -237,8 +241,8 @@ export class PlayholdClient {
       // The server has forgotten this guest, for example after a restart. Start again as a new one.
       this.identity.clear();
       this.sendHello();
-    } else if (error.code === ErrorCode.UNSUPPORTED_PROTOCOL) {
-      this.stop("closed");
+    } else if (error.code === ErrorCode.UNSUPPORTED_PROTOCOL || error.code === ErrorCode.UPDATE_REQUIRED) {
+      this.stop("updateRequired");
     } else if (error.code === ErrorCode.UNAVAILABLE) {
       // The server couldn't check this player. Closing leads to the usual reconnect, with its growing delay.
       this.socket?.close();
@@ -254,7 +258,12 @@ export class PlayholdClient {
     const identity = this.identity.load();
     this.sendFrame({
       case: "hello",
-      value: { protocolVersion, playerId: identity?.playerId ?? "", secret: identity?.secret ?? "" },
+      value: {
+        protocolVersion,
+        playerId: identity?.playerId ?? "",
+        secret: identity?.secret ?? "",
+        schemaVersions: this.options.schemaVersions ?? {},
+      },
     });
   }
 

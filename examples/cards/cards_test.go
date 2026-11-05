@@ -128,7 +128,7 @@ func connect(t *testing.T, url, id, secret string) *seat {
 
 	s := &seat{t: t, ws: ws, id: id, secret: secret}
 	s.sendFrame(&wire.ClientFrame{Body: &wire.ClientFrame_Hello{
-		Hello: &wire.Hello{ProtocolVersion: 1, PlayerId: id, Secret: secret},
+		Hello: &wire.Hello{ProtocolVersion: 1, PlayerId: id, Secret: secret, SchemaVersions: cards.ClientSchemaVersions()},
 	}})
 	welcome := s.read().GetWelcome()
 	require.NotNil(t, welcome)
@@ -685,6 +685,17 @@ func TestFinishedGameClosesItsRoomAfterAWhile(t *testing.T) {
 		}
 		assert.Equal(t, wire.CloseReason_CLOSE_REASON_REQUESTED, frame.GetClosed().GetReason())
 	}
+}
+
+func TestPageFromBeforeSchemasIsToldToUpdate(t *testing.T) {
+	ws, _, err := websocket.Dial(testContext(t), startServer(t, testSeed), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ws.CloseNow() })
+	s := &seat{t: t, ws: ws}
+
+	s.sendFrame(&wire.ClientFrame{Body: &wire.ClientFrame_Hello{Hello: &wire.Hello{ProtocolVersion: 1}}})
+
+	assert.Equal(t, wire.ErrorCode_ERROR_CODE_UPDATE_REQUIRED, s.read().GetError().GetCode())
 }
 
 func TestThirdPlayerIsRefused(t *testing.T) {

@@ -38,7 +38,7 @@ function viewText(views: ModuleView[]): string {
 
 const add = (amount: number): Uint8Array => toBinary(Int32ValueSchema, create(Int32ValueSchema, {value: amount}));
 
-function player(storage: IdentityStorage = memoryStorage()) {
+function player(storage: IdentityStorage = memoryStorage(), counterSchema = 2) {
     const seen = {
         view: "",
         status: "disconnected" as ClientStatus,
@@ -49,6 +49,7 @@ function player(storage: IdentityStorage = memoryStorage()) {
     const client = new PlayholdClient({
         url: inject("serverUrl"),
         storage,
+        schemaVersions: {counter: counterSchema},
         minDelayMs: 10,
         maxDelayMs: 50,
         createSocket: (url) => {
@@ -79,6 +80,15 @@ function joined(code: string, storage?: IdentityStorage) {
 const eventually = (check: () => void): Promise<void> => vi.waitFor(check, {timeout: 5000, interval: 10});
 
 describe("against a real server", () => {
+    it("tells a client that's too old to update", async () => {
+        const {client, seen} = player(memoryStorage(), 1);
+
+        client.connect();
+
+        await eventually(() => expect(seen.status).toBe("updateRequired"));
+        expect(seen.errors).toContain(ErrorCode.UPDATE_REQUIRED);
+    });
+
     it("joins, plays, and receives views", async () => {
         const {client, seen} = joined(newCode());
 

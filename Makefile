@@ -1,15 +1,17 @@
 GOVULNCHECK_VERSION := v1.9.0
 BUF_VERSION := v1.75.0
 BUF := go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
+# What buf breaking compares with. CI sets this to the commit before the change.
+BUF_AGAINST ?= .git\#branch=main
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check build vet gamevet test integration web lint buflint vuln gen fmt tidy
+.PHONY: help check build vet gamevet test integration web lint buflint bufbreaking vuln gen fmt tidy
 
 help: ## Show the available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z]+:.*## / {printf "  %-8s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-check: build vet gamevet test web lint buflint vuln ## Run every check that needs nothing running (see also: integration)
+check: build vet gamevet test web lint buflint bufbreaking vuln ## Run every check that needs nothing running (see also: integration)
 
 build: ## Build all packages
 	go build ./...
@@ -49,6 +51,10 @@ lint: ## Run golangci-lint with the repo's config
 buflint: ## Lint the .proto files
 	$(BUF) lint
 	cd examples/cards && $(BUF) lint
+
+bufbreaking: ## Check the .proto files only changed in ways older clients can still read
+	$(BUF) breaking --against '$(BUF_AGAINST)'
+	$(BUF) breaking examples/cards --against '$(BUF_AGAINST),subdir=examples/cards'
 
 gen: sdk/ts/node_modules ## Generate Go and TypeScript code from the .proto files
 	$(BUF) generate

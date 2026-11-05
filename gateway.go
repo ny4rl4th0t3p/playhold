@@ -72,6 +72,10 @@ func (s *session) hello(seq uint64, hello *wire.Hello) {
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNSUPPORTED_PROTOCOL, "unsupported protocol version")
 		return
 	}
+	if module := s.gateway.lobby.typ.outdatedModule(hello.GetSchemaVersions()); module != "" {
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UPDATE_REQUIRED, "this client is too old for module "+module)
+		return
+	}
 
 	// This waits on the database, but only holds up this client, whose read goroutine it's running on.
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)

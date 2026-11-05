@@ -4,3 +4,6 @@ modules:
 lint:
   use:
     - STANDARD
+breaking:
+  use:
+    - FILE

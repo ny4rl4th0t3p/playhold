@@ -32,6 +32,8 @@ message Hello {
   uint32 protocol_version = 1;
   string player_id = 2;
   string secret = 3;
+  // schema_versions says which version of each module's messages this client was built for.
+  map<string, uint32> schema_versions = 4;
 }
 
 // Welcome accepts a Hello. The secret is only sent to a new guest, once.
@@ -95,6 +97,9 @@ enum ErrorCode {
   ERROR_CODE_UNAVAILABLE = 10;
   // ERROR_CODE_SERVER_FULL means the server won't create another room. Rooms that already exist can still be joined.
   ERROR_CODE_SERVER_FULL = 11;
+  // ERROR_CODE_UPDATE_REQUIRED means this client is too old for this server. The player needs a newer client, such as
+  // by reloading the page.
+  ERROR_CODE_UPDATE_REQUIRED = 12;
 }
 
 // Error reports a problem with one client frame.

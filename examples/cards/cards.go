@@ -8,6 +8,7 @@ import (
 	"github.com/ny4rl4th0t3p/playhold"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/deck"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/hands"
+	"github.com/ny4rl4th0t3p/playhold/examples/cards/pb"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/rules"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/turns"
 )
@@ -24,6 +25,14 @@ type Options struct {
 	TurnTime time.Duration
 	// FinishedRoomTime is how long a room stays open after its game ends. The default is one minute.
 	FinishedRoomTime time.Duration
+	// OldestClientSchema is the oldest page the server still plays with. The default is the current one, since there's
+	// only been one so far.
+	OldestClientSchema int
+}
+
+// ClientSchemaVersions is what a client built from this code says in its Hello.
+func ClientSchemaVersions() map[string]uint32 {
+	return map[string]uint32{turns.Module{}.Name(): uint32(pb.SchemaVersion_SCHEMA_VERSION_CURRENT)}
 }
 
 // NewRoomType returns the room type for one game, with the default times.
@@ -40,12 +49,19 @@ func NewRoomTypeWith(options Options) (*playhold.RoomType, error) {
 	if options.FinishedRoomTime <= 0 {
 		options.FinishedRoomTime = defaultFinishedRoomTime
 	}
+	if options.OldestClientSchema <= 0 {
+		options.OldestClientSchema = int(pb.SchemaVersion_SCHEMA_VERSION_CURRENT)
+	}
 	return playhold.NewRoomType(playhold.RoomConfig{
 		Name:       "crazy-eights",
 		MaxPlayers: rules.Players,
 		Modules: []playhold.Module{
 			deck.Module{},
-			turns.Module{TurnTime: options.TurnTime, FinishedRoomTime: options.FinishedRoomTime},
+			turns.Module{
+				TurnTime:           options.TurnTime,
+				FinishedRoomTime:   options.FinishedRoomTime,
+				OldestClientSchema: options.OldestClientSchema,
+			},
 			hands.Module{Deck: deck.Keeper{}, Turns: turns.Keeper{TurnTime: options.TurnTime}},
 		},
 	})

@@ -49,6 +49,9 @@ const (
 	ErrorCode_ERROR_CODE_UNAVAILABLE ErrorCode = 10
 	// ERROR_CODE_SERVER_FULL means the server won't create another room. Rooms that already exist can still be joined.
 	ErrorCode_ERROR_CODE_SERVER_FULL ErrorCode = 11
+	// ERROR_CODE_UPDATE_REQUIRED means this client is too old for this server. The player needs a newer client, such as
+	// by reloading the page.
+	ErrorCode_ERROR_CODE_UPDATE_REQUIRED ErrorCode = 12
 )
 
 // Enum value maps for ErrorCode.
@@ -66,6 +69,7 @@ var (
 		9:  "ERROR_CODE_UNSUPPORTED_PROTOCOL",
 		10: "ERROR_CODE_UNAVAILABLE",
 		11: "ERROR_CODE_SERVER_FULL",
+		12: "ERROR_CODE_UPDATE_REQUIRED",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED":          0,
@@ -80,6 +84,7 @@ var (
 		"ERROR_CODE_UNSUPPORTED_PROTOCOL": 9,
 		"ERROR_CODE_UNAVAILABLE":          10,
 		"ERROR_CODE_SERVER_FULL":          11,
+		"ERROR_CODE_UPDATE_REQUIRED":      12,
 	}
 )
 
@@ -412,8 +417,10 @@ type Hello struct {
 	ProtocolVersion uint32                 `protobuf:"varint,1,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
 	PlayerId        string                 `protobuf:"bytes,2,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"`
 	Secret          string                 `protobuf:"bytes,3,opt,name=secret,proto3" json:"secret,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// schema_versions says which version of each module's messages this client was built for.
+	SchemaVersions map[string]uint32 `protobuf:"bytes,4,rep,name=schema_versions,json=schemaVersions,proto3" json:"schema_versions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Hello) Reset() {
@@ -465,6 +472,13 @@ func (x *Hello) GetSecret() string {
 		return x.Secret
 	}
 	return ""
+}
+
+func (x *Hello) GetSchemaVersions() map[string]uint32 {
+	if x != nil {
+		return x.SchemaVersions
+	}
+	return nil
 }
 
 // Welcome accepts a Hello. The secret is only sent to a new guest, once.
@@ -900,11 +914,15 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\v2\x12.playhold.v1.ErrorH\x00R\x05error\x121\n" +
 	"\x06closed\x18\x04 \x01(\v2\x17.playhold.v1.RoomClosedH\x00R\x06closed\x12-\n" +
 	"\x06joined\x18\x05 \x01(\v2\x13.playhold.v1.JoinedH\x00R\x06joinedB\x06\n" +
-	"\x04body\"g\n" +
+	"\x04body\"\xfb\x01\n" +
 	"\x05Hello\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x01(\tR\bplayerId\x12\x16\n" +
-	"\x06secret\x18\x03 \x01(\tR\x06secret\">\n" +
+	"\x06secret\x18\x03 \x01(\tR\x06secret\x12O\n" +
+	"\x0fschema_versions\x18\x04 \x03(\v2&.playhold.v1.Hello.SchemaVersionsEntryR\x0eschemaVersions\x1aA\n" +
+	"\x13SchemaVersionsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\">\n" +
 	"\aWelcome\x12\x1b\n" +
 	"\tplayer_id\x18\x01 \x01(\tR\bplayerId\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\"\x1a\n" +
@@ -929,7 +947,7 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\amessage\x18\x03 \x01(\tR\amessage\">\n" +
 	"\n" +
 	"RoomClosed\x120\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xe7\x02\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\x87\x03\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aERROR_CODE_MALFORMED_FRAME\x10\x01\x12\x1e\n" +
@@ -943,7 +961,8 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x1fERROR_CODE_UNSUPPORTED_PROTOCOL\x10\t\x12\x1a\n" +
 	"\x16ERROR_CODE_UNAVAILABLE\x10\n" +
 	"\x12\x1a\n" +
-	"\x16ERROR_CODE_SERVER_FULL\x10\v*\x92\x01\n" +
+	"\x16ERROR_CODE_SERVER_FULL\x10\v\x12\x1e\n" +
+	"\x1aERROR_CODE_UPDATE_REQUIRED\x10\f*\x92\x01\n" +
 	"\vCloseReason\x12\x1c\n" +
 	"\x18CLOSE_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLOSE_REASON_REQUESTED\x10\x01\x12\x19\n" +
@@ -964,7 +983,7 @@ func file_playhold_v1_frames_proto_rawDescGZIP() []byte {
 }
 
 var file_playhold_v1_frames_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_playhold_v1_frames_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_playhold_v1_frames_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_playhold_v1_frames_proto_goTypes = []any{
 	(ErrorCode)(0),        // 0: playhold.v1.ErrorCode
 	(CloseReason)(0),      // 1: playhold.v1.CloseReason
@@ -979,6 +998,7 @@ var file_playhold_v1_frames_proto_goTypes = []any{
 	(*RoomState)(nil),     // 10: playhold.v1.RoomState
 	(*Error)(nil),         // 11: playhold.v1.Error
 	(*RoomClosed)(nil),    // 12: playhold.v1.RoomClosed
+	nil,                   // 13: playhold.v1.Hello.SchemaVersionsEntry
 }
 var file_playhold_v1_frames_proto_depIdxs = []int32{
 	4,  // 0: playhold.v1.ClientFrame.hello:type_name -> playhold.v1.Hello
@@ -989,14 +1009,15 @@ var file_playhold_v1_frames_proto_depIdxs = []int32{
 	11, // 5: playhold.v1.ServerFrame.error:type_name -> playhold.v1.Error
 	12, // 6: playhold.v1.ServerFrame.closed:type_name -> playhold.v1.RoomClosed
 	7,  // 7: playhold.v1.ServerFrame.joined:type_name -> playhold.v1.Joined
-	9,  // 8: playhold.v1.RoomState.views:type_name -> playhold.v1.ModuleView
-	0,  // 9: playhold.v1.Error.code:type_name -> playhold.v1.ErrorCode
-	1,  // 10: playhold.v1.RoomClosed.reason:type_name -> playhold.v1.CloseReason
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	13, // 8: playhold.v1.Hello.schema_versions:type_name -> playhold.v1.Hello.SchemaVersionsEntry
+	9,  // 9: playhold.v1.RoomState.views:type_name -> playhold.v1.ModuleView
+	0,  // 10: playhold.v1.Error.code:type_name -> playhold.v1.ErrorCode
+	1,  // 11: playhold.v1.RoomClosed.reason:type_name -> playhold.v1.CloseReason
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_playhold_v1_frames_proto_init() }
@@ -1022,7 +1043,7 @@ func file_playhold_v1_frames_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_playhold_v1_frames_proto_rawDesc), len(file_playhold_v1_frames_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

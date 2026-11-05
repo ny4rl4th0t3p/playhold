@@ -1,7 +1,7 @@
 import {create, toBinary} from "@bufbuild/protobuf";
 import {CloseReason, PlayholdClient, type ClientStatus} from "playhold-sdk";
 
-import {HandsMessage, PlaySchema} from "./gen/cards/v1/cards_pb";
+import {HandsMessage, PlaySchema, SchemaVersion} from "./gen/cards/v1/cards_pb";
 import {cardLabel, isRed, isWild, readViews, suits, suitSymbol, timerBar, turnText, type GameView} from "./view";
 
 // The rules stay on the server: this page shows what the server sent, and offers the moves it said are possible.
@@ -13,6 +13,7 @@ const statusText: Record<ClientStatus, string> = {
     joined: "",
     replaced: "You opened this game somewhere else, so it stopped here.",
     closed: "Disconnected.",
+    updateRequired: "There's a newer version of this game. Reload to keep playing.",
 };
 
 function element<T extends HTMLElement>(id: string): T {
@@ -27,6 +28,7 @@ const ui = {
     status: element("status"),
     message: element("message"),
     reclaim: element<HTMLButtonElement>("reclaim"),
+    reload: element<HTMLButtonElement>("reload"),
     lobby: element("lobby"),
     newGame: element<HTMLButtonElement>("new-game"),
     joinForm: element<HTMLFormElement>("join-form"),
@@ -64,9 +66,11 @@ let timerFrozen = false;
 
 const client = new PlayholdClient({
     url: serverUrl(),
+    schemaVersions: {turns: SchemaVersion.CURRENT},
     onStatus: (status) => {
         ui.status.textContent = statusText[status];
         ui.reclaim.hidden = status !== "replaced";
+        ui.reload.hidden = status !== "updateRequired";
         if (status !== "joined") {
             timerFrozen = true; // the server's count may be paused, so don't guess: the next state unfreezes it
         }
@@ -204,6 +208,7 @@ ui.pass.addEventListener("click", () => {
     client.send("hands", HandsMessage.PASS, new Uint8Array());
 });
 ui.reclaim.addEventListener("click", () => client.connect());
+ui.reload.addEventListener("click", () => location.reload());
 
 setInterval(renderTimer, 100);
 

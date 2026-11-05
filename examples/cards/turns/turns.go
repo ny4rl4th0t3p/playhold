@@ -24,6 +24,8 @@ type Module struct {
 	TurnTime time.Duration
 	// FinishedRoomTime is how long a room stays open after its game ends, so players can see the result.
 	FinishedRoomTime time.Duration
+	// OldestClientSchema is the oldest page the server still plays with.
+	OldestClientSchema int
 }
 
 // Name implements playhold.Module.
@@ -31,6 +33,8 @@ func (Module) Name() string { return "turns" }
 
 // Register implements playhold.Module.
 func (m Module) Register(r *playhold.Registry) {
+	// The whole game's messages change together, so this one module speaks for all three.
+	r.ClientSchema(int(pb.SchemaVersion_SCHEMA_VERSION_CURRENT), m.OldestClientSchema)
 	playhold.State(r, key, func() *state { return &state{} })
 	playhold.Snapshot(r, key, 1, save, load)
 	playhold.On(r, m.playerJoined)

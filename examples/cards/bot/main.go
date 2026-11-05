@@ -23,6 +23,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/ny4rl4th0t3p/playhold/examples/cards"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/pb"
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 )
@@ -134,7 +135,7 @@ func holdOne(ctx context.Context, cfg *config, connected, reached *atomic.Int64)
 
 	guest := &player{}
 	if err := guest.send(ctx, ws, &wire.ClientFrame{Body: &wire.ClientFrame_Hello{
-		Hello: &wire.Hello{ProtocolVersion: protocolVersion},
+		Hello: &wire.Hello{ProtocolVersion: protocolVersion, SchemaVersions: cards.ClientSchemaVersions()},
 	}}); err != nil {
 		return err
 	}
@@ -250,7 +251,12 @@ func (p *player) playGame(ctx context.Context, cfg *config, rec *recorder, code 
 	defer func() { _ = ws.CloseNow() }()
 
 	if err := p.send(ctx, ws, &wire.ClientFrame{Body: &wire.ClientFrame_Hello{
-		Hello: &wire.Hello{ProtocolVersion: protocolVersion, PlayerId: p.id, Secret: p.secret},
+		Hello: &wire.Hello{
+			ProtocolVersion: protocolVersion,
+			PlayerId:        p.id,
+			Secret:          p.secret,
+			SchemaVersions:  cards.ClientSchemaVersions(),
+		},
 	}}); err != nil {
 		return err
 	}

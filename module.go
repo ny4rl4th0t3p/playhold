@@ -66,7 +66,8 @@ type Registry struct {
 	needs   []string
 	hasView bool
 
-	hasSnapshot bool
+	hasSnapshot     bool
+	hasClientSchema bool
 }
 
 func (r *Registry) errorf(format string, args ...any) {
@@ -147,6 +148,28 @@ func Migrate[T any](r *Registry, key *Key[T], from int, migrate func(old []byte)
 		return
 	}
 	r.typ.migrations = append(r.typ.migrations, moduleMigration{module: r.module, index: key.index, from: from, migrate: migrate})
+}
+
+// ClientSchema declares which versions of the module's messages and views the server can talk to: current is what this
+// build uses, and oldest is the oldest client it still accepts. A client below that is told to update. Keep at least the
+// previous version, because a page and its server don't change at the same moment, and an open tab can stay old for days.
+//
+// Inside that window, messages can only change by adding to them, which a client or server that doesn't know the new
+// field ignores. A client newer than the server, while a deploy rolls out, is accepted for the same reason.
+//
+// A module that doesn't declare this accepts every client. These versions are about messages, and have nothing to do
+// with Snapshot's, which are about saved state.
+func (r *Registry) ClientSchema(current, oldest int) {
+	switch {
+	case oldest < 1 || oldest > current:
+		r.errorf("client schema has oldest %d and current %d, but needs 1 <= oldest <= current", oldest, current)
+		return
+	case r.hasClientSchema:
+		r.errorf("client schema is declared twice")
+		return
+	}
+	r.hasClientSchema = true
+	r.typ.clientSchemas = append(r.typ.clientSchemas, moduleClientSchema{module: r.module, oldest: oldest})
 }
 
 // Handle declares the handler for one of the module's messages. IDs are local to the module. RoomContext.Player
@@ -251,6 +274,24 @@ type RoomType struct {
 	snapshots []moduleSnapshot
 
 	migrations []moduleMigration // checked and moved into snapshots by NewRoomType
+
+	clientSchemas []moduleClientSchema
+}
+
+type moduleClientSchema struct {
+	module string
+	oldest int
+}
+
+// outdatedModule returns the first module that this client is too old for, or an empty string if it's fine. A client
+// that doesn't mention a module counts as older than all of its versions.
+func (t *RoomType) outdatedModule(versions map[string]uint32) string {
+	for _, schema := range t.clientSchemas {
+		if int(versions[schema.module]) < schema.oldest {
+			return schema.module
+		}
+	}
+	return ""
 }
 
 type moduleSnapshot struct {

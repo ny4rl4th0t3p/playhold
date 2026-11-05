@@ -23,6 +23,7 @@ const (
 
 const (
 	maxPlayers        = 2
+	clientSchema      = 2 // not 1, so a client below it can be tested
 	readHeaderTimeout = 5 * time.Second
 )
 
@@ -36,6 +37,7 @@ type counter struct{}
 func (counter) Name() string { return "counter" }
 
 func (counter) Register(r *playhold.Registry) {
+	r.ClientSchema(clientSchema, clientSchema)
 	playhold.State(r, totalKey, func() *total { return &total{} })
 	playhold.Handle(r, msgAdd, func(rc *playhold.RoomContext, msg *wrapperspb.Int32Value) error {
 		if msg.GetValue() <= 0 {

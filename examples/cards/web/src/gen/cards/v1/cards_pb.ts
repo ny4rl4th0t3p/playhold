@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file cards/v1/cards.proto.
  */
 export const file_cards_v1_cards: GenFile = /*@__PURE__*/
-  fileDesc("ChRjYXJkcy92MS9jYXJkcy5wcm90bxIIY2FyZHMudjEiKQoEUGxheRIMCgRjYXJkGAEgASgJEhMKC2Nob3Nlbl9zdWl0GAIgASgJIgYKBERyYXciBgoEUGFzcyJACghEZWNrVmlldxILCgN0b3AYASABKAkSEwoLYWN0aXZlX3N1aXQYAiABKAkSEgoKZHJhd19jb3VudBgDIAEoDSKDAQoJVHVybnNWaWV3Eg8KB3N0YXJ0ZWQYASABKAgSDwoHY3VycmVudBgCIAEoCRIOCgZ3aW5uZXIYAyABKAkSDwoHcGxheWVycxgEIAMoCRIYChB0dXJuX21pbGxpc19sZWZ0GAUgASgDEhkKEXR1cm5fbWlsbGlzX3RvdGFsGAYgASgDIioKCU90aGVySGFuZBIOCgZwbGF5ZXIYASABKAkSDQoFY291bnQYAiABKA0iPwoJRGVja1N0YXRlEgwKBHBpbGUYASADKAkSDwoHZGlzY2FyZBgCIAMoCRITCgthY3RpdmVfc3VpdBgDIAEoCSJSCgpUdXJuc1N0YXRlEg8KB3BsYXllcnMYASADKAkSDwoHY3VycmVudBgCIAEoDRIOCgZ3aW5uZXIYAyABKAkSEgoKdHVybl90aW1lchgEIAEoBCIdCgtUdXJuRXhwaXJlZBIOCgZwbGF5ZXIYASABKAkiFQoTRmluaXNoZWRHYW1lRXhwaXJlZCIWCgVDYXJkcxINCgVjYXJkcxgBIAMoCSKJAQoKSGFuZHNTdGF0ZRIuCgVoYW5kcxgBIAMoCzIfLmNhcmRzLnYxLkhhbmRzU3RhdGUuSGFuZHNFbnRyeRIMCgRkcmV3GAIgASgIGj0KCkhhbmRzRW50cnkSCwoDa2V5GAEgASgJEh4KBXZhbHVlGAIgASgLMg8uY2FyZHMudjEuQ2FyZHM6AjgBInUKCUhhbmRzVmlldxINCgVjYXJkcxgBIAMoCRIQCghwbGF5YWJsZRgCIAMoCRIQCghjYW5fZHJhdxgDIAEoCBIQCghjYW5fcGFzcxgEIAEoCBIjCgZvdGhlcnMYBSADKAsyEy5jYXJkcy52MS5PdGhlckhhbmQqdQoMSGFuZHNNZXNzYWdlEh0KGUhBTkRTX01FU1NBR0VfVU5TUEVDSUZJRUQQABIWChJIQU5EU19NRVNTQUdFX1BMQVkQARIWChJIQU5EU19NRVNTQUdFX0RSQVcQAhIWChJIQU5EU19NRVNTQUdFX1BBU1MQA0I3WjVnaXRodWIuY29tL255NHJsNHRoMHQzcC9wbGF5aG9sZC9leGFtcGxlcy9jYXJkcy9wYjtwYmIGcHJvdG8z");
+  fileDesc("ChRjYXJkcy92MS9jYXJkcy5wcm90bxIIY2FyZHMudjEiKQoEUGxheRIMCgRjYXJkGAEgASgJEhMKC2Nob3Nlbl9zdWl0GAIgASgJIgYKBERyYXciBgoEUGFzcyJACghEZWNrVmlldxILCgN0b3AYASABKAkSEwoLYWN0aXZlX3N1aXQYAiABKAkSEgoKZHJhd19jb3VudBgDIAEoDSKDAQoJVHVybnNWaWV3Eg8KB3N0YXJ0ZWQYASABKAgSDwoHY3VycmVudBgCIAEoCRIOCgZ3aW5uZXIYAyABKAkSDwoHcGxheWVycxgEIAMoCRIYChB0dXJuX21pbGxpc19sZWZ0GAUgASgDEhkKEXR1cm5fbWlsbGlzX3RvdGFsGAYgASgDIioKCU90aGVySGFuZBIOCgZwbGF5ZXIYASABKAkSDQoFY291bnQYAiABKA0iPwoJRGVja1N0YXRlEgwKBHBpbGUYASADKAkSDwoHZGlzY2FyZBgCIAMoCRITCgthY3RpdmVfc3VpdBgDIAEoCSJSCgpUdXJuc1N0YXRlEg8KB3BsYXllcnMYASADKAkSDwoHY3VycmVudBgCIAEoDRIOCgZ3aW5uZXIYAyABKAkSEgoKdHVybl90aW1lchgEIAEoBCIdCgtUdXJuRXhwaXJlZBIOCgZwbGF5ZXIYASABKAkiFQoTRmluaXNoZWRHYW1lRXhwaXJlZCIWCgVDYXJkcxINCgVjYXJkcxgBIAMoCSKJAQoKSGFuZHNTdGF0ZRIuCgVoYW5kcxgBIAMoCzIfLmNhcmRzLnYxLkhhbmRzU3RhdGUuSGFuZHNFbnRyeRIMCgRkcmV3GAIgASgIGj0KCkhhbmRzRW50cnkSCwoDa2V5GAEgASgJEh4KBXZhbHVlGAIgASgLMg8uY2FyZHMudjEuQ2FyZHM6AjgBInUKCUhhbmRzVmlldxINCgVjYXJkcxgBIAMoCRIQCghwbGF5YWJsZRgCIAMoCRIQCghjYW5fZHJhdxgDIAEoCBIQCghjYW5fcGFzcxgEIAEoCBIjCgZvdGhlcnMYBSADKAsyEy5jYXJkcy52MS5PdGhlckhhbmQqSwoNU2NoZW1hVmVyc2lvbhIeChpTQ0hFTUFfVkVSU0lPTl9VTlNQRUNJRklFRBAAEhoKFlNDSEVNQV9WRVJTSU9OX0NVUlJFTlQQASp1CgxIYW5kc01lc3NhZ2USHQoZSEFORFNfTUVTU0FHRV9VTlNQRUNJRklFRBAAEhYKEkhBTkRTX01FU1NBR0VfUExBWRABEhYKEkhBTkRTX01FU1NBR0VfRFJBVxACEhYKEkhBTkRTX01FU1NBR0VfUEFTUxADQjdaNWdpdGh1Yi5jb20vbnk0cmw0dGgwdDNwL3BsYXlob2xkL2V4YW1wbGVzL2NhcmRzL3BiO3BiYgZwcm90bzM");
 
 /**
  * Play puts a card from the player's hand on the discard pile.
@@ -347,6 +347,30 @@ export const HandsViewSchema: GenMessage<HandsView> = /*@__PURE__*/
   messageDesc(file_cards_v1_cards, 12);
 
 /**
+ * SchemaVersion is the version of the game's messages and views, which the server and page are built with. Raise it
+ * when a change means older pages can't play.
+ *
+ * @generated from enum cards.v1.SchemaVersion
+ */
+export enum SchemaVersion {
+  /**
+   * @generated from enum value: SCHEMA_VERSION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SCHEMA_VERSION_CURRENT = 1;
+   */
+  CURRENT = 1,
+}
+
+/**
+ * Describes the enum cards.v1.SchemaVersion.
+ */
+export const SchemaVersionSchema: GenEnum<SchemaVersion> = /*@__PURE__*/
+  enumDesc(file_cards_v1_cards, 0);
+
+/**
  * HandsMessage lists the messages the hands module handles.
  *
  * @generated from enum cards.v1.HandsMessage
@@ -377,5 +401,5 @@ export enum HandsMessage {
  * Describes the enum cards.v1.HandsMessage.
  */
 export const HandsMessageSchema: GenEnum<HandsMessage> = /*@__PURE__*/
-  enumDesc(file_cards_v1_cards, 0);
+  enumDesc(file_cards_v1_cards, 1);
 

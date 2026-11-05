@@ -462,18 +462,30 @@ describe("reconnecting", () => {
     expect(sockets).toHaveLength(1);
   });
 
-  it("stops when the server doesn't speak its protocol", () => {
+  it.each([ErrorCode.UNSUPPORTED_PROTOCOL, ErrorCode.UPDATE_REQUIRED])("stops when it's too old for the server: %s", (code) => {
     const onError = vi.fn();
-    const { client, sockets, latest } = setup({ onError });
+    const stored = JSON.stringify({ playerId: "alice", secret: "s3cret" });
+    const storage = memoryStorage({ "playhold.identity": stored });
+    const { client, sockets, latest } = setup({ onError, storage });
     client.connect();
     latest().onopen?.();
 
-    latest().receive({ case: "error", value: { seq: 1n, code: ErrorCode.UNSUPPORTED_PROTOCOL, message: "old" } });
+    latest().receive({ case: "error", value: { seq: 1n, code, message: "too old" } });
 
-    expect(client.status).toBe("closed");
+    expect(client.status).toBe("updateRequired");
     expect(onError).toHaveBeenCalledOnce();
+    expect(storage.getItem("playhold.identity")).toBe(stored);
     vi.advanceTimersByTime(60_000);
     expect(sockets).toHaveLength(1);
+  });
+
+  it("says which versions it was built for", () => {
+    const { client, latest } = setup({ schemaVersions: { deck: 2, hands: 5 } });
+
+    client.connect();
+    latest().onopen?.();
+
+    expect(latest().last().body.value).toMatchObject({ schemaVersions: { deck: 2, hands: 5 } });
   });
 
   it("backs off and keeps its identity when the server is unavailable", () => {

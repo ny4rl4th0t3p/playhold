@@ -168,11 +168,42 @@ func (s *session) seated(seq uint64, code string, err error) {
 
 // watchRoom tells the client when its room closes.
 func (s *session) watchRoom(room *Room, failed <-chan struct{}) {
-	select {
-	case <-room.Done():
-		s.conn.SendClosed(wireCloseReason(room.Wait()))
-	case <-failed:
-	case <-s.conn.Done():
+	for {
+		select {
+		case <-room.Done():
+			s.mu.Lock()
+			code, current := s.code, s.room == room
+			s.mu.Unlock()
+			if !current {
+				return // the connection has ended, or moved on from this room
+			}
+			next := s.gateway.lobby.replacement(code, room)
+			if next == nil {
+				s.conn.SendClosed(wireCloseReason(room.Wait()))
+				return
+			}
+			s.follow(room, next)
+			room = next
+		case <-failed:
+			return
+		case <-s.conn.Done():
+			return
+		}
+	}
+}
+
+// follow moves this connection to the copy of its room restored after a crash, which sends the player a full view.
+func (s *session) follow(old, next *Room) {
+	s.mu.Lock()
+	if s.room != old {
+		s.mu.Unlock()
+		return
+	}
+	s.room = next
+	s.mu.Unlock()
+
+	if err := next.seat(s.player, s.conn, nil); err != nil {
+		s.gateway.logger.Warn("rejoining a restored room failed", "player", string(s.player), "error", err)
 	}
 }
 

@@ -28,6 +28,14 @@ Two tabs in the same browser share one identity, so the newest tab replaces the 
 The game runs limited to 1 CPU and 1 GB of memory, the size of a small VPS. To play from another machine on your
 network, start it with `BIND=0.0.0.0`. There's no TLS or rate limiting yet, so don't expose it to the internet.
 
+Games are saved in PostgreSQL, so they survive the server stopping. Try it partway through a game, and each player gets
+their seat and cards back when the page reconnects:
+
+```bash
+docker compose restart game
+docker compose kill game && docker compose up -d game
+```
+
 To put it under load, add a bot that plays games over real connections, and watch the server:
 
 ```bash
@@ -41,15 +49,18 @@ compare the trend with the bot's reports, which use the same UTC times:
 sh record-stats.sh
 ```
 
-| Setting              | Default | What it does                                                                              |
-|----------------------|---------|-------------------------------------------------------------------------------------------|
-| `GAMES`              | 100     | Games played at once, with two connections each                                           |
-| `THINK`              | 1s      | How long a bot waits before each move                                                     |
-| `GAME_CPUS`          | 1       | CPUs for the game server                                                                  |
-| `GAME_MEMORY`        | 1g      | Memory for the game server, which sets its soft limit to about 80% of this                |
-| `EMPTY_ROOM_TIMEOUT` | 5m      | How long a room stays open with nobody connected, including after its game ends           |
-| `MAX_ROOMS`          | 10,000  | Most rooms at once, counting finished ones until they close; above it, joins get an error |
-| `IDLE`               | 0       | Instead of playing, hold this many idle connections, to measure what one costs            |
+| Setting              | Default                | What it does                                                                              |
+|----------------------|------------------------|-------------------------------------------------------------------------------------------|
+| `GAMES`              | 100                    | Games played at once, with two connections each                                           |
+| `THINK`              | 1s                     | How long a bot waits before each move                                                     |
+| `GAME_CPUS`          | 1                      | CPUs for the game server                                                                  |
+| `GAME_MEMORY`        | 1g                     | Memory for the game server, which sets its soft limit to about 80% of this                |
+| `EMPTY_ROOM_TIMEOUT` | 5m                     | How long a room stays open with nobody connected, including after its game ends           |
+| `MAX_ROOMS`          | 10,000                 | Most rooms at once, counting finished ones until they close; above it, joins get an error |
+| `IDLE`               | 0                      | Instead of playing, hold this many idle connections, to measure what one costs            |
+| `DATABASE_URL`       | The `postgres` service | Where games are saved. Set it empty to save nothing, for comparison                       |
+| `POSTGRES_CPUS`      | 1                      | CPUs for PostgreSQL                                                                       |
+| `POSTGRES_MEMORY`    | 1g                     | Memory for PostgreSQL                                                                     |
 
 The bot prints finished games, failures, moves per second and how long the server took to answer a move, followed by the
 reason for any failures:

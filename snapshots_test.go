@@ -107,7 +107,7 @@ func newSavedRoom(t *testing.T, records store.Store, cfg RoomConfig) (*Room, *Ru
 	w := newTestWriter(t, records) // first, so it closes after the runtime has shut down
 	rt := newTestRuntime(t)
 	cfg.Modules = append(cfg.Modules, savedModule)
-	room, err := rt.createRoom(newTestRoomType(t, cfg), "room-code", w)
+	room, err := rt.createRoom(newTestRoomType(t, cfg), "room-code", w, nil)
 	require.NoError(t, err)
 	return room, rt
 }
@@ -231,7 +231,7 @@ func TestStuckRoomIsForgotten(t *testing.T) {
 		records := memory.New()
 		w := newTestWriter(t, records)
 		rt := newConfiguredRuntime(t, Config{StuckTimeout: timeout})
-		room, err := rt.createRoom(newTestRoomType(t, RoomConfig{Modules: []Module{savedModule}}), "code", w)
+		room, err := rt.createRoom(newTestRoomType(t, RoomConfig{Modules: []Module{savedModule}}), "code", w, nil)
 		require.NoError(t, err)
 
 		release := make(chan struct{})

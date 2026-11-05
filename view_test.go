@@ -2,6 +2,7 @@ package playhold
 
 import (
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -59,6 +60,21 @@ func showsPlayer(name string) registerFunc {
 			return wrapperspb.String(name + " for " + string(rc.Player()))
 		})
 	}}
+}
+
+// viewOfSaved is a module whose view shows the number in savedModule's state.
+var viewOfSaved = registerFunc{name: "view-of-saved", register: func(r *Registry) {
+	View(r, func(rc *RoomContext) *wrapperspb.StringValue {
+		return wrapperspb.String(strconv.Itoa(savedKey.Get(rc).value))
+	})
+}}
+
+// savedView reads viewOfSaved from a state frame.
+func savedView(t *testing.T, frame *wire.ServerFrame) string {
+	t.Helper()
+	views := frame.GetState().GetViews()
+	require.Len(t, views, 1, "got %v", frame)
+	return viewText(t, views[0])
 }
 
 func TestEachPlayerGetsTheirOwnView(t *testing.T) {

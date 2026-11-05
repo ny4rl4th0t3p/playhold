@@ -16,6 +16,7 @@ import (
 
 	"github.com/ny4rl4th0t3p/playhold"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards"
+	"github.com/ny4rl4th0t3p/playhold/store/postgres"
 )
 
 const (
@@ -30,20 +31,29 @@ func main() {
 	maxPerIP := flag.Int("max-conns-per-ip", 0, "most connections from one IP address; 0 uses the default")
 	emptyRoom := flag.Duration("empty-room-timeout", 0, "how long a room stays open with nobody connected; 0 uses the default")
 	maxRooms := flag.Int("max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
+	databaseURL := flag.String("database-url", "", "PostgreSQL to save games in; without it, a restart loses them")
 	flag.Parse()
 
-	if err := run(*addr, *web, *origins, *maxPerIP, *maxRooms, *emptyRoom); err != nil {
+	if err := run(*addr, *web, *origins, *databaseURL, *maxPerIP, *maxRooms, *emptyRoom); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(addr, web, origins string, maxPerIP, maxRooms int, emptyRoom time.Duration) error {
+func run(addr, web, origins, databaseURL string, maxPerIP, maxRooms int, emptyRoom time.Duration) error {
 	typ, err := cards.NewRoomType()
 	if err != nil {
 		return err
 	}
 	rt := playhold.NewRuntime(playhold.Config{})
 	cfg := &playhold.ServerConfig{RoomType: typ, MaxConnsPerIP: maxPerIP, MaxRooms: maxRooms, EmptyRoomTimeout: emptyRoom}
+	if databaseURL != "" {
+		records, err := postgres.Open(context.Background(), databaseURL)
+		if err != nil {
+			return err
+		}
+		defer records.Close()
+		cfg.Store = records
+	}
 	if origins != "" {
 		cfg.OriginPatterns = strings.Split(origins, ",")
 	}

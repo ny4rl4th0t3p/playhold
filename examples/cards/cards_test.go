@@ -3,6 +3,7 @@ package cards_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http/httptest"
 	"slices"
@@ -72,10 +73,12 @@ type game struct {
 
 func startServer(t *testing.T, seed [32]byte) string {
 	t.Helper()
-	return startServerWith(t, seed, nil)
+	url, _ := startServerWith(t, seed, nil)
+	return url
 }
 
-func startServerWith(t *testing.T, seed [32]byte, records store.Store) string {
+// startServerWith returns the server's URL, and a function that stops it, as a deploy would.
+func startServerWith(t *testing.T, seed [32]byte, records store.Store) (url string, stop func()) {
 	t.Helper()
 	rt := playhold.NewRuntime(playhold.Config{
 		Logger:  slog.New(slog.DiscardHandler),
@@ -86,14 +89,15 @@ func startServerWith(t *testing.T, seed [32]byte, records store.Store) string {
 	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, Store: records, MemoryLimit: -1})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
-	t.Cleanup(func() {
+	stop = func() {
 		server.Close()
 		httpServer.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 		defer cancel()
 		assert.NoError(t, rt.Shutdown(ctx))
-	})
-	return "ws" + strings.TrimPrefix(httpServer.URL, "http")
+	}
+	t.Cleanup(stop)
+	return "ws" + strings.TrimPrefix(httpServer.URL, "http"), stop
 }
 
 func startGame(t *testing.T, seed [32]byte) *game {
@@ -489,7 +493,8 @@ func TestSameSeedDealsTheSameGame(t *testing.T) {
 
 func TestGameIsSavedWithEverythingItNeeds(t *testing.T) {
 	records := memory.New()
-	g := startGameOn(t, startServerWith(t, testSeed, records))
+	url, _ := startServerWith(t, testSeed, records)
+	g := startGameOn(t, url)
 	for range reconnectTurn {
 		g.move()
 	}
@@ -521,6 +526,80 @@ func TestGameIsSavedWithEverythingItNeeds(t *testing.T) {
 		assert.Equal(t, uint32(1), module.GetVersion())
 	}
 	assert.Equal(t, []string{"deck", "turns", "hands"}, names)
+}
+
+// transcript plays a whole game, recording what each seat sees. It leaves out player IDs, which differ between runs.
+func transcript(t *testing.T, g *game, afterMove func(move int)) []string {
+	t.Helper()
+	lines := make([]string, 0, maxMoves)
+	record := func() {
+		first, second := g.first.latest, g.other.latest
+		lines = append(lines, fmt.Sprintf("top=%s suit=%s draw=%d first=%v second=%v",
+			first.deck.GetTop(), first.deck.GetActiveSuit(), first.deck.GetDrawCount(),
+			first.hand.GetCards(), second.hand.GetCards()))
+	}
+	record()
+	for move := range maxMoves {
+		if g.first.latest.turns.GetWinner() != "" {
+			return lines
+		}
+		g.move()
+		record()
+		if afterMove != nil {
+			afterMove(move)
+		}
+	}
+	require.FailNow(t, "the game didn't finish")
+	return nil
+}
+
+func TestGameRestartedPartwayMatchesAnUninterruptedOneCardForCard(t *testing.T) {
+	want := transcript(t, startGame(t, testSeed), nil)
+	require.Greater(t, len(want), reconnectTurn, "the game has to last past the restart")
+
+	records := memory.New()
+	url, stop := startServerWith(t, testSeed, records)
+	g := startGameOn(t, url)
+
+	got := transcript(t, g, func(move int) {
+		if move != reconnectTurn {
+			return
+		}
+		before := g.first.latest
+		stop()
+
+		// The new server has the store, but not the seed: everything has to come from the snapshot.
+		newURL, _ := startServerWith(t, [32]byte{}, records)
+		first := connect(t, newURL, g.first.id, g.first.secret)
+		other := connect(t, newURL, g.other.id, g.other.secret)
+		first.join()
+		first.readState()
+		other.join()
+		other.readState()
+		first.readState()
+		g.url, g.first, g.other = newURL, first, other
+
+		assert.Equal(t, before.hand.GetCards(), first.latest.hand.GetCards())
+	})
+
+	assert.Equal(t, want, got)
+}
+
+func TestRestoredGameShowsNobodyAnyHiddenCards(t *testing.T) {
+	records := memory.New()
+	url, stop := startServerWith(t, testSeed, records)
+	g := startGameOn(t, url)
+	g.move()
+	stop()
+
+	newURL, _ := startServerWith(t, [32]byte{}, records)
+	first := connect(t, newURL, g.first.id, g.first.secret)
+	first.join()
+
+	// connect and join read through read, which runs the hidden-card check on every frame.
+	first.readState()
+	assert.Len(t, first.latest.hand.GetOthers(), 1)
+	assert.NotEmpty(t, first.latest.hand.GetCards())
 }
 
 func TestThirdPlayerIsRefused(t *testing.T) {

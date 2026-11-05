@@ -9,12 +9,38 @@ services:
       dockerfile: examples/cards/Dockerfile
       target: server
     # One bot holds many connections from one address, so the usual per-address cap is raised.
-    command: ["-max-conns-per-ip", "4096", "-empty-room-timeout", "${EMPTY_ROOM_TIMEOUT:-5m}", "-max-rooms", "${MAX_ROOMS:-0}"]
+    command:
+      - -max-conns-per-ip
+      - "4096"
+      - -empty-room-timeout
+      - ${EMPTY_ROOM_TIMEOUT:-5m}
+      - -max-rooms
+      - ${MAX_ROOMS:-0}
+      - -database-url
+      - ${DATABASE_URL-postgres://postgres:playhold@postgres:5432/postgres?sslmode=disable}
     ports:
       - "${BIND:-127.0.0.1}:8080:8080"
     # A small VPS. Change these to try other sizes.
     cpus: ${GAME_CPUS:-1}
     mem_limit: ${GAME_MEMORY:-1g}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: playhold
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      # Over TCP, because the image's first-run setup also answers on its local socket.
+      test: ["CMD", "pg_isready", "-q", "-h", "127.0.0.1", "-U", "postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    cpus: ${POSTGRES_CPUS:-1}
+    mem_limit: ${POSTGRES_MEMORY:-1g}
 
   bot:
     profiles: ["load"]
@@ -29,3 +55,6 @@ services:
       net.ipv4.ip_local_port_range: "1024 65000"
     depends_on:
       - game
+
+volumes:
+  postgres:

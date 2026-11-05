@@ -1,9 +1,21 @@
 package playhold
 
 import (
+	"cmp"
+	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"sync"
 	"time"
+
+	"github.com/ny4rl4th0t3p/playhold/store"
+)
+
+// A room that keeps failing is closed, so a message that always crashes it can't loop forever.
+const (
+	maxRestarts   = 3
+	restartWindow = 10 * time.Minute
 )
 
 // ErrTooManyRooms means the server won't create another room. Rooms that already exist can still be joined.
@@ -22,10 +34,12 @@ type lobby struct {
 	rooms map[string]*lobbyRoom
 }
 
+// lobbyRoom is one code's room. A room restored after a crash takes over the same entry, so its connections stay counted.
 type lobbyRoom struct {
-	room  *Room
-	conns int
-	timer *time.Timer // running while conns is zero
+	room     *Room
+	conns    int
+	timer    *time.Timer // running while conns is zero
+	restarts []time.Time
 }
 
 func newLobby(rt *Runtime, typ *RoomType, idle time.Duration, maxRooms int, writer *snapshotWriter) *lobby {
@@ -43,11 +57,12 @@ func (l *lobby) enter(code string) (*Room, error) {
 		return nil, ErrTooManyRooms
 	}
 	if !ok || entry.room.closed() {
-		room, err := l.rt.createRoom(l.typ, code, l.writer)
+		entry = &lobbyRoom{}
+		room, err := l.rt.createRoom(l.typ, code, l.writer, l.restarter(code, entry))
 		if err != nil {
 			return nil, err
 		}
-		entry = &lobbyRoom{room: room}
+		entry.room = room
 		l.rooms[code] = entry
 		go l.watch(code, entry)
 	}
@@ -59,19 +74,24 @@ func (l *lobby) enter(code string) (*Room, error) {
 	return entry.room, nil
 }
 
-// leave ends a connection's count on the room.
+// leave ends a connection's count on the room. It goes by the room's ID, because a room restored after a crash is the
+// same room, even if the connection still holds the old one.
 func (l *lobby) leave(code string, room *Room) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	entry, ok := l.rooms[code]
-	if !ok || entry.room != room {
+	if !ok || entry.room.id != room.id {
 		return // the room has already closed
 	}
 	entry.conns--
 	if entry.conns == 0 {
-		entry.timer = time.AfterFunc(l.idle, func() { l.closeIfEmpty(entry) })
+		l.startIdleTimer(entry)
 	}
+}
+
+func (l *lobby) startIdleTimer(entry *lobbyRoom) {
+	entry.timer = time.AfterFunc(l.idle, func() { l.closeIfEmpty(entry) })
 }
 
 // closeIfEmpty closes the room unless someone came back just as the timer fired.
@@ -83,16 +103,115 @@ func (l *lobby) closeIfEmpty(entry *lobbyRoom) {
 	}
 }
 
-// watch frees the code when the room closes, for any reason.
+// watch frees the code when the room closes for good. A room restored after a crash takes over before the old one
+// reports being done, so this simply moves on to watching it.
 func (l *lobby) watch(code string, entry *lobbyRoom) {
-	<-entry.room.Done()
+	l.mu.Lock()
+	room := entry.room
+	l.mu.Unlock()
+
+	for {
+		<-room.Done()
+
+		l.mu.Lock()
+		if entry.room != room {
+			room = entry.room
+			l.mu.Unlock()
+			continue
+		}
+		if entry.timer != nil {
+			entry.timer.Stop()
+		}
+		if l.rooms[code] == entry {
+			delete(l.rooms, code)
+		}
+		l.mu.Unlock()
+		return
+	}
+}
+
+// restarter returns what a room calls when it crashes. If rooms aren't saved, there's nothing to restore it from.
+func (l *lobby) restarter(code string, entry *lobbyRoom) func(*Room) bool {
+	if l.writer == nil {
+		return nil
+	}
+	return func(old *Room) bool { return l.restart(code, entry, old) }
+}
+
+// restart replaces a crashed room with a copy from its last snapshot, and reports whether it did.
+func (l *lobby) restart(code string, entry *lobbyRoom, old *Room) bool {
+	data := old.lastSnapshot.Load()
+	if data == nil {
+		return false
+	}
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if entry.timer != nil {
-		entry.timer.Stop()
+	if l.rooms[code] != entry || entry.room != old {
+		return false
 	}
-	if l.rooms[code] == entry {
-		delete(l.rooms, code)
+	now := time.Now()
+	entry.restarts = slices.DeleteFunc(entry.restarts, func(at time.Time) bool { return now.Sub(at) > restartWindow })
+	if len(entry.restarts) >= maxRestarts {
+		old.logger.Error("room keeps crashing, closing it", "restarts", len(entry.restarts), "window", restartWindow)
+		return false
 	}
+
+	next, err := l.rt.restoreRoom(l.typ, old.id, code, *data, l.writer, l.restarter(code, entry))
+	if err != nil {
+		old.logger.Error("restoring crashed room failed", "error", err)
+		return false
+	}
+	entry.restarts = append(entry.restarts, now)
+	entry.room = next
+	return true
+}
+
+// replacement returns the room that took over from this one after a crash, or nil if it closed for good.
+func (l *lobby) replacement(code string, old *Room) *Room {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	entry, ok := l.rooms[code]
+	if !ok || entry.room == old || entry.room.id != old.id || entry.room.closed() {
+		return nil
+	}
+	return entry.room
+}
+
+// restoreAll brings back every saved room, each starting with nobody connected. A room that can't be restored is
+// logged and left in the store, so a fixed server can try again, and doesn't stop the others.
+func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
+	rooms, err := records.LoadRooms(ctx)
+	if err != nil {
+		return fmt.Errorf("playhold: loading rooms: %w", err)
+	}
+	// Room IDs sort by creation time, newest first here. If a code was reused while an older room couldn't be restored,
+	// the newest room keeps the code.
+	slices.SortFunc(rooms, func(a, b store.RoomRecord) int { return cmp.Compare(b.ID, a.ID) })
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i := range rooms {
+		record := &rooms[i]
+		if _, taken := l.rooms[record.Code]; taken {
+			l.rt.logger.Warn("forgetting an older room with the same code", "room", record.ID, "code", record.Code)
+			l.writer.forget(record.ID)
+			continue
+		}
+		if record.RoomType != l.typ.cfg.Name {
+			l.rt.logger.Error("skipping a saved room of another type", "room", record.ID, "room_type", record.RoomType)
+			continue
+		}
+		entry := &lobbyRoom{}
+		room, err := l.rt.restoreRoom(l.typ, RoomID(record.ID), record.Code, record.Data, l.writer, l.restarter(record.Code, entry))
+		if err != nil {
+			l.rt.logger.Error("skipping a saved room that can't be restored", "room", record.ID, "error", err)
+			continue
+		}
+		entry.room = room
+		l.rooms[record.Code] = entry
+		l.startIdleTimer(entry)
+		go l.watch(record.Code, entry)
+	}
+	return nil
 }

@@ -18,6 +18,7 @@ import (
 const (
 	defaultEmptyRoomTimeout = 5 * time.Minute
 	defaultMaxRooms         = 10_000
+	restoreTimeout          = time.Minute
 )
 
 // ServerConfig configures a Server. Zero values use the defaults.
@@ -56,7 +57,8 @@ type Server struct {
 	writer    *snapshotWriter // nil if rooms aren't saved
 }
 
-// NewServer returns a Server that runs its rooms on rt.
+// NewServer returns a Server that runs its rooms on rt. With a store, it first brings back every room saved there, and
+// fails if it can't read them. A single room that can't be restored is logged and skipped.
 func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	if cfg.RoomType == nil {
 		return nil, errors.New("playhold: server config has no room type")
@@ -86,6 +88,14 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	applyMemoryLimit(cfg.MemoryLimit, logger)
 
 	g := &gateway{guests: newGuests(records), lobby: newLobby(rt, cfg.RoomType, idle, maxRooms, writer), logger: logger}
+	if writer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
+		defer cancel()
+		if err := g.lobby.restoreAll(ctx, records); err != nil {
+			writer.close(ctx)
+			return nil, err
+		}
+	}
 	return &Server{
 		writer: writer,
 		transport: transport.NewServer(&transport.Config{

@@ -66,14 +66,39 @@ func randomSeed() [32]byte {
 // CreateRoom gives the room a new ID, runs the type's Init hook and starts the room. It returns an error,
 // with no room running, if the runtime is closed or Init fails.
 func (rt *Runtime) CreateRoom(typ *RoomType) (*Room, error) {
-	return rt.createRoom(typ, "", nil)
+	return rt.createRoom(typ, "", nil, nil)
 }
 
-// createRoom also gives the room its code, and the writer that saves it, if anything does.
-func (rt *Runtime) createRoom(typ *RoomType, code string, writer *snapshotWriter) (*Room, error) {
+// restoreRoom brings a room back from a snapshot, keeping its ID. Init doesn't run again, because the room already
+// exists: it's the same match.
+func (rt *Runtime) restoreRoom(
+	typ *RoomType,
+	id RoomID,
+	code string,
+	data []byte,
+	writer *snapshotWriter,
+	restart func(*Room) bool,
+) (*Room, error) {
+	room := newRoom(id, typ, &rt.cfg, rt.forget)
+	room.code = code
+	room.writer = writer
+	room.restart = restart
+	if err := room.applySnapshot(data); err != nil {
+		return nil, err
+	}
+	if err := rt.register(room); err != nil {
+		return nil, err
+	}
+	go room.run()
+	return room, nil
+}
+
+// createRoom also gives the room its code, what saves it and what restores it after a crash, if anything does.
+func (rt *Runtime) createRoom(typ *RoomType, code string, writer *snapshotWriter, restart func(*Room) bool) (*Room, error) {
 	room := newRoom(newRoomID(), typ, &rt.cfg, rt.forget)
 	room.code = code
 	room.writer = writer
+	room.restart = restart
 
 	// Register first, so a Shutdown during Init also stops this room.
 	if err := rt.register(room); err != nil {

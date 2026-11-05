@@ -122,6 +122,7 @@ func Snapshot[T, M any, PM interface {
 		module:  r.module,
 		index:   key.index,
 		version: version,
+		steps:   make(map[int]func(old []byte) ([]byte, error)),
 		encode: func(state any) ([]byte, error) {
 			typed, _ := state.(*T) // always *T: State is the only writer of this slot
 			return proto.Marshal(save(typed))
@@ -134,6 +135,18 @@ func Snapshot[T, M any, PM interface {
 			return load(msg), nil
 		},
 	})
+}
+
+// Migrate declares how a saved state moves from schema version from to the next one. A room saved at an older version
+// goes through each step in order when it's restored. Every version needs its step, from 1 up to the
+// current one, so a server can read any match saved by an earlier release. Building the room type fails if one is
+// missing. If a step returns an error or panics, the room isn't restored, and its saved state stays as it was.
+func Migrate[T any](r *Registry, key *Key[T], from int, migrate func(old []byte) ([]byte, error)) {
+	if migrate == nil {
+		r.errorf("migration of %q from version %d has no function", key.name, from)
+		return
+	}
+	r.typ.migrations = append(r.typ.migrations, moduleMigration{module: r.module, index: key.index, from: from, migrate: migrate})
 }
 
 // Handle declares the handler for one of the module's messages. IDs are local to the module. RoomContext.Player
@@ -236,6 +249,8 @@ type RoomType struct {
 	events    map[reflect.Type][]eventHandler
 	views     []moduleView
 	snapshots []moduleSnapshot
+
+	migrations []moduleMigration // checked and moved into snapshots by NewRoomType
 }
 
 type moduleSnapshot struct {
@@ -244,6 +259,65 @@ type moduleSnapshot struct {
 	version int
 	encode  func(state any) ([]byte, error)
 	decode  func(data []byte) (any, error)
+
+	steps map[int]func(old []byte) ([]byte, error) // from a version to the next
+}
+
+type moduleMigration struct {
+	module  string
+	index   int
+	from    int
+	migrate func(old []byte) ([]byte, error)
+}
+
+// load turns saved state at any version this server knows into the module's state.
+func (s *moduleSnapshot) load(version int, data []byte) (any, error) {
+	if version < 1 || version > s.version {
+		return nil, fmt.Errorf("saved at version %d, but this server only knows versions 1 to %d", version, s.version)
+	}
+	for ; version < s.version; version++ {
+		next, err := s.steps[version](data)
+		if err != nil {
+			return nil, fmt.Errorf("migrating from version %d: %w", version, err)
+		}
+		data = next
+	}
+	return s.decode(data)
+}
+
+// attachMigrations gives each snapshot its steps, and reports every step that's wrong or missing.
+func (t *RoomType) attachMigrations() error {
+	var errs []error
+	for i := range t.migrations {
+		migration := &t.migrations[i]
+		at := slices.IndexFunc(t.snapshots, func(s moduleSnapshot) bool { return s.index == migration.index })
+		if at < 0 {
+			errs = append(errs, fmt.Errorf("playhold: room type %q: module %q has a migration but no snapshot", t.cfg.Name, migration.module))
+			continue
+		}
+		snapshot := &t.snapshots[at]
+		if migration.from < 1 || migration.from >= snapshot.version {
+			errs = append(errs, fmt.Errorf("playhold: room type %q: module %q has a migration from version %d, but its version is %d",
+				t.cfg.Name, migration.module, migration.from, snapshot.version))
+			continue
+		}
+		if _, taken := snapshot.steps[migration.from]; taken {
+			errs = append(errs, fmt.Errorf("playhold: room type %q: module %q has two migrations from version %d",
+				t.cfg.Name, migration.module, migration.from))
+			continue
+		}
+		snapshot.steps[migration.from] = migration.migrate
+	}
+	for i := range t.snapshots {
+		snapshot := &t.snapshots[i]
+		for from := 1; from < snapshot.version; from++ {
+			if _, ok := snapshot.steps[from]; !ok {
+				errs = append(errs, fmt.Errorf("playhold: room type %q: module %q is at version %d, but has no migration from version %d",
+					t.cfg.Name, snapshot.module, snapshot.version, from))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // requireSnapshots reports every state that couldn't be saved. A server with a store checks this at startup, so a
@@ -321,6 +395,10 @@ func NewRoomType(cfg RoomConfig) (*RoomType, error) {
 			errs = append(errs, fmt.Errorf("playhold: room type %q: module %q has a snapshot of state it never registered",
 				cfg.Name, snapshot.module))
 		}
+	}
+
+	if err := typ.attachMigrations(); err != nil {
+		errs = append(errs, err)
 	}
 
 	// Modules can need each other in any order, so this runs after all of them have registered.

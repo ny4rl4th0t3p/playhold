@@ -166,35 +166,6 @@ func TestRoomThatCannotBeRestoredDoesNotStopTheOthers(t *testing.T) {
 	}
 }
 
-func TestRoomSavedAtAnotherVersionIsNotRestored(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		records := memory.New()
-		firstLobby, firstRuntime := restoreLobby(t, records, RoomConfig{}, Config{})
-		enterRoom(t, firstLobby, testCode)
-		synctest.Wait()
-		stopProcess(t, firstRuntime)
-
-		// Pretend the module has moved on to a version with no migration.
-		w := newTestWriter(t, records)
-		rt := newTestRuntime(t)
-		newer := registerFunc{name: "saved", register: func(r *Registry) {
-			State(r, savedKey, func() *counterState { return &counterState{} })
-			Snapshot(r, savedKey, savedVersion+1,
-				func(s *counterState) *addMsg { return &addMsg{Value: int32(s.value)} }, //nolint:gosec // small numbers in a test
-				func(msg *addMsg) *counterState { return &counterState{value: int(msg.GetValue())} },
-			)
-		}}
-		l := newLobby(rt, newTestRoomType(t, RoomConfig{Modules: []Module{newer}}), testIdle, testMaxRooms, w)
-
-		require.NoError(t, l.restoreAll(t.Context(), records))
-
-		assert.Empty(t, l.rooms)
-		rooms, err := records.LoadRooms(t.Context())
-		require.NoError(t, err)
-		assert.Len(t, rooms, 1, "the original stays, for a fixed server")
-	})
-}
-
 func TestNewestRoomKeepsAReusedCode(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		records := memory.New()

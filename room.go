@@ -368,11 +368,7 @@ func (r *Room) applySnapshot(data []byte) (err error) {
 		if saved == nil {
 			continue
 		}
-		if int(saved.GetVersion()) != module.version {
-			return fmt.Errorf("playhold: module %q saved at version %d, but is at version %d",
-				module.module, saved.GetVersion(), module.version)
-		}
-		state, err := module.decode(saved.GetState())
+		state, err := module.load(int(saved.GetVersion()), saved.GetState())
 		if err != nil {
 			return fmt.Errorf("playhold: module %q: %w", module.module, err)
 		}

@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	savedVersion = 2
+	savedVersion = 1
 
 	msgPanic uint32 = iota + 10
 	msgRefuseAfterAdding

@@ -190,6 +190,11 @@ type Room struct {
 	alarmSet    bool
 	alarmDue    time.Time
 
+	// Also owned by the room's goroutine, for a snapshot interval.
+	savedAt   time.Time   // the room's clock at its last save
+	saveTimer *time.Timer // runs while a change is waiting for the interval to pass
+	saveSet   bool
+
 	// Also owned by the room's goroutine.
 	grace  time.Duration // how long a player has to come back. Zero means nothing tracks their connections
 	graces []graceTimer  // soonest first
@@ -438,6 +443,11 @@ func (r *Room) saveSnapshot() {
 	if r.writer == nil {
 		return
 	}
+	r.savedAt = r.now
+	if r.saveSet { // this save includes the change that was waiting
+		r.saveTimer.Stop()
+		r.saveSet = false
+	}
 	rngState, err := r.rngState.MarshalBinary()
 	if err != nil {
 		panic(fmt.Sprintf("playhold: room's random numbers can't be saved: %v", err))
@@ -474,6 +484,45 @@ func (r *Room) saveSnapshot() {
 	}
 	r.lastSnapshot.Store(&data)
 	r.writer.save(store.RoomRecord{ID: string(r.id), Code: r.code, RoomType: r.typ.cfg.Name, Data: data})
+}
+
+// saveChange saves the room after a turn changed it. With a snapshot interval, a change that comes sooner than the
+// interval after the last save waits for it to pass, and the changes made meanwhile are saved together. While the
+// server drains, every change is saved at once.
+func (r *Room) saveChange() {
+	if r.writer == nil {
+		return
+	}
+	interval := r.writer.interval
+	if interval <= 0 || r.draining.Load() {
+		r.saveSnapshot()
+		return
+	}
+	if r.saveSet {
+		return // already waiting
+	}
+	if since := r.now.Sub(r.savedAt); since < interval {
+		r.saveTimer.Reset(interval - since)
+		r.saveSet = true
+		return
+	}
+	r.saveSnapshot()
+}
+
+// saveWaiting saves the changes a snapshot interval held back. Encoding runs game code, so it's watched like a turn, and
+// a panic closes the room like one.
+func (r *Room) saveWaiting() (panicked bool) {
+	defer func() {
+		if v := recover(); v != nil {
+			panicked = true
+			r.logger.Error("saving room panicked", "panic", v, "stack", string(debug.Stack()))
+		}
+	}()
+	r.saveSet = false
+	r.startWork()
+	defer r.watchdog.Stop()
+	r.saveSnapshot()
+	return false
 }
 
 // finishSnapshot decides what stays saved when a room closes on its goroutine. A shutdown keeps it, because the room
@@ -551,6 +600,9 @@ func (r *Room) run() {
 	r.alarm = time.NewTimer(r.stuckTimeout)
 	r.alarm.Stop()
 	defer r.alarm.Stop()
+	r.saveTimer = time.NewTimer(r.stuckTimeout)
+	r.saveTimer.Stop()
+	defer r.saveTimer.Stop()
 
 	reason := r.loop()
 	r.callClose(reason)
@@ -577,6 +629,10 @@ func (r *Room) loop() CloseReason {
 			}
 		case <-r.alarm.C:
 			if panicked := r.fireNext(); panicked {
+				return ClosePanic
+			}
+		case <-r.saveTimer.C:
+			if panicked := r.saveWaiting(); panicked {
 				return ClosePanic
 			}
 		}
@@ -617,8 +673,9 @@ func (r *Room) turn(in input) (panicked bool) {
 		in.result(err)
 	}
 	if !in.noViews {
-		// Saved first, so a player can't see a move that a clean stop right afterward would lose.
-		r.saveSnapshot()
+		// Saved first, so a player can't see a move that a clean stop right afterward would lose. A stop always saves a
+		// change that a snapshot interval is holding back.
+		r.saveChange()
 		r.sendViews()
 	}
 	return false

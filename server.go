@@ -31,6 +31,12 @@ type ServerConfig struct {
 	// Store keeps what has to survive a restart, and every module with state then needs a Snapshot. Nil keeps guests in
 	// memory and doesn't save rooms, so a restart forgets both.
 	Store store.Store
+	// SnapshotInterval is the least time between two saves of a room. Zero, the default, saves after every change. With
+	// an interval, a change that comes sooner waits until the interval has passed, and the changes made meanwhile are
+	// saved together, so a crash, or a room restored after a panic, can lose up to one interval of moves. A shutdown
+	// still saves every room, and while the server drains every change is saved at once. It only saves work in rooms that
+	// change more than once per interval.
+	SnapshotInterval time.Duration
 	// TimersAfterRestart says what happens to pending timers when the server comes back. The default is TimersPause.
 	TimersAfterRestart TimersAfterRestart
 	// DisconnectGrace is how long a seated player has to come back before the game gets a PlayerDisconnected. The default
@@ -96,6 +102,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			return nil, err
 		}
 		writer = newSnapshotWriter(records, logger)
+		writer.interval = cfg.SnapshotInterval
 	}
 	applyMemoryLimit(cfg.MemoryLimit, logger)
 

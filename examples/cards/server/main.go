@@ -34,6 +34,8 @@ func main() {
 	grace := flag.Duration("disconnect-grace", 0, "how long a player can be disconnected before others are told; 0 uses the default")
 	maxRooms := flag.Int("max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
 	databaseURL := flag.String("database-url", "", "PostgreSQL to save games in; without it, a restart loses them")
+	snapshotInterval := flag.Duration("snapshot-interval", 0,
+		"least time between two saves of a game; 0 saves after every move; a crash can lose up to this much")
 	timers := flag.String("timers-after-restart", "pause", "what happens to turn timers when the server comes back: pause, keep or cancel")
 	shutdownTimeout := flag.Duration("shutdown-timeout", defaultShutdownTimeout,
 		"how long to wait for games to be saved before exiting; keep it below what your service manager allows")
@@ -52,6 +54,7 @@ func main() {
 		serveDebug(*debugAddr)
 	}
 	cfg := &playhold.ServerConfig{
+		SnapshotInterval:   *snapshotInterval,
 		TimersAfterRestart: policy,
 		MaxConnsPerIP:      *maxPerIP,
 		MaxRooms:           *maxRooms,

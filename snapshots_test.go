@@ -291,6 +291,100 @@ func TestSlowStoreNeverHoldsUpARoomAndChangesCombine(t *testing.T) {
 	})
 }
 
+// newIntervalRoom returns a room that saves to records at most once per interval, running under its own runtime.
+func newIntervalRoom(t *testing.T, records store.Store, interval time.Duration) (*Room, *Runtime) {
+	t.Helper()
+	w := newTestWriter(t, records) // first, so it closes after the runtime has shut down
+	w.interval = interval
+	rt := newTestRuntime(t)
+	room, err := rt.createRoom(newTestRoomType(t, RoomConfig{Modules: []Module{savedModule}}), "room-code", w, nil)
+	require.NoError(t, err)
+	return room, rt
+}
+
+func TestSnapshotIntervalCombinesRapidChanges(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const interval, turns = time.Second, 5
+		records := &writeCountingStore{Store: memory.New()}
+		room, _ := newIntervalRoom(t, records, interval)
+		synctest.Wait()
+		require.Equal(t, 1, records.count(), "the room is saved when it's created")
+
+		for range turns {
+			require.NoError(t, dispatchAndWait(t, room, "saved", msgAdd, &addMsg{Value: 1}))
+		}
+		synctest.Wait()
+		assert.Equal(t, 1, records.count(), "the changes wait for the interval")
+		_, value := savedRoom(t, records, room)
+		assert.Equal(t, int32(0), value)
+
+		time.Sleep(interval)
+		synctest.Wait()
+		assert.Equal(t, 2, records.count(), "one save for all the changes")
+		_, value = savedRoom(t, records, room)
+		assert.Equal(t, int32(turns), value)
+	})
+}
+
+func TestSnapshotIntervalSavesAChangeAtOnceAfterAQuietInterval(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const interval = time.Second
+		records := memory.New()
+		room, _ := newIntervalRoom(t, records, interval)
+
+		time.Sleep(interval)
+		require.NoError(t, dispatchAndWait(t, room, "saved", msgAdd, &addMsg{Value: 4}))
+		synctest.Wait()
+
+		_, value := savedRoom(t, records, room)
+		assert.Equal(t, int32(4), value)
+	})
+}
+
+func TestSnapshotIntervalStillSavesEveryChangeWhenStoppingOrDraining(t *testing.T) {
+	tests := []struct {
+		name string
+		// after runs once a change is waiting for the interval, and ends with that change saved.
+		after func(t *testing.T, room *Room, rt *Runtime)
+	}{
+		{
+			name: "shutdown",
+			after: func(t *testing.T, _ *Room, rt *Runtime) {
+				t.Helper()
+				ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+				defer cancel()
+				require.NoError(t, rt.Shutdown(ctx))
+			},
+		},
+		{
+			name: "draining",
+			after: func(t *testing.T, room *Room, _ *Runtime) {
+				t.Helper()
+				room.draining.Store(true)
+				require.NoError(t, dispatchAndWait(t, room, "saved", msgAdd, &addMsg{Value: 0}))
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				records := memory.New()
+				room, rt := newIntervalRoom(t, records, time.Hour)
+				require.NoError(t, dispatchAndWait(t, room, "saved", msgAdd, &addMsg{Value: 6}))
+				synctest.Wait()
+				_, value := savedRoom(t, records, room)
+				require.Equal(t, int32(0), value, "the change is waiting")
+
+				tt.after(t, room, rt)
+				synctest.Wait()
+
+				_, value = savedRoom(t, records, room)
+				assert.Equal(t, int32(6), value)
+			})
+		})
+	}
+}
+
 func TestStoreOutageRecovers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		records := memory.New()

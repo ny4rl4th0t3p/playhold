@@ -31,6 +31,9 @@ type pendingRoom struct {
 type snapshotWriter struct {
 	records store.Store
 	logger  *slog.Logger
+	// interval is the least time between two saves of a room, which rooms read. Zero saves after every change. It's set
+	// before any room uses the writer.
+	interval time.Duration
 
 	mu      sync.Mutex
 	pending map[string]pendingRoom

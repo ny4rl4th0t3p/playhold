@@ -18,6 +18,8 @@ services:
       - ${MAX_ROOMS:-0}
       - -database-url
       - ${DATABASE_URL-postgres://postgres:playhold@postgres:5432/postgres?sslmode=disable}
+      - -snapshot-interval
+      - ${SNAPSHOT_INTERVAL:-0s}
       - -turn-time
       - ${TURN_TIME:-1m}
       - -finished-room-time

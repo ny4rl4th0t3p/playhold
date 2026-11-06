@@ -340,6 +340,38 @@ func TestFailedWriteDoesNotReplaceANewerSnapshot(t *testing.T) {
 	})
 }
 
+func TestWriterReportsTheLongestAChangeWaited(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const waited = 3 * time.Second
+		logged := &lockedBuffer{}
+		gated := &gatedStore{Store: memory.New(), release: make(chan error)}
+		w := newSnapshotWriter(gated, slog.New(slog.NewTextHandler(logged, nil)))
+		defer w.close(context.Background())
+
+		w.save(store.RoomRecord{ID: "room", Data: []byte("first")})
+		synctest.Wait() // the writer is holding "first"
+
+		// A newer snapshot for the same room still has the older change to make safe, through a failed write too.
+		w.save(store.RoomRecord{ID: "room", Data: []byte("second")})
+		gated.release <- errStoreDown
+		synctest.Wait()
+		time.Sleep(waited)
+		synctest.Wait() // the retry is holding "second"
+		gated.release <- nil
+		synctest.Wait()
+		assert.NotContains(t, logged.String(), "room snapshots written", "it isn't time to report yet")
+
+		time.Sleep(snapshotReportEvery)
+		w.save(store.RoomRecord{ID: "other"})
+		gated.release <- nil
+		synctest.Wait()
+
+		assert.Contains(t, logged.String(), "room snapshots written")
+		assert.Contains(t, logged.String(), "rooms=2")
+		assert.Contains(t, logged.String(), "max_delay=3s")
+	})
+}
+
 func TestWriterFinishesWhatsPendingWhenClosed(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		records := memory.New()

@@ -26,6 +26,8 @@ services:
       - ${TIMERS_AFTER_RESTART:-pause}
       - -disconnect-grace
       - ${DISCONNECT_GRACE:-1m}
+      - -turns-snapshot-version
+      - ${TURNS_SNAPSHOT_VERSION:-1}
       - -shutdown-timeout
       - ${SHUTDOWN_TIMEOUT:-8s}
     # Docker kills the process after this, so it has to be longer than the shutdown timeout.
@@ -60,7 +62,21 @@ services:
       context: ../..
       dockerfile: examples/cards/Dockerfile
       target: bot
-    command: ["-url", "ws://game:8080/ws", "-games", "${GAMES:-100}", "-think", "${THINK:-1s}", "-idle", "${IDLE:-0}"]
+    command:
+      - -url
+      - ws://game:8080/ws
+      - -games
+      - ${GAMES:-100}
+      - -think
+      - ${THINK:-1s}
+      - -rate
+      - ${RATE:-0}
+      - -warmup
+      - ${WARMUP:-0s}
+      - -duration
+      - ${DURATION:-0s}
+      - -idle
+      - ${IDLE:-0}
     # At high load the bot opens connections faster than closed ones free their ports. These only affect this container.
     sysctls:
       net.ipv4.tcp_tw_reuse: 1

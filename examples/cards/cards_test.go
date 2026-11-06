@@ -565,32 +565,64 @@ func TestGameRestartedPartwayMatchesAnUninterruptedOneCardForCard(t *testing.T) 
 	want := transcript(t, startGame(t, testSeed), nil)
 	require.Greater(t, len(want), reconnectTurn, "the game has to last past the restart")
 
+	assert.Equal(t, want, transcriptRestartedOn(t, cards.Options{}, memory.New()))
+}
+
+func TestDeployThatChangesTheSnapshotFormatMatchesCardForCard(t *testing.T) {
+	want := transcript(t, startGame(t, testSeed), nil)
 	records := memory.New()
-	url, stop := startServerWith(t, testSeed, records)
+
+	assert.Equal(t, want, transcriptRestartedOn(t, cards.Options{TurnsSnapshotVersion: 2}, records))
+}
+
+func TestSnapshotFormatTwoSurvivesARestartOfItsOwn(t *testing.T) {
+	version2 := cards.Options{TurnsSnapshotVersion: 2}
+	want := transcript(t, startGame(t, testSeed), nil)
+	records := memory.New()
+	url, stop := startConfigured(t, testSeed, version2, &playhold.ServerConfig{Store: records})
 	g := startGameOn(t, url)
 
 	got := transcript(t, g, func(move int) {
-		if move != reconnectTurn {
-			return
+		if move == reconnectTurn {
+			stop()
+			restartGame(t, g, version2, records)
 		}
-		before := g.first.latest
-		stop()
-
-		// The new server has the store, but not the seed: everything has to come from the snapshot.
-		newURL, _ := startServerWith(t, [32]byte{}, records)
-		first := connect(t, newURL, g.first.id, g.first.secret)
-		other := connect(t, newURL, g.other.id, g.other.secret)
-		first.join()
-		first.readState()
-		other.join()
-		other.readState()
-		first.readState()
-		g.url, g.first, g.other = newURL, first, other
-
-		assert.Equal(t, before.hand.GetCards(), first.latest.hand.GetCards())
 	})
 
 	assert.Equal(t, want, got)
+}
+
+// transcriptRestartedOn plays a game at the first snapshot format, moving partway to a new server with these options.
+func transcriptRestartedOn(t *testing.T, options cards.Options, records store.Store) []string {
+	t.Helper()
+	url, stop := startServerWith(t, testSeed, records)
+	g := startGameOn(t, url)
+
+	return transcript(t, g, func(move int) {
+		if move == reconnectTurn {
+			stop()
+			restartGame(t, g, options, records)
+		}
+	})
+}
+
+// restartGame moves both players to a new server with the store. It doesn't have the seed, so everything has to come
+// from the snapshot.
+func restartGame(t *testing.T, g *game, options cards.Options, records store.Store) {
+	t.Helper()
+	before := g.first.latest
+	newURL, _ := startConfigured(t, [32]byte{}, options, &playhold.ServerConfig{Store: records})
+	first := connect(t, newURL, g.first.id, g.first.secret)
+	other := connect(t, newURL, g.other.id, g.other.secret)
+	first.join()
+	first.readState()
+	other.join()
+	other.readState()
+	first.readState()
+	g.url, g.first, g.other = newURL, first, other
+
+	assert.Equal(t, before.hand.GetCards(), first.latest.hand.GetCards())
+	assert.Equal(t, before.turns.GetCurrent(), first.latest.turns.GetCurrent())
 }
 
 func TestRestoredGameShowsNobodyAnyHiddenCards(t *testing.T) {

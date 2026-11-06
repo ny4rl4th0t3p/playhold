@@ -40,6 +40,7 @@ func main() {
 	var options cards.Options
 	flag.DurationVar(&options.TurnTime, "turn-time", 0, "how long a player has for each turn; 0 uses the default")
 	flag.DurationVar(&options.FinishedRoomTime, "finished-room-time", 0, "how long a room stays open after its game ends; 0 uses the default")
+	flag.IntVar(&options.TurnsSnapshotVersion, "turns-snapshot-version", 1, "saved game format, 1 or 2, to try a deploy that changes it")
 	flag.Parse()
 
 	policy, err := parseTimers(*timers)

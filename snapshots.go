@@ -12,12 +12,17 @@ import (
 const (
 	snapshotWriteTimeout = 10 * time.Second
 	snapshotRetryDelay   = time.Second
+	// snapshotReportEvery is how often the log says how far behind snapshots are.
+	snapshotReportEvery = 10 * time.Second
 )
 
 // pendingRoom is the newest thing waiting to be written for a room.
 type pendingRoom struct {
 	record store.RoomRecord
 	forget bool
+	// since is when the oldest change not yet written was made. It survives newer snapshots replacing this one, because
+	// that change still isn't safe until one of them is written.
+	since time.Time
 }
 
 // snapshotWriter saves room snapshots in the background, so a room never waits on the database. It keeps only the
@@ -30,6 +35,11 @@ type snapshotWriter struct {
 	mu      sync.Mutex
 	pending map[string]pendingRoom
 
+	// Only used on the writer's goroutine.
+	reportedAt   time.Time
+	roomsWritten int
+	maxDelay     time.Duration
+
 	wake      chan struct{} // says pending may have something in it
 	stop      chan struct{} // asks the writer to finish what's pending, then end
 	stopOnce  sync.Once
@@ -41,14 +51,15 @@ type snapshotWriter struct {
 func newSnapshotWriter(records store.Store, logger *slog.Logger) *snapshotWriter {
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &snapshotWriter{
-		records:   records,
-		logger:    logger,
-		pending:   make(map[string]pendingRoom),
-		wake:      make(chan struct{}, 1),
-		stop:      make(chan struct{}),
-		done:      make(chan struct{}),
-		ctx:       ctx,
-		cancelCtx: cancel,
+		records:    records,
+		logger:     logger,
+		pending:    make(map[string]pendingRoom),
+		reportedAt: time.Now(),
+		wake:       make(chan struct{}, 1),
+		stop:       make(chan struct{}),
+		done:       make(chan struct{}),
+		ctx:        ctx,
+		cancelCtx:  cancel,
 	}
 	go w.run()
 	return w
@@ -66,6 +77,10 @@ func (w *snapshotWriter) forget(id string) {
 
 func (w *snapshotWriter) queue(id string, room *pendingRoom) {
 	w.mu.Lock()
+	room.since = time.Now()
+	if older, waiting := w.pending[id]; waiting {
+		room.since = older.since
+	}
 	w.pending[id] = *room
 	w.mu.Unlock()
 
@@ -109,6 +124,7 @@ func (w *snapshotWriter) writePending() {
 		}
 		err := w.write(batch)
 		if err == nil {
+			w.written(batch)
 			continue
 		}
 		w.putBack(batch)
@@ -124,6 +140,21 @@ func (w *snapshotWriter) writePending() {
 	}
 }
 
+// written keeps count, and now and then logs the longest a change waited to be safe. That wait is how much a crash could
+// lose.
+func (w *snapshotWriter) written(batch map[string]pendingRoom) {
+	now := time.Now()
+	for _, room := range batch {
+		w.maxDelay = max(w.maxDelay, now.Sub(room.since))
+	}
+	w.roomsWritten += len(batch)
+	if now.Sub(w.reportedAt) < snapshotReportEvery {
+		return
+	}
+	w.logger.Info("room snapshots written", "rooms", w.roomsWritten, "max_delay", w.maxDelay, "since_last_report", now.Sub(w.reportedAt))
+	w.reportedAt, w.roomsWritten, w.maxDelay = now, 0, 0
+}
+
 func (w *snapshotWriter) takePending() map[string]pendingRoom {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -137,7 +168,10 @@ func (w *snapshotWriter) putBack(batch map[string]pendingRoom) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for id, room := range batch {
-		if _, newer := w.pending[id]; !newer {
+		if newer, ok := w.pending[id]; ok {
+			newer.since = room.since
+			w.pending[id] = newer
+		} else {
 			w.pending[id] = room
 		}
 	}

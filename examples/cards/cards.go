@@ -28,6 +28,9 @@ type Options struct {
 	// OldestClientSchema is the oldest page the server still plays with. The default is the current one, since there's
 	// only been one so far.
 	OldestClientSchema int
+	// TurnsSnapshotVersion is the format the turns module saves games in, so a deploy that changes it can be tried on a
+	// running game. The default is 1, and 2 is the only other.
+	TurnsSnapshotVersion int
 }
 
 // ClientSchemaVersions is what a client built from this code says in its Hello.
@@ -61,6 +64,7 @@ func NewRoomTypeWith(options Options) (*playhold.RoomType, error) {
 				TurnTime:           options.TurnTime,
 				FinishedRoomTime:   options.FinishedRoomTime,
 				OldestClientSchema: options.OldestClientSchema,
+				SnapshotVersion:    options.TurnsSnapshotVersion,
 			},
 			hands.Module{Deck: deck.Keeper{}, Turns: turns.Keeper{TurnTime: options.TurnTime}},
 		},

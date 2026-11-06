@@ -1,0 +1,12 @@
+# Pins each container to its own CPU core, so they can't take time from each other during a measurement. Used on top of
+# compose.yaml by t12.sh. The defaults suit a machine with 4 cores.
+services:
+  game:
+    cpuset: "${GAME_CPUSET:-0}"
+
+  postgres:
+    cpuset: "${POSTGRES_CPUSET:-1}"
+
+  bot:
+    # Two cores, so the bot isn't what limits the run.
+    cpuset: "${BOT_CPUSET:-2,3}"

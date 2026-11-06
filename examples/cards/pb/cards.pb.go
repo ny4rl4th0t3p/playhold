@@ -522,12 +522,14 @@ func (x *DeckState) GetActiveSuit() string {
 
 // TurnsState is everything the turns module saves.
 type TurnsState struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Players       []string               `protobuf:"bytes,1,rep,name=players,proto3" json:"players,omitempty"`
-	Current       uint32                 `protobuf:"varint,2,opt,name=current,proto3" json:"current,omitempty"`
-	Winner        string                 `protobuf:"bytes,3,opt,name=winner,proto3" json:"winner,omitempty"`
-	TurnTimer     uint64                 `protobuf:"varint,4,opt,name=turn_timer,json=turnTimer,proto3" json:"turn_timer,omitempty"`
-	Away          []string               `protobuf:"bytes,5,rep,name=away,proto3" json:"away,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Players []string               `protobuf:"bytes,1,rep,name=players,proto3" json:"players,omitempty"`
+	// current is the index of the player whose turn it is. Snapshot version 2 replaces it with current_player.
+	Current       uint32   `protobuf:"varint,2,opt,name=current,proto3" json:"current,omitempty"`
+	Winner        string   `protobuf:"bytes,3,opt,name=winner,proto3" json:"winner,omitempty"`
+	TurnTimer     uint64   `protobuf:"varint,4,opt,name=turn_timer,json=turnTimer,proto3" json:"turn_timer,omitempty"`
+	Away          []string `protobuf:"bytes,5,rep,name=away,proto3" json:"away,omitempty"`
+	CurrentPlayer string   `protobuf:"bytes,6,opt,name=current_player,json=currentPlayer,proto3" json:"current_player,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -595,6 +597,13 @@ func (x *TurnsState) GetAway() []string {
 		return x.Away
 	}
 	return nil
+}
+
+func (x *TurnsState) GetCurrentPlayer() string {
+	if x != nil {
+		return x.CurrentPlayer
+	}
+	return ""
 }
 
 // TurnExpired is the event when a player runs out of time.
@@ -886,7 +895,7 @@ const file_cards_v1_cards_proto_rawDesc = "" +
 	"\x04pile\x18\x01 \x03(\tR\x04pile\x12\x18\n" +
 	"\adiscard\x18\x02 \x03(\tR\adiscard\x12\x1f\n" +
 	"\vactive_suit\x18\x03 \x01(\tR\n" +
-	"activeSuit\"\x8b\x01\n" +
+	"activeSuit\"\xb2\x01\n" +
 	"\n" +
 	"TurnsState\x12\x18\n" +
 	"\aplayers\x18\x01 \x03(\tR\aplayers\x12\x18\n" +
@@ -894,7 +903,8 @@ const file_cards_v1_cards_proto_rawDesc = "" +
 	"\x06winner\x18\x03 \x01(\tR\x06winner\x12\x1d\n" +
 	"\n" +
 	"turn_timer\x18\x04 \x01(\x04R\tturnTimer\x12\x12\n" +
-	"\x04away\x18\x05 \x03(\tR\x04away\"%\n" +
+	"\x04away\x18\x05 \x03(\tR\x04away\x12%\n" +
+	"\x0ecurrent_player\x18\x06 \x01(\tR\rcurrentPlayer\"%\n" +
 	"\vTurnExpired\x12\x16\n" +
 	"\x06player\x18\x01 \x01(\tR\x06player\"\x15\n" +
 	"\x13FinishedGameExpired\"\x1d\n" +

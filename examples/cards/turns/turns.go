@@ -5,10 +5,14 @@ import (
 	"slices"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/ny4rl4th0t3p/playhold"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/pb"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/rules"
 )
+
+const snapshotVersion2 = 2
 
 var key = playhold.NewKey[state]("turns")
 
@@ -28,6 +32,10 @@ type Module struct {
 	FinishedRoomTime time.Duration
 	// OldestClientSchema is the oldest page the server still plays with.
 	OldestClientSchema int
+	// SnapshotVersion is the format saved games use. A real game would just change its code: this sample has a setting,
+	// so a deploy that changes the format can be tried on a running game. Version 2 keeps the current player by ID, not
+	// by position. The default is 1.
+	SnapshotVersion int
 }
 
 // Name implements playhold.Module.
@@ -38,7 +46,12 @@ func (m Module) Register(r *playhold.Registry) {
 	// The whole game's messages change together, so this one module speaks for all three.
 	r.ClientSchema(int(pb.SchemaVersion_SCHEMA_VERSION_CURRENT), m.OldestClientSchema)
 	playhold.State(r, key, func() *state { return &state{} })
-	playhold.Snapshot(r, key, 1, save, load)
+	if m.SnapshotVersion >= snapshotVersion2 {
+		playhold.Snapshot(r, key, snapshotVersion2, saveV2, loadV2)
+		playhold.Migrate(r, key, 1, migrateToV2)
+	} else {
+		playhold.Snapshot(r, key, 1, save, load)
+	}
 	playhold.On(r, m.playerJoined)
 	playhold.On(r, m.playerWon)
 	playhold.On(r, finishedGameExpired)
@@ -81,6 +94,35 @@ func load(msg *pb.TurnsState) *state {
 		turnTimer: playhold.TimerID(msg.GetTurnTimer()),
 		away:      toPlayers(msg.GetAway()),
 	}
+}
+
+// saveV2 is the same as save, with the current player by ID.
+func saveV2(s *state) *pb.TurnsState {
+	msg := save(s)
+	msg.Current = 0
+	if len(s.players) > 0 {
+		msg.CurrentPlayer = string(s.players[s.current])
+	}
+	return msg
+}
+
+func loadV2(msg *pb.TurnsState) *state {
+	s := load(msg)
+	s.current = max(0, slices.Index(s.players, playhold.PlayerID(msg.GetCurrentPlayer())))
+	return s
+}
+
+// migrateToV2 moves a game saved at version 1 to version 2.
+func migrateToV2(old []byte) ([]byte, error) {
+	msg := &pb.TurnsState{}
+	if err := proto.Unmarshal(old, msg); err != nil {
+		return nil, err
+	}
+	if players := msg.GetPlayers(); len(players) > 0 {
+		msg.CurrentPlayer = players[msg.GetCurrent()]
+	}
+	msg.Current = 0
+	return proto.Marshal(msg)
 }
 
 // playerDisconnected only shows that they've gone. The turn timer already keeps the game moving without them.

@@ -68,10 +68,12 @@ message DeckState {
 // TurnsState is everything the turns module saves.
 message TurnsState {
   repeated string players = 1;
+  // current is the index of the player whose turn it is. Snapshot version 2 replaces it with current_player.
   uint32 current = 2;
   string winner = 3;
   uint64 turn_timer = 4;
   repeated string away = 5;
+  string current_player = 6;
 }
 
 // TurnExpired is the event when a player runs out of time.

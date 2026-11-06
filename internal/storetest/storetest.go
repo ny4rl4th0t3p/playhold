@@ -2,6 +2,7 @@
 package storetest
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,6 +31,8 @@ func Run(t *testing.T, newStore func(t *testing.T) store.Store) {
 		{name: "deleted rooms", test: deletedRooms},
 		{name: "saves and deletes together", test: savesAndDeletesTogether},
 		{name: "deleting an unknown room is fine", test: deletingAnUnknownRoom},
+		{name: "writing nothing is fine", test: writingNothing},
+		{name: "a large batch, saving new and existing rooms and deleting others", test: largeBatch},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -90,6 +93,46 @@ func savesAndDeletesTogether(t *testing.T, s store.Store) {
 
 func deletingAnUnknownRoom(t *testing.T, s store.Store) {
 	require.NoError(t, s.WriteRooms(t.Context(), nil, []string{"nobody"}))
+}
+
+func writingNothing(t *testing.T, s store.Store) {
+	require.NoError(t, s.WriteRooms(t.Context(), nil, nil))
+	require.NoError(t, s.WriteRooms(t.Context(), []store.RoomRecord{}, []string{}))
+}
+
+// largeBatch is about the size the writer sends under load, with every kind of change at once.
+func largeBatch(t *testing.T, s store.Store) {
+	const rooms = 600
+	id := func(i int) string { return "room-" + strconv.Itoa(i) }
+
+	first := make([]store.RoomRecord, 0, rooms)
+	for i := range rooms {
+		first = append(first, room(id(i), "old"))
+	}
+	require.NoError(t, s.WriteRooms(t.Context(), first, nil))
+
+	// The first half is deleted, the second half saved again, and as many new rooms saved.
+	var saves []store.RoomRecord
+	var deletes []string
+	want := make([]store.RoomRecord, 0, rooms)
+	for i := range rooms {
+		if i < rooms/2 {
+			deletes = append(deletes, id(i))
+			continue
+		}
+		saves = append(saves, room(id(i), "new"))
+		want = append(want, room(id(i), "new"))
+	}
+	for i := rooms; i < rooms+rooms/2; i++ {
+		saves = append(saves, room(id(i), "added"))
+		want = append(want, room(id(i), "added"))
+	}
+	require.NoError(t, s.WriteRooms(t.Context(), saves, deletes))
+
+	got, err := s.LoadRooms(t.Context())
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, want, got)
 }
 
 func unknownGuest(t *testing.T, s store.Store) {

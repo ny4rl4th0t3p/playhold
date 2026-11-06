@@ -7,12 +7,25 @@
 #
 # Writes to t12-results/, and ends by printing each run's summary and its longest snapshot delay. Settings: RUNS, GAMES,
 # RATE, WARMUP and DURATION.
+#
+# With PROFILE=1, every run also collects the same profiles at the same point, PROFILE_AFTER seconds after its bot
+# starts (default 90, past the warm-up): a 30 s CPU profile, then a 5 s execution trace, then allocations, blocking and
+# lock contention, plus the CPU pinning Docker applied. If Go is installed, each profile also gets a text report. These
+# runs are named prof-off-N and prof-on-N, because profiling slows the server down and their latencies don't count.
 
 set -eu
 
 runs="${RUNS:-3}"
 results="t12-results"
 compose="docker compose -p playhold-t12 -f compose.yaml -f compose.t12.yaml"
+profile="${PROFILE:-}"
+profile_after="${PROFILE_AFTER:-90}"
+debug_url="http://127.0.0.1:6060/debug/pprof"
+prefix=""
+if [ -n "$profile" ]; then
+    export DEBUG_ADDR=":6060"
+    prefix="prof-"
+fi
 
 export GAMES="${GAMES:-500}"
 export RATE="${RATE:-3000}"
@@ -21,6 +34,33 @@ export DURATION="${DURATION:-5m30s}"
 export FINISHED_ROOM_TIME="${FINISHED_ROOM_TIME:-5s}" # so finished games don't pile up over a long run
 
 mkdir -p "$results"
+
+# collect_profiles runs alongside a run's bot, always at the same point of the run, so runs can be compared.
+collect_profiles() {
+    label="$1"
+    sleep "$profile_after"
+    docker inspect -f '{{.HostConfig.CpusetCpus}}' playhold-t12-game-1 >"$results/$label-cpuset.txt" 2>&1 || true
+    curl -fsS -o "$results/$label-cpu.pprof" "$debug_url/profile?seconds=30" || echo "cpu profile failed" >&2
+    curl -fsS -o "$results/$label-trace.out" "$debug_url/trace?seconds=5" || echo "trace failed" >&2
+    for name in allocs block mutex; do
+        curl -fsS -o "$results/$label-$name.pprof" "$debug_url/$name" || echo "$name profile failed" >&2
+    done
+}
+
+# report writes each profile of a run as text, if Go is installed.
+report() {
+    label="$1"
+    command -v go >/dev/null 2>&1 || return 0
+    base="$results/$label"
+    go tool pprof -top -nodecount=40 "$base-cpu.pprof" >"$base-cpu.txt" 2>&1 || true
+    go tool pprof -top -cum -nodecount=40 "$base-cpu.pprof" >"$base-cpu-cum.txt" 2>&1 || true
+    go tool pprof -sample_index=alloc_space -top -nodecount=40 "$base-allocs.pprof" >"$base-allocs.txt" 2>&1 || true
+    go tool pprof -top -nodecount=30 "$base-block.pprof" >"$base-block.txt" 2>&1 || true
+    go tool pprof -top -nodecount=30 "$base-mutex.pprof" >"$base-mutex.txt" 2>&1 || true
+    if go tool trace -pprof=sched "$base-trace.out" >"$base-sched.pprof" 2>"$base-sched.txt"; then
+        go tool pprof -top -nodecount=40 "$base-sched.pprof" >"$base-sched.txt" 2>&1 || true
+    fi
+}
 
 measure() {
     label="$1"
@@ -38,9 +78,18 @@ measure() {
     sleep 5
     sh record-stats.sh "$results/$label-bot.csv" 5 playhold-t12-bot >/dev/null &
     bot_stats=$!
+    profiler=""
+    if [ -n "$profile" ]; then
+        collect_profiles "$label" &
+        profiler=$!
+    fi
 
     status=0
     wait "$bot" || status=$?
+    if [ -n "$profiler" ]; then
+        wait "$profiler" || true
+        report "$label"
+    fi
     # The bot's recorder stops by itself when its container has gone.
     kill "$game_stats" "$postgres_stats" 2>/dev/null || true
     wait "$bot_stats" 2>/dev/null || true
@@ -53,17 +102,24 @@ measure() {
 n=1
 while [ "$n" -le "$runs" ]; do
     export DATABASE_URL="" # empty means nothing is saved
-    measure "off-$n"
+    measure "${prefix}off-$n"
     unset DATABASE_URL # unset means the Compose default, the postgres service
-    measure "on-$n"
+    measure "${prefix}on-$n"
     n=$((n + 1))
 done
 
 echo
-echo "Summaries. A run only counts if the bot's CPU, in its CSV, stayed under about 80% of its two cores:"
+echo "Summaries. A run only counts if the bot's CPU, in its CSV, stayed under about 80% of its two cores; prof- runs never"
+echo "count, because profiling slows the server down:"
 grep -H '^summary' "$results"/*-bot.log
+if [ -n "$profile" ]; then
+    echo
+    echo "CPU pinning Docker applied to the game server in each profiled run (should be 0):"
+    grep -H . "$results"/prof-*-cpuset.txt || true
+    echo "Profiles and their text reports are in $results/prof-*."
+fi
 echo
 echo "Longest snapshot delay in each report of each run with PostgreSQL on, in the order they were logged:"
-for log in "$results"/on-*-game.log; do
+for log in "$results"/${prefix}on-*-game.log; do
     echo "$log: $(grep 'room snapshots written' "$log" | sed 's/.*max_delay=\([^ ]*\).*/\1/' | tr '\n' ' ')"
 done

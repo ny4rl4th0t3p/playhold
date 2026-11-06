@@ -3,6 +3,14 @@
 services:
   game:
     cpuset: "${GAME_CPUSET:-0}"
+    # For measuring: GAME_GODEBUG=gctrace=1 logs every garbage collection, GAME_GOGC sets the game's GOGC (such as 400,
+    # for rarer collections), and DEBUG_ADDR=:6060 turns on the profiling endpoints. Not GODEBUG or GOGC themselves,
+    # which docker compose, a Go program too, would also pick up.
+    environment:
+      GODEBUG: "${GAME_GODEBUG:-}"
+      GOGC: "${GAME_GOGC:-}"
+    ports:
+      - "127.0.0.1:6060:6060"
 
   postgres:
     cpuset: "${POSTGRES_CPUSET:-1}"

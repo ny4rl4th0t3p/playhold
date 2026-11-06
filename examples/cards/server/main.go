@@ -37,6 +37,7 @@ func main() {
 	timers := flag.String("timers-after-restart", "pause", "what happens to turn timers when the server comes back: pause, keep or cancel")
 	shutdownTimeout := flag.Duration("shutdown-timeout", defaultShutdownTimeout,
 		"how long to wait for games to be saved before exiting; keep it below what your service manager allows")
+	debugAddr := flag.String("debug-addr", "", "address for Go's profiling endpoints; keep it private; empty turns them off")
 	var options cards.Options
 	flag.DurationVar(&options.TurnTime, "turn-time", 0, "how long a player has for each turn; 0 uses the default")
 	flag.DurationVar(&options.FinishedRoomTime, "finished-room-time", 0, "how long a room stays open after its game ends; 0 uses the default")
@@ -46,6 +47,9 @@ func main() {
 	policy, err := parseTimers(*timers)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if *debugAddr != "" {
+		serveDebug(*debugAddr)
 	}
 	cfg := &playhold.ServerConfig{
 		TimersAfterRestart: policy,

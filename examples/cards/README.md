@@ -76,6 +76,9 @@ sh record-stats.sh
 | `DATABASE_URL`           | The `postgres` service | Where games are saved. Set it empty to save nothing, for comparison                       |
 | `POSTGRES_CPUS`          | 1                      | CPUs for PostgreSQL                                                                       |
 | `POSTGRES_MEMORY`        | 1g                     | Memory for PostgreSQL                                                                     |
+| `DEBUG_ADDR`             | empty, off             | Address for Go's profiling endpoints, such as `:6060`. With `t12.sh`, published on `127.0.0.1:6060` only |
+| `GAME_GODEBUG`           | empty                  | With `t12.sh`, the game server's `GODEBUG`, such as `gctrace=1` to log every garbage collection |
+| `GAME_GOGC`              | empty, Go's default    | With `t12.sh`, the game server's `GOGC`, such as `400` for rarer garbage collections and a larger heap |
 
 The bot prints finished games, failures, moves per second and how long the server took to answer a move, followed by the
 reason for any failures:
@@ -178,6 +181,17 @@ lose at that moment.
 
 A run only counts if the machine was otherwise idle, and if the CSVs show the bot stayed under about 80% of its two
 cores and the game server under 70% of its one. Docker counts 100% per core, so for the bot that's about 160%.
+
+To see where the time goes, profile the same runs:
+
+```bash
+PROFILE=1 RUNS=1 sh t12.sh
+```
+
+Each run then collects the same profiles at the same point, 90 seconds after its bot starts (`PROFILE_AFTER`): a 30 s
+CPU profile, a 5 s execution trace, allocations, blocking and lock contention, and the CPU pinning Docker applied. If Go
+is installed, each profile also gets a text report next to it, such as `prof-on-1-cpu.txt`. These runs are named
+`prof-off-1`, `prof-on-1` and so on, and their latencies don't count, because profiling slows the server down.
 
 ## Run it without Docker
 

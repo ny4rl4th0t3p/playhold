@@ -28,6 +28,8 @@ services:
       - ${DISCONNECT_GRACE:-1m}
       - -turns-snapshot-version
       - ${TURNS_SNAPSHOT_VERSION:-1}
+      - -debug-addr
+      - ${DEBUG_ADDR:-}
       - -shutdown-timeout
       - ${SHUTDOWN_TIMEOUT:-8s}
     # Docker kills the process after this, so it has to be longer than the shutdown timeout.

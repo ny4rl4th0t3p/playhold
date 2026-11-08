@@ -24,14 +24,22 @@ type graceTimer struct {
 	due    time.Time
 }
 
+// roomSessions is what the lobby tells each room it makes about its players.
+type roomSessions struct {
+	grace    time.Duration // zero tracks no connections
+	inactive time.Duration // zero never closes the room for inactivity
+	admit    func() bool   // whether a new player may take a seat now; nil always allows
+}
+
 // startSessions turns on the grace period. Every seated player starts one, because a room that has just been restored
 // has no connections yet, and anyone who doesn't come back has to be noticed. It's the room's first input, so it can't
 // be refused for a full queue.
-func (r *Room) startSessions(grace, inactive time.Duration) {
+func (r *Room) startSessions(s roomSessions) {
 	_ = r.submit(input{noViews: true, run: func(_ *RoomContext) error {
-		r.inactive = inactive
+		r.inactive = s.inactive
+		r.admit = s.admit
 		r.playerActive() // the clock starts now, also for a room restored with nobody in it yet
-		r.grace = grace
+		r.grace = s.grace
 		for _, player := range r.seats {
 			if !slices.Contains(r.away, player) {
 				r.startGrace(player)

@@ -162,6 +162,21 @@ func (rt *Runtime) register(room *Room) error {
 	return nil
 }
 
+// queueFill returns the share of all running rooms' inbound queues in use, zero with no rooms.
+func (rt *Runtime) queueFill() float64 {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	var used, capacity int
+	for _, room := range rt.rooms {
+		used += len(room.inbox)
+		capacity += cap(room.inbox)
+	}
+	if capacity == 0 {
+		return 0
+	}
+	return float64(used) / float64(capacity)
+}
+
 // forget removes a finished room.
 func (rt *Runtime) forget(room *Room) {
 	rt.mu.Lock()

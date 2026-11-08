@@ -20,6 +20,8 @@ services:
       - ${GUEST_RATE:-off}
       - -message-rate
       - ${MESSAGE_RATE:-50ms/40}
+      - -admission
+      - ${ADMISSION:-}
       - -empty-room-timeout
       - ${EMPTY_ROOM_TIMEOUT:-5m}
       - -max-rooms

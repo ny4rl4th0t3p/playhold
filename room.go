@@ -209,6 +209,7 @@ type Room struct {
 	away   []PlayerID    // their PlayerDisconnected has fired
 
 	// Also owned by the room's goroutine. Zero inactive means the room never closes for inactivity.
+	admit       func() bool // whether a new player may take a seat now; nil always allows
 	inactive    time.Duration
 	inactiveDue time.Time // the room closes then, unless a player sends something first
 
@@ -332,6 +333,9 @@ func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 		if !slices.Contains(r.seats, player) {
 			if r.draining.Load() {
 				return ErrDraining
+			}
+			if r.admit != nil && !r.admit() {
+				return ErrOverloaded // a player who already has a seat is never refused
 			}
 			if limit := r.typ.cfg.MaxPlayers; limit > 0 && len(r.seats) >= limit {
 				return ErrRoomFull

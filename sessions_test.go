@@ -459,6 +459,7 @@ func TestReconnectStormLosesNoRoom(t *testing.T) {
 			// Every player connects from 127.0.0.1, so the limits per address are off.
 			ConnectRate: RateLimit{Off: true},
 			GuestRate:   RateLimit{Off: true},
+			Admission:   Admission{Off: true}, // its tiny queues would read as overload
 			MemoryLimit: -1,
 			Logger:      slog.New(slog.DiscardHandler),
 			Development: true,

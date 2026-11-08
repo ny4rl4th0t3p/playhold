@@ -27,6 +27,7 @@ type gateway struct {
 	logger      *slog.Logger
 	newGuests   *perIP // nil if off
 	messageRate RateLimit
+	admission   *admission // nil if off
 }
 
 func (g *gateway) connect(c *transport.Conn) (func(*wire.ClientFrame), error) {
@@ -107,6 +108,10 @@ func (s *session) hello(seq uint64, hello *wire.Hello) {
 			s.rateLimited(seq)
 			return
 		}
+		if !s.gateway.admission.allow() {
+			s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, ErrOverloaded.Error())
+			return
+		}
 		player, secret, err = guests.create(ctx)
 	} else {
 		var known bool
@@ -152,6 +157,9 @@ func (s *session) join(seq uint64, code string) {
 	switch {
 	case errors.Is(err, ErrTooManyRooms):
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_SERVER_FULL, "the server has no space for more games")
+		return
+	case errors.Is(err, ErrOverloaded):
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_SERVER_FULL, err.Error())
 		return
 	case errors.Is(err, ErrDraining):
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, err.Error())
@@ -342,6 +350,8 @@ func wireErrorCode(err error) wire.ErrorCode {
 		return wire.ErrorCode_ERROR_CODE_ROOM_FULL
 	case errors.Is(err, ErrDraining):
 		return wire.ErrorCode_ERROR_CODE_UNAVAILABLE
+	case errors.Is(err, ErrOverloaded):
+		return wire.ErrorCode_ERROR_CODE_SERVER_FULL
 	default:
 		return wire.ErrorCode_ERROR_CODE_REJECTED
 	}

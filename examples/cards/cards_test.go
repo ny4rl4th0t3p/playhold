@@ -98,6 +98,7 @@ func startConfigured(t *testing.T, seed [32]byte, options cards.Options, cfg *pl
 	// These tests play and reconnect as fast as they can, from one address, so the rate limits are off.
 	off := playhold.RateLimit{Off: true}
 	cfg.ConnectRate, cfg.GuestRate, cfg.MessageRate = off, off, off
+	cfg.Admission = playhold.Admission{Off: true}
 	server, err := playhold.NewServer(rt, cfg)
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)

@@ -44,6 +44,9 @@ func startServerWith(t *testing.T, cfg *ServerConfig) string {
 	cfg.MemoryLimit = -1
 	cfg.Logger = slog.New(slog.DiscardHandler)
 	cfg.Development = true // plain HTTP, as in every test that doesn't check TLS
+	if cfg.Admission == (Admission{}) {
+		cfg.Admission.Off = true // a busy test machine shouldn't refuse players; admission_test.go turns it on
+	}
 	server, err := NewServer(newTestRuntime(t), cfg)
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
@@ -594,6 +597,7 @@ func TestPlayersAreToldWhenTheirRoomIsStuck(t *testing.T) {
 		MemoryLimit: -1,
 		Logger:      slog.New(slog.DiscardHandler),
 		Development: true,
+		Admission:   Admission{Off: true},
 	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)

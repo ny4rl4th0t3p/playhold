@@ -57,6 +57,11 @@ type ServerConfig struct {
 	// state is deleted, and players are told it closed as inactive. The default is 30 minutes. The time starts over when
 	// the server restarts.
 	InactiveRoomTimeout Timeout
+	// Admission refuses new guests, rooms and seats while the server is overloaded: memory near its limit, goroutines
+	// waiting too long to run, or rooms' queues filling up. Rooms carry on, and players with a seat can always come back,
+	// so connections themselves are never refused for this: who is connecting is only known once they say Hello. See
+	// Admission for the defaults.
+	Admission Admission
 	// MaxRooms is the most rooms the server runs at once, counting finished ones until they close. Over it, joining a
 	// new code gets an error, and existing rooms carry on. The default is 10,000.
 	MaxRooms int
@@ -113,6 +118,9 @@ type Server struct {
 	logger      *slog.Logger
 	development bool
 	proxied     bool // there are trusted proxies, which may end TLS in front of the server
+
+	admission     *admission // nil if off
+	stopAdmission context.CancelFunc
 }
 
 // NewServer returns a Server that runs its rooms on rt. With a store, it first brings back every room saved there, and
@@ -168,6 +176,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		}
 	}
 	connects := newPerIP(connectRate)
+	admit := newAdmission(cfg.Admission.orDefault(), rt.queueFill, logger)
 
 	g := &gateway{
 		guests:      newGuests(records),
@@ -175,10 +184,12 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		logger:      logger,
 		newGuests:   newPerIP(guestRate),
 		messageRate: messageRate,
+		admission:   admit,
 	}
 	g.lobby.timers = cfg.TimersAfterRestart
 	g.lobby.grace = grace.duration()
 	g.lobby.inactive = inactive.duration()
+	g.lobby.admit = admit.allow
 	if writer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
 		defer cancel()
@@ -187,14 +198,21 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			return nil, err
 		}
 	}
+	admissionCtx, stopAdmission := context.WithCancel(context.Background())
+	if admit != nil {
+		admit.check(admit.sample()) // so the server starts knowing where it stands
+		go admit.run(admissionCtx)
+	}
 	return &Server{
-		writer:      writer,
-		rt:          rt,
-		lobby:       g.lobby,
-		records:     records,
-		logger:      logger,
-		development: cfg.Development,
-		proxied:     len(cfg.TrustedProxies) > 0,
+		writer:        writer,
+		rt:            rt,
+		lobby:         g.lobby,
+		records:       records,
+		logger:        logger,
+		development:   cfg.Development,
+		proxied:       len(cfg.TrustedProxies) > 0,
+		admission:     admit,
+		stopAdmission: stopAdmission,
 		transport: transport.NewServer(&transport.Config{
 			MaxMessageBytes:  cfg.MaxMessageBytes,
 			MaxConns:         cfg.MaxConns,
@@ -264,6 +282,7 @@ func (s *Server) Drain() { s.lobby.drain() }
 // It also shuts down the Runtime. It returns the context's error if a room didn't finish in time, though it still does
 // the rest. It's safe to call more than once.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.stopAdmission()
 	s.Drain()
 	err := s.rt.Shutdown(ctx)
 	if s.writer != nil {

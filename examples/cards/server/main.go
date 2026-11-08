@@ -23,6 +23,8 @@ import (
 const (
 	readHeaderTimeout      = 5 * time.Second
 	defaultShutdownTimeout = 8 * time.Second
+
+	off = "off" // turns a limit, a timeout or admission control off
 )
 
 func main() {
@@ -53,6 +55,8 @@ type flags struct {
 	connectRate, guestRate, messageRate string
 
 	emptyRoom, grace, inactiveRoom string
+
+	admission string
 
 	maxPerIP, maxRooms int
 
@@ -91,6 +95,8 @@ func defineFlags(fs *flag.FlagSet) *flags {
 		"how long a player can be disconnected before others are told, or off; empty uses the default")
 	fs.StringVar(&f.inactiveRoom, "inactive-room-timeout", "",
 		"how long a room stays open with no player sending anything, or off; empty uses the default")
+	fs.StringVar(&f.admission, "admission", "",
+		"off stops refusing new guests, rooms and seats when the server is overloaded; empty leaves it on")
 	fs.IntVar(&f.maxRooms, "max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
 	fs.StringVar(&f.databaseURL, "database-url", "", "PostgreSQL to save games in; without it, a restart loses them")
 	fs.DurationVar(&f.snapshotInterval, "snapshot-interval", 0,
@@ -134,6 +140,9 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 			return nil, nil, err
 		}
 	}
+	if f.admission != "" && f.admission != off {
+		return nil, nil, fmt.Errorf("-admission %q: use off, or leave it empty", f.admission)
+	}
 	cfg := &playhold.ServerConfig{
 		SnapshotInterval:    f.snapshotInterval,
 		TimersAfterRestart:  policy,
@@ -145,6 +154,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		EmptyRoomTimeout:    timeouts[0],
 		DisconnectGrace:     timeouts[1],
 		InactiveRoomTimeout: timeouts[2],
+		Admission:           playhold.Admission{Off: f.admission == off},
 		OriginPatterns:      splitList(f.origins),
 		TrustedProxies:      trusted,
 		Development:         f.dev,
@@ -195,7 +205,7 @@ func parseRate(value string) (playhold.RateLimit, error) {
 	switch value {
 	case "":
 		return playhold.RateLimit{}, nil
-	case "off":
+	case off:
 		return playhold.RateLimit{Off: true}, nil
 	}
 	everyText, burstText, found := strings.Cut(value, "/")
@@ -215,7 +225,7 @@ func parseTimeout(value string) (playhold.Timeout, error) {
 	switch value {
 	case "":
 		return playhold.Timeout{}, nil
-	case "off":
+	case off:
 		return playhold.Timeout{Off: true}, nil
 	}
 	after, err := time.ParseDuration(value)

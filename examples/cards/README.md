@@ -55,35 +55,36 @@ compare the trend with the bot's reports, which use the same UTC times:
 sh record-stats.sh
 ```
 
-| Setting                  | In Compose, if unset   | What it does                                                                                             |
-|--------------------------|------------------------|----------------------------------------------------------------------------------------------------------|
-| `GAMES`                  | 100                    | Games played at once, with two connections each                                                          |
-| `THINK`                  | 1s                     | How long a bot waits before each move                                                                    |
-| `GAME_CPUS`              | 1                      | CPUs for the game server                                                                                 |
-| `GAME_MEMORY`            | 1g                     | Memory for the game server, which sets its soft limit to about 80% of this                               |
-| `EMPTY_ROOM_TIMEOUT`     | 5m                     | How long a room stays open with nobody connected, including after its game ends, or `off`                |
-| `MAX_ROOMS`              | 10,000                 | Most rooms at once, counting finished ones until they close; above it, joins get an error                |
-| `TURN_TIME`              | 1m                     | How long a player has for each turn                                                                      |
-| `FINISHED_ROOM_TIME`     | 1m                     | How long a room stays open after its game ends                                                           |
-| `TIMERS_AFTER_RESTART`   | pause                  | What a server coming back does with turn timers: `pause`, `keep` or `cancel`                             |
-| `DISCONNECT_GRACE`       | 1m                     | How long a player can be disconnected before the other player is told, or `off`                          |
-| `SHUTDOWN_TIMEOUT`       | 8s                     | How long to wait for games to be saved before exiting                                                    |
-| `STOP_GRACE_PERIOD`      | 10s                    | How long Docker waits before killing the server; keep it above `SHUTDOWN_TIMEOUT`                        |
-| `TURNS_SNAPSHOT_VERSION` | 1                      | The format saved games use, 1 or 2, to try a deploy that changes it                                      |
-| `RATE`                   | 0                      | Moves per second across all games, on a fixed schedule, instead of `THINK`                               |
-| `WARMUP`                 | 0s                     | How long to leave out of the bot's final summary                                                         |
-| `DURATION`               | 0s                     | How long the bot runs; 0s runs until stopped                                                             |
-| `IDLE`                   | 0                      | Instead of playing, hold this many idle connections, to measure what one costs                           |
-| `DATABASE_URL`           | The `postgres` service | Where games are saved. Set it empty to save nothing, for comparison                                      |
-| `SNAPSHOT_INTERVAL`      | 0s                     | Least time between two saves of a game; 0s saves after every move. A crash can lose up to this much      |
-| `POSTGRES_CPUS`          | 1                      | CPUs for PostgreSQL                                                                                      |
-| `POSTGRES_MEMORY`        | 1g                     | Memory for PostgreSQL                                                                                    |
-| `CONNECT_RATE`           | off, for the bot       | New connections per address, as `EVERY/BURST`, or `off`. The server's own default is `200ms/20`          |
-| `GUEST_RATE`             | off, for the bot       | New guests per address, as `EVERY/BURST`, or `off`. The server's own default is `6s/20`                  |
-| `MESSAGE_RATE`           | 50ms/40                | Frames per connection, as `EVERY/BURST`, or `off`. The same as the server's own default                  |
-| `DEBUG_ADDR`             | empty, off             | Address for Go's profiling endpoints, such as `:6060`. With `t12.sh`, published on `127.0.0.1:6060` only |
-| `GAME_GODEBUG`           | empty                  | With `t12.sh`, the game server's `GODEBUG`, such as `gctrace=1` to log every garbage collection          |
-| `GAME_GOGC`              | empty, Go's default    | With `t12.sh`, the game server's `GOGC`, such as `400` for rarer garbage collections and a larger heap   |
+| Setting                  | In Compose, if unset   | What it does                                                                                               |
+|--------------------------|------------------------|------------------------------------------------------------------------------------------------------------|
+| `GAMES`                  | 100                    | Games played at once, with two connections each                                                            |
+| `THINK`                  | 1s                     | How long a bot waits before each move                                                                      |
+| `GAME_CPUS`              | 1                      | CPUs for the game server                                                                                   |
+| `GAME_MEMORY`            | 1g                     | Memory for the game server, which sets its soft limit to about 80% of this                                 |
+| `EMPTY_ROOM_TIMEOUT`     | 5m                     | How long a room stays open with nobody connected, including after its game ends, or `off`                  |
+| `MAX_ROOMS`              | 10,000                 | Most rooms at once, counting finished ones until they close; above it, joins get an error                  |
+| `TURN_TIME`              | 1m                     | How long a player has for each turn                                                                        |
+| `FINISHED_ROOM_TIME`     | 1m                     | How long a room stays open after its game ends                                                             |
+| `TIMERS_AFTER_RESTART`   | pause                  | What a server coming back does with turn timers: `pause`, `keep` or `cancel`                               |
+| `DISCONNECT_GRACE`       | 1m                     | How long a player can be disconnected before the other player is told, or `off`                            |
+| `SHUTDOWN_TIMEOUT`       | 8s                     | How long to wait for games to be saved before exiting                                                      |
+| `STOP_GRACE_PERIOD`      | 10s                    | How long Docker waits before killing the server; keep it above `SHUTDOWN_TIMEOUT`                          |
+| `TURNS_SNAPSHOT_VERSION` | 1                      | The format saved games use, 1 or 2, to try a deploy that changes it                                        |
+| `RATE`                   | 0                      | Moves per second across all games, on a fixed schedule, instead of `THINK`                                 |
+| `WARMUP`                 | 0s                     | How long to leave out of the bot's final summary                                                           |
+| `DURATION`               | 0s                     | How long the bot runs; 0s runs until stopped                                                               |
+| `IDLE`                   | 0                      | Instead of playing, hold this many idle connections, to measure what one costs                             |
+| `DATABASE_URL`           | The `postgres` service | Where games are saved. Set it empty to save nothing, for comparison                                        |
+| `SNAPSHOT_INTERVAL`      | 0s                     | Least time between two saves of a game; 0s saves after every move. A crash can lose up to this much        |
+| `POSTGRES_CPUS`          | 1                      | CPUs for PostgreSQL                                                                                        |
+| `POSTGRES_MEMORY`        | 1g                     | Memory for PostgreSQL                                                                                      |
+| `CONNECT_RATE`           | off, for the bot       | New connections per address, as `EVERY/BURST`, or `off`. The server's own default is `200ms/20`            |
+| `GUEST_RATE`             | off, for the bot       | New guests per address, as `EVERY/BURST`, or `off`. The server's own default is `6s/20`                    |
+| `MESSAGE_RATE`           | 50ms/40                | Frames per connection, as `EVERY/BURST`, or `off`. The same as the server's own default                    |
+| `ADMISSION`              | empty, on              | `off` stops refusing new guests, rooms and seats when the server is overloaded, to measure past that point |
+| `DEBUG_ADDR`             | empty, off             | Address for Go's profiling endpoints, such as `:6060`. With `t12.sh`, published on `127.0.0.1:6060` only   |
+| `GAME_GODEBUG`           | empty                  | With `t12.sh`, the game server's `GODEBUG`, such as `gctrace=1` to log every garbage collection            |
+| `GAME_GOGC`              | empty, Go's default    | With `t12.sh`, the game server's `GOGC`, such as `400` for rarer garbage collections and a larger heap     |
 
 The bot prints finished games, failures, moves per second and how long the server took to answer a move, followed by the
 reason for any failures:

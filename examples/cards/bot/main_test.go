@@ -41,6 +41,7 @@ func TestBotPlaysWholeGamesAgainstARealServer(t *testing.T) {
 		ConnectRate:   noLimit,
 		GuestRate:     noLimit,
 		MessageRate:   noLimit,
+		Admission:     playhold.Admission{Off: true},
 	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
@@ -195,6 +196,7 @@ func gameServer(t *testing.T, addr string, records store.Store, options cards.Op
 		ConnectRate: noLimit,
 		GuestRate:   noLimit,
 		MessageRate: noLimit,
+		Admission:   playhold.Admission{Off: true},
 	})
 	require.NoError(t, err)
 	var listen net.ListenConfig

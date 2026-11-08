@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 )
@@ -20,13 +22,15 @@ const (
 
 // gateway connects client connections to guests and rooms.
 type gateway struct {
-	guests *guests
-	lobby  *lobby
-	logger *slog.Logger
+	guests      *guests
+	lobby       *lobby
+	logger      *slog.Logger
+	newGuests   *perIP // nil if off
+	messageRate RateLimit
 }
 
 func (g *gateway) connect(c *transport.Conn) (func(*wire.ClientFrame), error) {
-	s := &session{gateway: g, conn: c}
+	s := &session{gateway: g, conn: c, frames: g.messageRate.limiter()}
 	c.OnClose(s.ended)
 	return s.frame, nil
 }
@@ -35,7 +39,11 @@ func (g *gateway) connect(c *transport.Conn) (func(*wire.ClientFrame), error) {
 type session struct {
 	gateway *gateway
 	conn    *transport.Conn
-	player  PlayerID // only used on the connection's read goroutine
+
+	// Only used on the connection's read goroutine.
+	player   PlayerID
+	frames   *rate.Limiter                // every frame; nil if off
+	messages map[handlerKey]*rate.Limiter // messages a module limits, created when first sent
 
 	// The room's goroutine reports the result of a Join, so these need the lock.
 	mu     sync.Mutex
@@ -48,6 +56,10 @@ type session struct {
 
 func (s *session) frame(frame *wire.ClientFrame) {
 	seq := frame.GetSeq()
+	if !allow(s.frames) {
+		s.rateLimited(seq)
+		return
+	}
 	switch body := frame.GetBody().(type) {
 	case *wire.ClientFrame_Hello:
 		s.hello(seq, body.Hello)
@@ -62,6 +74,11 @@ func (s *session) frame(frame *wire.ClientFrame) {
 
 func (s *session) malformed(seq uint64, message string) {
 	s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_MALFORMED_FRAME, message)
+}
+
+// rateLimited answers a frame refused for coming too fast, so the client knows it wasn't handled.
+func (s *session) rateLimited(seq uint64) {
+	s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_RATE_LIMITED, "too many requests; slow down")
 }
 
 func (s *session) hello(seq uint64, hello *wire.Hello) {
@@ -86,6 +103,10 @@ func (s *session) hello(seq uint64, hello *wire.Hello) {
 	player, secret := PlayerID(hello.GetPlayerId()), ""
 	var err error
 	if player == "" && hello.GetSecret() == "" {
+		if !s.gateway.newGuests.allow(s.conn.IP()) {
+			s.rateLimited(seq)
+			return
+		}
 		player, secret, err = guests.create(ctx)
 	} else {
 		var known bool
@@ -246,6 +267,9 @@ func (s *session) message(seq uint64, msg *wire.ModuleMessage) {
 	case msg.GetModule() == "":
 		s.malformed(seq, "message has no module")
 		return
+	case !s.allowMessage(handlerKey{module: msg.GetModule(), id: msg.GetId()}):
+		s.rateLimited(seq)
+		return
 	}
 	report := func(err error) {
 		if err != nil {
@@ -253,6 +277,23 @@ func (s *session) message(seq uint64, msg *wire.ModuleMessage) {
 		}
 	}
 	report(room.dispatch(s.player, msg.GetModule(), msg.GetId(), msg.GetPayload(), report))
+}
+
+// allowMessage applies the limit a module set on this message, if any.
+func (s *session) allowMessage(key handlerKey) bool {
+	limit, ok := s.gateway.lobby.typ.limits[key]
+	if !ok {
+		return true
+	}
+	limiter := s.messages[key]
+	if limiter == nil {
+		if s.messages == nil {
+			s.messages = make(map[handlerKey]*rate.Limiter)
+		}
+		limiter = limit.limiter()
+		s.messages[key] = limiter
+	}
+	return limiter.Allow()
 }
 
 // ended releases what the connection held. The player keeps their seat.

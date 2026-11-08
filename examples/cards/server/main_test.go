@@ -3,6 +3,7 @@ package main
 import (
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,35 @@ func TestParseProxies(t *testing.T) {
 
 	_, err = parseProxies("10.0.0.2")
 	require.ErrorContains(t, err, "-trusted-proxies", "an address without its range length")
+}
+
+func TestParseRate(t *testing.T) {
+	tests := []struct {
+		value   string
+		want    playhold.RateLimit
+		wantErr bool
+	}{
+		{value: "", want: playhold.RateLimit{}},
+		{value: "off", want: playhold.RateLimit{Off: true}},
+		{value: "200ms/20", want: playhold.RateLimit{Every: 200 * time.Millisecond, Burst: 20}},
+		{value: "200ms", wantErr: true},
+		{value: "fast/20", wantErr: true},
+		{value: "0s/20", wantErr: true},
+		{value: "1s/0", wantErr: true},
+		{value: "1s/many", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			got, err := parseRate(tt.value)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestCheckDebugAddr(t *testing.T) {

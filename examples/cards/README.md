@@ -29,7 +29,7 @@ Two tabs in the same browser share one identity, so the newest tab replaces the 
 
 The game runs limited to 1 CPU and 1 GB of memory, the size of a small VPS. To play from another machine on your
 network, start it with `BIND=0.0.0.0`. It runs in development mode (`-dev`), over plain HTTP with the safety checks off,
-and there's no rate limiting yet, so don't expose it to the internet.
+and with the rate limits per address off for the load bot, so don't expose it to the internet.
 
 Games are saved in PostgreSQL, so they survive the server stopping. Try it partway through a game, and each player gets
 their seat and cards back when the page reconnects:
@@ -55,7 +55,7 @@ compare the trend with the bot's reports, which use the same UTC times:
 sh record-stats.sh
 ```
 
-| Setting                  | Default                | What it does                                                                                             |
+| Setting                  | In Compose, if unset   | What it does                                                                                             |
 |--------------------------|------------------------|----------------------------------------------------------------------------------------------------------|
 | `GAMES`                  | 100                    | Games played at once, with two connections each                                                          |
 | `THINK`                  | 1s                     | How long a bot waits before each move                                                                    |
@@ -78,6 +78,9 @@ sh record-stats.sh
 | `SNAPSHOT_INTERVAL`      | 0s                     | Least time between two saves of a game; 0s saves after every move. A crash can lose up to this much      |
 | `POSTGRES_CPUS`          | 1                      | CPUs for PostgreSQL                                                                                      |
 | `POSTGRES_MEMORY`        | 1g                     | Memory for PostgreSQL                                                                                    |
+| `CONNECT_RATE`           | off, for the bot       | New connections per address, as `EVERY/BURST`, or `off`. The server's own default is `200ms/20`          |
+| `GUEST_RATE`             | off, for the bot       | New guests per address, as `EVERY/BURST`, or `off`. The server's own default is `6s/20`                  |
+| `MESSAGE_RATE`           | 50ms/40                | Frames per connection, as `EVERY/BURST`, or `off`. The same as the server's own default                  |
 | `DEBUG_ADDR`             | empty, off             | Address for Go's profiling endpoints, such as `:6060`. With `t12.sh`, published on `127.0.0.1:6060` only |
 | `GAME_GODEBUG`           | empty                  | With `t12.sh`, the game server's `GODEBUG`, such as `gctrace=1` to log every garbage collection          |
 | `GAME_GOGC`              | empty, Go's default    | With `t12.sh`, the game server's `GOGC`, such as `400` for rarer garbage collections and a larger heap   |
@@ -253,6 +256,10 @@ go run ./examples/cards/server -tls-domains game.example -tls-cache /var/lib/car
 
 The two runs need different cache folders: certificates are kept by domain name, so a shared folder would keep serving
 the test certificate.
+
+Rate limits are on by default: new connections and new guests per address, and frames per connection. Change them with
+`-connect-rate`, `-guest-rate` and `-message-rate`, as `EVERY/BURST` such as `200ms/20`. `off` turns one off, for a
+server behind a proxy that already limits it; the server then logs a warning at startup.
 
 Without `-addr`, it listens on `:443` with TLS and `:8080` without. Behind a proxy, the client's address comes from
 the proxy's `X-Forwarded-For` header, and only from the listed proxies. Outside `-dev`, the server also refuses an

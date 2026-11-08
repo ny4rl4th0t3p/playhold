@@ -61,6 +61,8 @@ type Config struct {
 	ProxyClientIP func(r *http.Request) (netip.Addr, bool)
 	// RequireSecure refuses a connection that arrived without TLS and not through a trusted proxy.
 	RequireSecure bool
+	// AllowConnect reports whether a new connection from this IP address is allowed now. Nil allows every one.
+	AllowConnect func(ip string) bool
 	// Logger receives transport logs. Nil uses slog.Default.
 	Logger *slog.Logger
 }
@@ -136,6 +138,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "TLS required", http.StatusForbidden)
 		return
 	}
+	if s.cfg.AllowConnect != nil && !s.cfg.AllowConnect(ip) {
+		http.Error(w, "too many new connections from this address", http.StatusTooManyRequests)
+		return
+	}
 	if status := s.acquire(ip); status != http.StatusOK {
 		http.Error(w, http.StatusText(status), status)
 		return
@@ -150,14 +156,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = ws.CloseNow() }()
 	ws.SetReadLimit(s.cfg.MaxMessageBytes)
 
-	s.serve(ws)
+	s.serve(ws, ip)
 }
 
-func (s *Server) serve(ws *websocket.Conn) {
+func (s *Server) serve(ws *websocket.Conn, ip string) {
 	ctx, cancel := context.WithCancel(s.ctx)
 	conn := newConn(ctx, cancel, s.cfg, s.cfg.Logger, func(ctx context.Context, data []byte) error {
 		return ws.Write(ctx, websocket.MessageBinary, data)
 	})
+	conn.ip = ip
 	conn.closeReplaced = func() { _ = ws.Close(StatusReplaced, "replaced by a newer connection") }
 	conn.handshake = time.AfterFunc(s.cfg.HandshakeTimeout, conn.Close)
 

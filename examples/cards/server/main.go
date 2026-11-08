@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -39,6 +40,12 @@ func main() {
 	web := flag.String("web", "", "folder with the built browser page, to serve it from this server")
 	origins := flag.String("origins", "", "comma-separated web origins allowed to connect, besides this server's own")
 	maxPerIP := flag.Int("max-conns-per-ip", 0, "most connections from one IP address; 0 uses the default")
+	connectRate := flag.String("connect-rate", "",
+		"new connections per IP address, as EVERY/BURST such as 200ms/20, or off; empty uses the default")
+	guestRate := flag.String("guest-rate", "",
+		"new guests per IP address, as EVERY/BURST such as 6s/20, or off; empty uses the default")
+	messageRate := flag.String("message-rate", "",
+		"frames per connection, as EVERY/BURST such as 50ms/40, or off; empty uses the default")
 	emptyRoom := flag.Duration("empty-room-timeout", 0, "how long a room stays open with nobody connected; 0 uses the default")
 	grace := flag.Duration("disconnect-grace", 0, "how long a player can be disconnected before others are told; 0 uses the default")
 	maxRooms := flag.Int("max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
@@ -63,6 +70,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	var limits [3]playhold.RateLimit
+	for i, value := range []string{*connectRate, *guestRate, *messageRate} {
+		if limits[i], err = parseRate(value); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if *debugAddr != "" {
 		if err := checkDebugAddr(*debugAddr, *dev); err != nil {
 			log.Fatal(err)
@@ -73,6 +86,9 @@ func main() {
 		SnapshotInterval:   *snapshotInterval,
 		TimersAfterRestart: policy,
 		MaxConnsPerIP:      *maxPerIP,
+		ConnectRate:        limits[0],
+		GuestRate:          limits[1],
+		MessageRate:        limits[2],
 		MaxRooms:           *maxRooms,
 		EmptyRoomTimeout:   *emptyRoom,
 		DisconnectGrace:    *grace,
@@ -121,6 +137,26 @@ func parseProxies(value string) ([]netip.Prefix, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// parseRate reads a rate limit flag: empty for the default, "off", or EVERY/BURST such as 200ms/20.
+func parseRate(value string) (playhold.RateLimit, error) {
+	switch value {
+	case "":
+		return playhold.RateLimit{}, nil
+	case "off":
+		return playhold.RateLimit{Off: true}, nil
+	}
+	everyText, burstText, found := strings.Cut(value, "/")
+	every, err := time.ParseDuration(everyText)
+	if !found || err != nil || every <= 0 {
+		return playhold.RateLimit{}, fmt.Errorf("rate limit %q: use EVERY/BURST, such as 200ms/20, or off", value)
+	}
+	burst, err := strconv.Atoi(burstText)
+	if err != nil || burst <= 0 {
+		return playhold.RateLimit{}, fmt.Errorf("rate limit %q: the burst must be a positive number", value)
+	}
+	return playhold.RateLimit{Every: every, Burst: burst}, nil
 }
 
 // checkDebugAddr keeps the profiling endpoints, which show the server's internals, off public addresses outside

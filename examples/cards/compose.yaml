@@ -8,11 +8,18 @@ services:
       context: ../..
       dockerfile: examples/cards/Dockerfile
       target: server
-    # One bot holds many connections from one address, so the usual per-address cap is raised.
+    # One bot holds many connections from one address, so the usual per-address cap is raised, and the limits on new
+    # connections and guests per address are off by default.
     command:
       - -dev
       - -max-conns-per-ip
       - "4096"
+      - -connect-rate
+      - ${CONNECT_RATE:-off}
+      - -guest-rate
+      - ${GUEST_RATE:-off}
+      - -message-rate
+      - ${MESSAGE_RATE:-50ms/40}
       - -empty-room-timeout
       - ${EMPTY_ROOM_TIMEOUT:-5m}
       - -max-rooms

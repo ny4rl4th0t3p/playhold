@@ -456,9 +456,12 @@ func TestReconnectStormLosesNoRoom(t *testing.T) {
 			RoomType:      newTestRoomType(t, RoomConfig{QueueSize: 2, Modules: []Module{viewOfSaved, savedModule}}),
 			Store:         records,
 			MaxConnsPerIP: 2 * players,
-			MemoryLimit:   -1,
-			Logger:        slog.New(slog.DiscardHandler),
-			Development:   true,
+			// Every player connects from 127.0.0.1, so the limits per address are off.
+			ConnectRate: RateLimit{Off: true},
+			GuestRate:   RateLimit{Off: true},
+			MemoryLimit: -1,
+			Logger:      slog.New(slog.DiscardHandler),
+			Development: true,
 		})
 		require.NoError(t, err)
 		httpServer := httptest.NewServer(server)

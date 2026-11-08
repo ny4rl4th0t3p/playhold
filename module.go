@@ -172,6 +172,22 @@ func (r *Registry) ClientSchema(current, oldest int) {
 	r.typ.clientSchemas = append(r.typ.clientSchemas, moduleClientSchema{module: r.module, oldest: oldest})
 }
 
+// RateLimit limits how often one connection may send this message, on top of ServerConfig.MessageRate. Over it, the
+// message gets a rate-limited error and isn't handled. Use it for messages that cost the room or other players
+// something, such as chat. The message needs a handler, and the limit needs both Every and Burst.
+func (r *Registry) RateLimit(id uint32, limit RateLimit) {
+	if limit.Off || limit.Every <= 0 || limit.Burst <= 0 {
+		r.errorf("rate limit of message %d needs a positive Every and Burst", id)
+		return
+	}
+	key := handlerKey{module: r.module, id: id}
+	if _, taken := r.typ.limits[key]; taken {
+		r.errorf("rate limit of message %d is declared twice", id)
+		return
+	}
+	r.typ.limits[key] = limit
+}
+
 // Handle declares the handler for one of the module's messages. IDs are local to the module. RoomContext.Player
 // says who sent the message.
 func Handle[M any, PM interface {
@@ -269,6 +285,7 @@ type RoomType struct {
 	slots     []slotInit
 	slotCount int
 	handlers  map[handlerKey]messageHandler
+	limits    map[handlerKey]RateLimit
 	events    map[reflect.Type][]eventHandler
 	views     []moduleView
 	snapshots []moduleSnapshot
@@ -401,6 +418,7 @@ func NewRoomType(cfg RoomConfig) (*RoomType, error) {
 	typ := &RoomType{
 		cfg:      cfg,
 		handlers: make(map[handlerKey]messageHandler),
+		limits:   make(map[handlerKey]RateLimit),
 		events:   make(map[reflect.Type][]eventHandler),
 	}
 
@@ -440,6 +458,14 @@ func NewRoomType(cfg RoomConfig) (*RoomType, error) {
 
 	if err := typ.attachMigrations(); err != nil {
 		errs = append(errs, err)
+	}
+
+	// A limit can be declared before its handler, so this runs after all of them have registered.
+	for key := range typ.limits {
+		if _, ok := typ.handlers[key]; !ok {
+			errs = append(errs, fmt.Errorf("playhold: room type %q: module %q limits message %d, which has no handler",
+				cfg.Name, key.module, key.id))
+		}
 	}
 
 	// Modules can need each other in any order, so this runs after all of them have registered.

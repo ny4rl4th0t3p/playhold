@@ -243,8 +243,12 @@ export class PlayholdClient {
       this.sendHello();
     } else if (error.code === ErrorCode.UNSUPPORTED_PROTOCOL || error.code === ErrorCode.UPDATE_REQUIRED) {
       this.stop("updateRequired");
-    } else if (error.code === ErrorCode.UNAVAILABLE) {
-      // The server couldn't check this player. Closing leads to the usual reconnect, with its growing delay.
+    } else if (
+      error.code === ErrorCode.UNAVAILABLE ||
+      (error.code === ErrorCode.RATE_LIMITED && (this.currentPlayerId === undefined || seq === this.joinSeq))
+    ) {
+      // The server couldn't check this player, or asked it to slow down before it got into its room. Closing leads to
+      // the usual reconnect, with its growing delay, and keeps the room's code to try again.
       this.socket?.close();
     } else if (seq === this.joinSeq) {
       // Forget the code, so a reconnect doesn't keep trying a room that refused this player.

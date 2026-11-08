@@ -100,6 +100,9 @@ enum ErrorCode {
   // ERROR_CODE_UPDATE_REQUIRED means this client is too old for this server. The player needs a newer client, such as
   // by reloading the page.
   ERROR_CODE_UPDATE_REQUIRED = 12;
+  // ERROR_CODE_RATE_LIMITED means this client sent too much, too fast. The frame was not handled. Slow down and try
+  // again later.
+  ERROR_CODE_RATE_LIMITED = 13;
 }
 
 // Error reports a problem with one client frame.

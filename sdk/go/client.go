@@ -39,6 +39,7 @@ const (
 	ErrorUnavailable         = wire.ErrorCode_ERROR_CODE_UNAVAILABLE
 	ErrorServerFull          = wire.ErrorCode_ERROR_CODE_SERVER_FULL
 	ErrorUpdateRequired      = wire.ErrorCode_ERROR_CODE_UPDATE_REQUIRED
+	ErrorRateLimited         = wire.ErrorCode_ERROR_CODE_RATE_LIMITED
 )
 
 // Error is a problem the server reported. Seq is the number of the frame it's about.
@@ -128,7 +129,8 @@ func (c *Client) hello(ctx context.Context, versions map[string]uint32) error {
 func (c *Client) Identity() Identity { return c.identity }
 
 // Join enters the room with this code, creating it if the code is new, and waits for the answer. It returns an *Error
-// if the room refuses this player. Asked to try again, with ErrorUnavailable, connect again and repeat.
+// if the room refuses this player. Asked to try again, with ErrorUnavailable or ErrorRateLimited, wait, connect again
+// and repeat.
 func (c *Client) Join(ctx context.Context, code string) error {
 	if _, err := c.send(ctx, &wire.ClientFrame{Body: &wire.ClientFrame_Join{Join: &wire.Join{Code: code}}}); err != nil {
 		return err

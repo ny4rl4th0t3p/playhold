@@ -64,6 +64,17 @@ type ServerConfig struct {
 	// found one; if not, the proxy's own address is used. Nil reads X-Forwarded-For, taking the rightmost address that
 	// isn't a trusted proxy. Set it for a proxy that sends another header, such as Forwarded.
 	ProxyClientIP func(r *http.Request) (netip.Addr, bool)
+	// ConnectRate limits new connections from one IP address. Over it, the connection is refused with HTTP 429. The
+	// default is one every 200 ms, with bursts of 20, so a whole network behind one address can reconnect after a
+	// restart.
+	ConnectRate RateLimit
+	// GuestRate limits new guests created from one IP address, each a write to the store. Over it, the Hello gets a
+	// rate-limited error and no guest is created. The default is one every 6 seconds, with bursts of 20.
+	GuestRate RateLimit
+	// MessageRate limits the frames one connection sends, of every kind. Over it, the frame gets a rate-limited error and
+	// isn't handled. The default is one every 50 ms, with bursts of 40. A player has one connection at a time, so this is
+	// also the limit per player. Modules can limit their own messages further with Registry.RateLimit.
+	MessageRate RateLimit
 	// Development turns off the checks that keep a public server safe, so it can run on a developer's machine over plain
 	// HTTP. Without it, NewServer refuses settings that would expose players, a connection that arrives without TLS and
 	// not through a trusted proxy is refused, and ListenAndServe won't start without TLS or a trusted proxy. Never set it
@@ -132,7 +143,23 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	}
 	applyMemoryLimit(cfg.MemoryLimit, logger)
 
-	g := &gateway{guests: newGuests(records), lobby: newLobby(rt, cfg.RoomType, idle, maxRooms, writer), logger: logger}
+	connectRate := cfg.ConnectRate.orDefault(defaultConnectRate)
+	messageRate := cfg.MessageRate.orDefault(defaultMessageRate)
+	guestRate := cfg.GuestRate.orDefault(defaultGuestRate)
+	for layer, limit := range map[string]RateLimit{"ConnectRate": connectRate, "GuestRate": guestRate, "MessageRate": messageRate} {
+		if limit.Off {
+			logger.Warn("rate limit off; make sure something in front of the server limits this instead", "layer", layer)
+		}
+	}
+	connects := newPerIP(connectRate)
+
+	g := &gateway{
+		guests:      newGuests(records),
+		lobby:       newLobby(rt, cfg.RoomType, idle, maxRooms, writer),
+		logger:      logger,
+		newGuests:   newPerIP(guestRate),
+		messageRate: messageRate,
+	}
 	g.lobby.timers = cfg.TimersAfterRestart
 	g.lobby.grace = cfg.DisconnectGrace
 	if g.lobby.grace <= 0 {
@@ -163,6 +190,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			TrustedProxies:   cfg.TrustedProxies,
 			ProxyClientIP:    cfg.ProxyClientIP,
 			RequireSecure:    !cfg.Development,
+			AllowConnect:     connects.allow,
 			Logger:           logger,
 		}, g.connect),
 	}, nil

@@ -18,6 +18,7 @@ type Conn struct {
 	write        func(ctx context.Context, data []byte) error
 	writeTimeout time.Duration
 	logger       *slog.Logger
+	ip           string // the client's address, set by the server before any frame arrives
 
 	mu     sync.Mutex
 	latest *wire.RoomState // the newest state not yet written
@@ -49,6 +50,9 @@ func newConn(
 		replaced:     make(chan struct{}, 1),
 	}
 }
+
+// IP is the client's address: behind a trusted proxy, the one the proxy reported.
+func (c *Conn) IP() string { return c.ip }
 
 // HandshakeDone stops the handshake timeout. Call it once the client has identified itself.
 func (c *Conn) HandshakeDone() { c.handshake.Stop() }

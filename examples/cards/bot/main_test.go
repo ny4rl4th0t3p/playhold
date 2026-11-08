@@ -24,13 +24,24 @@ import (
 	"github.com/ny4rl4th0t3p/playhold/store/memory"
 )
 
+// noLimit turns a rate limit off: the bot plays as fast as it can, from one address.
+var noLimit = playhold.RateLimit{Off: true}
+
 func TestBotPlaysWholeGamesAgainstARealServer(t *testing.T) {
 	const games = 4
 
 	rt := playhold.NewRuntime(playhold.Config{Logger: slog.New(slog.DiscardHandler)})
 	typ, err := cards.NewRoomType()
 	require.NoError(t, err)
-	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1, MaxConnsPerIP: 1024, Development: true})
+	server, err := playhold.NewServer(rt, &playhold.ServerConfig{
+		RoomType:      typ,
+		MemoryLimit:   -1,
+		MaxConnsPerIP: 1024,
+		Development:   true,
+		ConnectRate:   noLimit,
+		GuestRate:     noLimit,
+		MessageRate:   noLimit,
+	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
 	t.Cleanup(func() {
@@ -156,6 +167,7 @@ func TestCanRetry(t *testing.T) {
 	}{
 		{name: "the connection dropped", err: errors.New("connection reset"), want: true},
 		{name: "the server asked to wait", err: &sdk.Error{Code: sdk.ErrorUnavailable}, want: true},
+		{name: "the server asked to slow down", err: &sdk.Error{Code: sdk.ErrorRateLimited}, want: true},
 		{name: "the identity was lost", err: &sdk.Error{Code: sdk.ErrorUnauthorized}, want: false},
 		{name: "the seat was lost", err: &sdk.Error{Code: sdk.ErrorRoomFull}, want: false},
 		{name: "the room was lost", err: fmt.Errorf("%w: panic", sdk.ErrRoomClosed), want: false},
@@ -180,6 +192,9 @@ func gameServer(t *testing.T, addr string, records store.Store, options cards.Op
 		MemoryLimit: -1,
 		Logger:      slog.New(slog.DiscardHandler),
 		Development: true,
+		ConnectRate: noLimit,
+		GuestRate:   noLimit,
+		MessageRate: noLimit,
 	})
 	require.NoError(t, err)
 	var listen net.ListenConfig

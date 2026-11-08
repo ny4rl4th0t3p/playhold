@@ -250,6 +250,22 @@ describe("joining", () => {
     expect(latest().last().body).toMatchObject({ case: "join", value: { code: "other" } });
   });
 
+  it("keeps the code and tries again later when a join is refused for coming too fast", () => {
+    const onError = vi.fn();
+    const { client, online, latest } = setup({ onError });
+    const socket = online();
+
+    client.join("room");
+    socket.receive({ case: "error", value: { seq: socket.last().seq, code: ErrorCode.RATE_LIMITED, message: "slow down" } });
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: ErrorCode.RATE_LIMITED }));
+    socket.drop();
+    vi.advanceTimersByTime(100);
+    latest().onopen?.();
+    latest().welcome();
+    expect(latest().last().body).toMatchObject({ case: "join", value: { code: "room" } });
+  });
+
   it("can join another room after its room closes", () => {
     const onRoomClosed = vi.fn();
     const { client, inRoom } = setup({ onRoomClosed });
@@ -319,6 +335,22 @@ describe("messages and views", () => {
 
     expect(onError).toHaveBeenCalledWith({ seq, code: ErrorCode.REJECTED, message: "not your turn" });
     expect(client.status).toBe("joined");
+  });
+
+  it("reports a message refused for coming too fast and stays joined", () => {
+    const onError = vi.fn();
+    const { client, inRoom } = setup({ onError });
+    const socket = inRoom();
+
+    const seq = client.send("chat", 1, new Uint8Array());
+    socket.receive({
+      case: "error",
+      value: { seq: BigInt(seq ?? 0), code: ErrorCode.RATE_LIMITED, message: "slow down" },
+    });
+
+    expect(onError).toHaveBeenCalledWith({ seq, code: ErrorCode.RATE_LIMITED, message: "slow down" });
+    expect(client.status).toBe("joined");
+    expect(socket.closedWith).toBeUndefined();
   });
 
   it("reports a frame it can't decode and carries on", () => {
@@ -488,7 +520,7 @@ describe("reconnecting", () => {
     expect(latest().last().body.value).toMatchObject({ schemaVersions: { deck: 2, hands: 5 } });
   });
 
-  it("backs off and keeps its identity when the server is unavailable", () => {
+  it.each([ErrorCode.UNAVAILABLE, ErrorCode.RATE_LIMITED])("backs off and keeps its identity when told to wait: %s", (code) => {
     const stored = JSON.stringify({ playerId: "alice", secret: "s3cret" });
     const storage = memoryStorage({ "playhold.identity": stored });
     const onError = vi.fn();
@@ -496,7 +528,7 @@ describe("reconnecting", () => {
     client.connect();
     latest().onopen?.();
 
-    latest().receive({ case: "error", value: { seq: 1n, code: ErrorCode.UNAVAILABLE, message: "try later" } });
+    latest().receive({ case: "error", value: { seq: 1n, code, message: "try later" } });
 
     expect(onError).toHaveBeenCalledOnce();
     expect(latest().closedWith).toBeUndefined();

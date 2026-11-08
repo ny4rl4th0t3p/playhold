@@ -52,6 +52,9 @@ const (
 	// ERROR_CODE_UPDATE_REQUIRED means this client is too old for this server. The player needs a newer client, such as
 	// by reloading the page.
 	ErrorCode_ERROR_CODE_UPDATE_REQUIRED ErrorCode = 12
+	// ERROR_CODE_RATE_LIMITED means this client sent too much, too fast. The frame was not handled. Slow down and try
+	// again later.
+	ErrorCode_ERROR_CODE_RATE_LIMITED ErrorCode = 13
 )
 
 // Enum value maps for ErrorCode.
@@ -70,6 +73,7 @@ var (
 		10: "ERROR_CODE_UNAVAILABLE",
 		11: "ERROR_CODE_SERVER_FULL",
 		12: "ERROR_CODE_UPDATE_REQUIRED",
+		13: "ERROR_CODE_RATE_LIMITED",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED":          0,
@@ -85,6 +89,7 @@ var (
 		"ERROR_CODE_UNAVAILABLE":          10,
 		"ERROR_CODE_SERVER_FULL":          11,
 		"ERROR_CODE_UPDATE_REQUIRED":      12,
+		"ERROR_CODE_RATE_LIMITED":         13,
 	}
 )
 
@@ -947,7 +952,7 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\amessage\x18\x03 \x01(\tR\amessage\">\n" +
 	"\n" +
 	"RoomClosed\x120\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\x87\x03\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xa4\x03\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aERROR_CODE_MALFORMED_FRAME\x10\x01\x12\x1e\n" +
@@ -962,7 +967,8 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x16ERROR_CODE_UNAVAILABLE\x10\n" +
 	"\x12\x1a\n" +
 	"\x16ERROR_CODE_SERVER_FULL\x10\v\x12\x1e\n" +
-	"\x1aERROR_CODE_UPDATE_REQUIRED\x10\f*\x92\x01\n" +
+	"\x1aERROR_CODE_UPDATE_REQUIRED\x10\f\x12\x1b\n" +
+	"\x17ERROR_CODE_RATE_LIMITED\x10\r*\x92\x01\n" +
 	"\vCloseReason\x12\x1c\n" +
 	"\x18CLOSE_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLOSE_REASON_REQUESTED\x10\x01\x12\x19\n" +

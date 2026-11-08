@@ -129,7 +129,7 @@ func canRetry(err error) bool {
 	}
 	var refused *sdk.Error
 	if errors.As(err, &refused) {
-		return refused.Code == sdk.ErrorUnavailable
+		return refused.Code == sdk.ErrorUnavailable || refused.Code == sdk.ErrorRateLimited
 	}
 	return true
 }

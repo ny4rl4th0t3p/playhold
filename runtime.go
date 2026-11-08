@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const defaultStuckTimeout = 5 * time.Second
+const (
+	defaultStuckTimeout = 5 * time.Second
+	defaultSlowTurn     = 100 * time.Millisecond
+)
 
 // ErrRuntimeClosed means the runtime has been shut down.
 var ErrRuntimeClosed = errors.New("playhold: runtime closed")
@@ -20,6 +23,9 @@ type Config struct {
 	Logger *slog.Logger
 	// StuckTimeout is how long one turn can run before its room is closed as stuck. Zero or less uses 5 seconds.
 	StuckTimeout time.Duration
+	// SlowTurn is the time budget of one turn: a turn longer than this is logged as slow, with the message or timer that
+	// started it, and the room carries on. The default is 100 milliseconds. It's measured in real time, whatever Now says.
+	SlowTurn Timeout
 	// NewSeed returns the seed of a new room's random numbers. Nil uses a random seed. Set it to reproduce a game.
 	NewSeed func() [32]byte
 	// Now is the clock rooms read at the start of each turn. Nil uses time.Now. Set it to reproduce a game.
@@ -44,6 +50,7 @@ func NewRuntime(cfg Config) *Runtime {
 	if cfg.StuckTimeout <= 0 {
 		cfg.StuckTimeout = defaultStuckTimeout
 	}
+	cfg.SlowTurn = cfg.SlowTurn.orDefault(defaultSlowTurn)
 	if cfg.NewSeed == nil {
 		cfg.NewSeed = randomSeed
 	}

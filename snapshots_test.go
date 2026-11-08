@@ -280,6 +280,7 @@ func TestSlowStoreNeverHoldsUpARoomAndChangesCombine(t *testing.T) {
 		for range turns {
 			require.NoError(t, dispatchAndWait(t, room, "saved", msgAdd, &addMsg{Value: 1}))
 		}
+		synctest.Wait() // the sender is answered before the turn is saved, so this waits for the last save to reach the writer
 
 		gated.release <- nil
 		gated.release <- nil

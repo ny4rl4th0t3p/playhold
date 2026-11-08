@@ -142,17 +142,21 @@ type pendingEvent struct {
 	depth int
 }
 
-// input is one unit of work for a room's goroutine.
+// input is one unit of work for a room's goroutine. It's passed by value, so keep it under 80 bytes: the small fields go
+// last, together, where they share one word instead of each padding out their own.
 type input struct {
 	player PlayerID
 	// run does the work on the room's goroutine.
 	run func(rc *RoomContext) error
 	// result, if set, receives the error from run on the room's goroutine. It is not called if run panics.
 	result func(err error)
-	// noViews skips sending views and saving a snapshot after this input, because it can't have changed the game.
-	noViews bool
 	// timerEvent names the event, if a timer started this input, so a crash can say what caused it.
 	timerEvent string
+	// module and id name the message, if a player sent one, so a slow turn can say which.
+	module string
+	id     uint32
+	// noViews skips sending views and saving a snapshot after this input, because it can't have changed the game.
+	noViews bool
 }
 
 // viewSink receives a player's room state. Its method must not block.
@@ -209,8 +213,13 @@ type Room struct {
 	inactiveDue time.Time // the room closes then, unless a player sends something first
 
 	stuckTimeout time.Duration
-	stuck        atomic.Bool // set if the watchdog gave up on this room's goroutine
-	draining     atomic.Bool // set if the server is about to stop, so no new players
+	slowTurn     time.Duration // a turn longer than this is logged; zero logs none
+	stuck        atomic.Bool   // set if the watchdog gave up on this room's goroutine, only while holding gate
+	draining     atomic.Bool   // set if the server is about to stop, so no new players
+
+	// gate is held while something leaves the room: an answer to a sender, a snapshot or views. Once the watchdog has
+	// given up on the room, nothing its goroutine does afterward gets out, even if it was already on its way.
+	gate sync.Mutex
 
 	stopOnce   sync.Once
 	stop       chan struct{} // closed only by requestStop
@@ -240,6 +249,7 @@ func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
 		rngState:     rngState,
 		clock:        cfg.Now,
 		stuckTimeout: cfg.StuckTimeout,
+		slowTurn:     cfg.SlowTurn.duration(),
 
 		stop: make(chan struct{}),
 		done: make(chan struct{}),
@@ -302,7 +312,7 @@ func (r *Room) submitWait(in input) error {
 // dispatch queues a message for the handler registered by the named module. The result, if set, receives the
 // handler's error on the room's goroutine.
 func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byte, result func(error)) error {
-	return r.submit(input{player: player, result: result, run: func(rc *RoomContext) error {
+	return r.submit(input{player: player, result: result, module: module, id: id, run: func(rc *RoomContext) error {
 		r.playerActive()
 		handler, ok := r.typ.handlers[handlerKey{module: module, id: id}]
 		if !ok {
@@ -349,15 +359,36 @@ func (r *Room) removeViewer(player PlayerID, sink viewSink) {
 	}})
 }
 
-// sendViews gives each connected player a full view of the room, in one frame.
+// sendViews gives each connected player a full view of the room, in one frame. The views run game code, so they're built
+// before the gate, which only holds the sending.
 func (r *Room) sendViews() {
 	if len(r.typ.views) == 0 {
 		return
 	}
+	type delivery struct {
+		sink  viewSink
+		state *wire.RoomState
+	}
+	out := make([]delivery, 0, len(r.seats))
 	for _, player := range r.seats {
 		if sink, ok := r.viewers[player]; ok {
-			sink.SendState(r.stateFor(player))
+			out = append(out, delivery{sink: sink, state: r.stateFor(player)})
 		}
+	}
+	r.publish(func() {
+		for i := range out {
+			out[i].sink.SendState(out[i].state)
+		}
+	})
+}
+
+// publish runs fn, which hands something to the world outside the room, unless the watchdog has given up on the room.
+// fn must not block or run game code, since abandon waits for the gate.
+func (r *Room) publish(fn func()) {
+	r.gate.Lock()
+	defer r.gate.Unlock()
+	if !r.stuck.Load() {
+		fn()
 	}
 }
 
@@ -383,7 +414,9 @@ func (r *Room) startWork() {
 // finds the room closed and ends without touching anything outside the room.
 func (r *Room) abandon() {
 	r.logger.Error("room stuck, closing it", "timeout", r.stuckTimeout)
+	r.gate.Lock() // waits for anything already on its way out, and stops everything after it
 	r.stuck.Store(true)
+	r.gate.Unlock()
 	r.requestStop(CloseStuck)
 	r.finish(CloseStuck)
 }
@@ -492,8 +525,10 @@ func (r *Room) saveSnapshot() {
 	if err != nil {
 		panic(fmt.Sprintf("playhold: room can't be saved: %v", err))
 	}
-	r.lastSnapshot.Store(&data)
-	r.writer.save(store.RoomRecord{ID: string(r.id), Code: r.code, RoomType: r.typ.cfg.Name, Data: data})
+	r.publish(func() {
+		r.lastSnapshot.Store(&data)
+		r.writer.save(store.RoomRecord{ID: string(r.id), Code: r.code, RoomType: r.typ.cfg.Name, Data: data})
+	})
 }
 
 // saveChange saves the room after a turn changed it. With a snapshot interval, a change that comes sooner than the
@@ -542,7 +577,7 @@ func (r *Room) finishSnapshot(reason CloseReason) {
 		return
 	}
 	if reason != CloseShutdown {
-		r.writer.forget(string(r.id))
+		r.publish(func() { r.writer.forget(string(r.id)) })
 		return
 	}
 	defer func() {
@@ -674,13 +709,15 @@ func (r *Room) turn(in input) (panicked bool) {
 	r.startWork()
 	defer r.watchdog.Stop()
 
+	started := time.Now() // the real time, whatever clock the room reads
 	err := in.run(&RoomContext{room: r, player: in.player})
 	r.deliverEvents(in.player)
+	r.reportSlowTurn(&in, time.Since(started))
 	if r.stuck.Load() {
-		return false // players were already told the room closed
+		return false // players were already told the room closed, and nothing below would get out anyway
 	}
 	if in.result != nil {
-		in.result(err)
+		r.publish(func() { in.result(err) })
 	}
 	if !in.noViews {
 		// Saved first, so a player can't see a move that a clean stop right afterward would lose. A stop always saves a
@@ -689,6 +726,16 @@ func (r *Room) turn(in input) (panicked bool) {
 		r.sendViews()
 	}
 	return false
+}
+
+// reportSlowTurn logs a turn that took longer than the time budget: the room carries on, but its game code is slow
+// enough to hold up the players in it.
+func (r *Room) reportSlowTurn(in *input, took time.Duration) {
+	if r.slowTurn <= 0 || took <= r.slowTurn {
+		return
+	}
+	r.logger.Warn("slow turn", "took", took, "budget", r.slowTurn,
+		"player", string(in.player), "module", in.module, "message_id", in.id, "timer_event", in.timerEvent)
 }
 
 func (r *Room) callClose(reason CloseReason) {

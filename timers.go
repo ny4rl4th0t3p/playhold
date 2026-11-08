@@ -112,22 +112,27 @@ func (r *Room) insertTimer(timer roomTimer) {
 	r.timers = slices.Insert(r.timers, at, timer)
 }
 
-// nextDue returns when the soonest timer or grace period ends.
+// nextDue returns when the soonest timer or grace period ends, or the room closes for inactivity.
 func (r *Room) nextDue() (due time.Time, ok bool) {
-	switch {
-	case len(r.timers) == 0 && len(r.graces) == 0:
-		return time.Time{}, false
-	case len(r.graces) == 0:
-		return r.timers[0].due, true
-	case len(r.timers) == 0 || r.graces[0].due.Before(r.timers[0].due):
-		return r.graces[0].due, true
-	default:
-		return r.timers[0].due, true
+	consider := func(t time.Time) {
+		if !ok || t.Before(due) {
+			due, ok = t, true
+		}
 	}
+	if len(r.timers) > 0 {
+		consider(r.timers[0].due)
+	}
+	if len(r.graces) > 0 {
+		consider(r.graces[0].due)
+	}
+	if !r.inactiveDue.IsZero() {
+		consider(r.inactiveDue)
+	}
+	return due, ok
 }
 
-// armAlarm makes sure the alarm goes off for the soonest timer or grace period. It runs before the room waits for more
-// work.
+// armAlarm makes sure the alarm goes off for the soonest timer, grace period or close for inactivity. It runs before the
+// room waits for more work.
 func (r *Room) armAlarm() {
 	due, ok := r.nextDue()
 	if !ok {
@@ -144,12 +149,18 @@ func (r *Room) armAlarm() {
 	r.alarmSet, r.alarmDue = true, due
 }
 
-// fireNext runs a turn for the soonest timer or grace period, if one is due, and reports whether that turn panicked. A
+// fireNext closes the room if no player has used it for too long. Otherwise it runs a turn for the soonest timer or
+// grace period, if one is due, and reports whether that turn panicked. A
 // timer is removed first, but the last snapshot still has it, so a timer that crashes the room fires again after it's
 // restored, until the room's restart limit closes it.
 func (r *Room) fireNext() (panicked bool) {
 	r.alarmSet = false
 	now := r.clock()
+	if !r.inactiveDue.IsZero() && !r.inactiveDue.After(now) {
+		r.logger.Info("closing a room no player has used", "inactive_for", r.inactive)
+		r.requestStop(CloseInactive) // the loop sees it before any other work, and closes the room as usual
+		return false
+	}
 	if len(r.timers) == 0 || r.timers[0].due.After(now) {
 		if len(r.graces) > 0 && !r.graces[0].due.After(now) {
 			return r.fireGrace()

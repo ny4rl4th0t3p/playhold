@@ -717,7 +717,7 @@ func TestFinishedGameClosesItsRoomAfterAWhile(t *testing.T) {
 }
 
 func TestOtherPlayerSeesSomeoneGoAndComeBack(t *testing.T) {
-	url, _ := startConfigured(t, testSeed, cards.Options{}, &playhold.ServerConfig{DisconnectGrace: 50 * time.Millisecond})
+	url, _ := startConfigured(t, testSeed, cards.Options{}, &playhold.ServerConfig{DisconnectGrace: playhold.Timeout{After: 50 * time.Millisecond}})
 	g := startGameOn(t, url)
 	assert.Empty(t, g.first.latest.turns.GetAway())
 
@@ -737,7 +737,7 @@ func TestPlayerWhoWasAwayIsStillAwayAfterARestart(t *testing.T) {
 	records := memory.New()
 	url, stop := startConfigured(t, testSeed, cards.Options{}, &playhold.ServerConfig{
 		Store:           records,
-		DisconnectGrace: 50 * time.Millisecond,
+		DisconnectGrace: playhold.Timeout{After: 50 * time.Millisecond},
 	})
 	g := startGameOn(t, url)
 	require.NoError(t, g.other.ws.CloseNow())

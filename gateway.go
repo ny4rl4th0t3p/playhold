@@ -357,6 +357,8 @@ func wireCloseReason(reason CloseReason) wire.CloseReason {
 		return wire.CloseReason_CLOSE_REASON_PANIC
 	case CloseStuck:
 		return wire.CloseReason_CLOSE_REASON_STUCK
+	case CloseInactive:
+		return wire.CloseReason_CLOSE_REASON_INACTIVE
 	default:
 		return wire.CloseReason_CLOSE_REASON_UNSPECIFIED
 	}

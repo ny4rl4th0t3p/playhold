@@ -78,6 +78,19 @@ func TestEmptyRoomClosesAfterTheIdleTime(t *testing.T) {
 	})
 }
 
+func TestEmptyRoomsCanBeKeptOpen(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := newLobby(newTestRuntime(t), newTestRoomType(t, RoomConfig{}), 0, testMaxRooms, nil) // what EmptyRoomTimeout{Off: true} gives
+		room := enterRoom(t, l, "abc")
+
+		l.leave("abc", room)
+		time.Sleep(10 * testIdle)
+		synctest.Wait()
+
+		assert.False(t, room.closed())
+	})
+}
+
 func TestComingBackKeepsAnEmptyRoomOpen(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		l := newTestLobby(t, RoomConfig{})

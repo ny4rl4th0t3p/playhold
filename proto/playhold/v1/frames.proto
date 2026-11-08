@@ -119,6 +119,8 @@ enum CloseReason {
   CLOSE_REASON_SHUTDOWN = 2;
   CLOSE_REASON_PANIC = 3;
   CLOSE_REASON_STUCK = 4;
+  // CLOSE_REASON_INACTIVE means no player sent anything to the room for too long.
+  CLOSE_REASON_INACTIVE = 5;
 }
 
 // RoomClosed says the room has closed.

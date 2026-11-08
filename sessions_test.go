@@ -354,7 +354,7 @@ func TestDisconnectingAndReturningOverARealConnection(t *testing.T) {
 	}}
 	url := startServerWith(t, &ServerConfig{
 		RoomType:        newTestRoomType(t, RoomConfig{Modules: []Module{module}}),
-		DisconnectGrace: 50 * time.Millisecond,
+		DisconnectGrace: Timeout{After: 50 * time.Millisecond},
 	})
 	next := func() string {
 		select {

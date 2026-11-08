@@ -65,6 +65,8 @@ const (
 	CloseInitFailed
 	// CloseStuck means a turn ran for too long. The room's goroutine may still be running.
 	CloseStuck
+	// CloseInactive means no player sent anything to the room for longer than the server's InactiveRoomTimeout.
+	CloseInactive
 )
 
 // String returns a short name for the reason.
@@ -80,6 +82,8 @@ func (r CloseReason) String() string {
 		return "init failed"
 	case CloseStuck:
 		return "stuck"
+	case CloseInactive:
+		return "inactive"
 	default:
 		return fmt.Sprintf("unknown (%d)", int(r))
 	}
@@ -200,6 +204,10 @@ type Room struct {
 	graces []graceTimer  // soonest first
 	away   []PlayerID    // their PlayerDisconnected has fired
 
+	// Also owned by the room's goroutine. Zero inactive means the room never closes for inactivity.
+	inactive    time.Duration
+	inactiveDue time.Time // the room closes then, unless a player sends something first
+
 	stuckTimeout time.Duration
 	stuck        atomic.Bool // set if the watchdog gave up on this room's goroutine
 	draining     atomic.Bool // set if the server is about to stop, so no new players
@@ -295,6 +303,7 @@ func (r *Room) submitWait(in input) error {
 // handler's error on the room's goroutine.
 func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byte, result func(error)) error {
 	return r.submit(input{player: player, result: result, run: func(rc *RoomContext) error {
+		r.playerActive()
 		handler, ok := r.typ.handlers[handlerKey{module: module, id: id}]
 		if !ok {
 			return fmt.Errorf("%w: module %q message %d", ErrUnknownMessage, module, id)
@@ -309,6 +318,7 @@ func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byt
 // room must not turn away players coming back to it after a restart, all at once.
 func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 	return r.submitWait(input{player: player, result: result, run: func(rc *RoomContext) error {
+		r.playerActive()
 		if !slices.Contains(r.seats, player) {
 			if r.draining.Load() {
 				return ErrDraining

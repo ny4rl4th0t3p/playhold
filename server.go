@@ -23,6 +23,7 @@ const (
 	defaultEmptyRoomTimeout = 5 * time.Minute
 	defaultMaxRooms         = 10_000
 	defaultDisconnectGrace  = time.Minute
+	defaultInactiveRoom     = 30 * time.Minute
 	restoreTimeout          = time.Minute
 	closeTimeout            = 10 * time.Second
 	readyTimeout            = 2 * time.Second
@@ -44,11 +45,18 @@ type ServerConfig struct {
 	// TimersAfterRestart says what happens to pending timers when the server comes back. The default is TimersPause.
 	TimersAfterRestart TimersAfterRestart
 	// DisconnectGrace is how long a seated player has to come back before the game gets a PlayerDisconnected. The default
-	// is 1 minute. It starts over when the server restarts, since that's what cut everyone off.
-	DisconnectGrace time.Duration
+	// is 1 minute. It starts over when the server restarts, since that's what cut everyone off. Off never tells the game
+	// that a player left.
+	DisconnectGrace Timeout
 	// EmptyRoomTimeout is how long a room stays open with nobody connected. The default is 5 minutes. A room closing
 	// doesn't wait for the grace periods, so keep this longer than DisconnectGrace if the game cares about those events.
-	EmptyRoomTimeout time.Duration
+	// Off keeps empty rooms open, and then only InactiveRoomTimeout closes them.
+	EmptyRoomTimeout Timeout
+	// InactiveRoomTimeout closes a room once no player has sent it anything for this long, connected or not: a message,
+	// or joining or coming back. Timer turns don't count, so a room kept busy only by its own timers closes too. Its saved
+	// state is deleted, and players are told it closed as inactive. The default is 30 minutes. The time starts over when
+	// the server restarts.
+	InactiveRoomTimeout Timeout
 	// MaxRooms is the most rooms the server runs at once, counting finished ones until they close. Over it, joining a
 	// new code gets an error, and existing rooms carry on. The default is 10,000.
 	MaxRooms int
@@ -122,9 +130,17 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	} else if err := checkSecure(cfg); err != nil {
 		return nil, err
 	}
-	idle := cfg.EmptyRoomTimeout
-	if idle <= 0 {
-		idle = defaultEmptyRoomTimeout
+	idle := cfg.EmptyRoomTimeout.orDefault(defaultEmptyRoomTimeout)
+	grace := cfg.DisconnectGrace.orDefault(defaultDisconnectGrace)
+	inactive := cfg.InactiveRoomTimeout.orDefault(defaultInactiveRoom)
+	if idle.Off {
+		logger.Warn("rooms with nobody connected never close; only InactiveRoomTimeout closes them")
+	}
+	if grace.Off {
+		logger.Info("the game is never told that a player disconnected")
+	}
+	if inactive.Off {
+		logger.Warn("rooms never close for inactivity; a room with an idle player or only timers stays open and saved")
 	}
 	maxRooms := cfg.MaxRooms
 	if maxRooms <= 0 {
@@ -155,16 +171,14 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 
 	g := &gateway{
 		guests:      newGuests(records),
-		lobby:       newLobby(rt, cfg.RoomType, idle, maxRooms, writer),
+		lobby:       newLobby(rt, cfg.RoomType, idle.duration(), maxRooms, writer),
 		logger:      logger,
 		newGuests:   newPerIP(guestRate),
 		messageRate: messageRate,
 	}
 	g.lobby.timers = cfg.TimersAfterRestart
-	g.lobby.grace = cfg.DisconnectGrace
-	if g.lobby.grace <= 0 {
-		g.lobby.grace = defaultDisconnectGrace
-	}
+	g.lobby.grace = grace.duration()
+	g.lobby.inactive = inactive.duration()
 	if writer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
 		defer cancel()
@@ -194,6 +208,28 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			Logger:           logger,
 		}, g.connect),
 	}, nil
+}
+
+// Timeout is how long to wait before something happens. The zero value uses the default; there is no way to turn it
+// off by leaving it out. Off turns it off, and the server logs a warning at startup.
+type Timeout struct {
+	After time.Duration
+	Off   bool
+}
+
+func (t Timeout) orDefault(d time.Duration) Timeout {
+	if !t.Off && t.After <= 0 {
+		t.After = d
+	}
+	return t
+}
+
+// duration is the time to wait, or zero if it's off, which is how the lobby and rooms are told.
+func (t Timeout) duration() time.Duration {
+	if t.Off {
+		return 0
+	}
+	return t.After
 }
 
 // checkSecure refuses settings that would expose players on a public server.

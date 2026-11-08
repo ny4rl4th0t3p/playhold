@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"net/netip"
 	"testing"
 	"time"
@@ -71,6 +72,68 @@ func TestParseRate(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestParseTimeout(t *testing.T) {
+	tests := []struct {
+		value   string
+		want    playhold.Timeout
+		wantErr bool
+	}{
+		{value: "", want: playhold.Timeout{}},
+		{value: "off", want: playhold.Timeout{Off: true}},
+		{value: "5m", want: playhold.Timeout{After: 5 * time.Minute}},
+		{value: "0s", wantErr: true},
+		{value: "soon", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			got, err := parseTimeout(tt.value)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestConfigFromFlags(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "no flags"},
+		{name: "every kind of value", args: []string{
+			"-dev", "-connect-rate", "off", "-guest-rate", "6s/20", "-inactive-room-timeout", "1h",
+			"-trusted-proxies", "10.0.0.0/8", "-timers-after-restart", "keep", "-debug-addr", ":6060",
+		}},
+		{name: "a bad rate", args: []string{"-message-rate", "fast"}, wantErr: "fast"},
+		{name: "a bad timeout", args: []string{"-disconnect-grace", "soon"}, wantErr: "soon"},
+		{name: "a bad proxy", args: []string{"-trusted-proxies", "10.0.0.2"}, wantErr: "-trusted-proxies"},
+		{name: "a bad timer policy", args: []string{"-timers-after-restart", "stop"}, wantErr: "stop"},
+		{name: "public profiling outside -dev", args: []string{"-debug-addr", ":6060"}, wantErr: "-debug-addr"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := flag.NewFlagSet("server", flag.ContinueOnError)
+			f := defineFlags(fs)
+			require.NoError(t, fs.Parse(tt.args))
+
+			cfg, listen, err := f.config()
+
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+			require.NotNil(t, listen)
 		})
 	}
 }

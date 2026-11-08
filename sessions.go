@@ -27,8 +27,10 @@ type graceTimer struct {
 // startSessions turns on the grace period. Every seated player starts one, because a room that has just been restored
 // has no connections yet, and anyone who doesn't come back has to be noticed. It's the room's first input, so it can't
 // be refused for a full queue.
-func (r *Room) startSessions(grace time.Duration) {
+func (r *Room) startSessions(grace, inactive time.Duration) {
 	_ = r.submit(input{noViews: true, run: func(_ *RoomContext) error {
+		r.inactive = inactive
+		r.playerActive() // the clock starts now, also for a room restored with nobody in it yet
 		r.grace = grace
 		for _, player := range r.seats {
 			if !slices.Contains(r.away, player) {
@@ -52,6 +54,14 @@ func (r *Room) playerBack(rc *RoomContext, player PlayerID) {
 	if at := slices.Index(r.away, player); at >= 0 {
 		r.away = slices.Delete(r.away, at, at+1)
 		rc.Emit(PlayerReturned{Player: player})
+	}
+}
+
+// playerActive pushes back the room's close for inactivity. Only what players do counts: messages and joining or coming
+// back, not timers or disconnects.
+func (r *Room) playerActive() {
+	if r.inactive > 0 {
+		r.inactiveDue = r.now.Add(r.inactive)
 	}
 }
 

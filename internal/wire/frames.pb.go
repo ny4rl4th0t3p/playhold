@@ -129,6 +129,8 @@ const (
 	CloseReason_CLOSE_REASON_SHUTDOWN    CloseReason = 2
 	CloseReason_CLOSE_REASON_PANIC       CloseReason = 3
 	CloseReason_CLOSE_REASON_STUCK       CloseReason = 4
+	// CLOSE_REASON_INACTIVE means no player sent anything to the room for too long.
+	CloseReason_CLOSE_REASON_INACTIVE CloseReason = 5
 )
 
 // Enum value maps for CloseReason.
@@ -139,6 +141,7 @@ var (
 		2: "CLOSE_REASON_SHUTDOWN",
 		3: "CLOSE_REASON_PANIC",
 		4: "CLOSE_REASON_STUCK",
+		5: "CLOSE_REASON_INACTIVE",
 	}
 	CloseReason_value = map[string]int32{
 		"CLOSE_REASON_UNSPECIFIED": 0,
@@ -146,6 +149,7 @@ var (
 		"CLOSE_REASON_SHUTDOWN":    2,
 		"CLOSE_REASON_PANIC":       3,
 		"CLOSE_REASON_STUCK":       4,
+		"CLOSE_REASON_INACTIVE":    5,
 	}
 )
 
@@ -968,13 +972,14 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x12\x1a\n" +
 	"\x16ERROR_CODE_SERVER_FULL\x10\v\x12\x1e\n" +
 	"\x1aERROR_CODE_UPDATE_REQUIRED\x10\f\x12\x1b\n" +
-	"\x17ERROR_CODE_RATE_LIMITED\x10\r*\x92\x01\n" +
+	"\x17ERROR_CODE_RATE_LIMITED\x10\r*\xad\x01\n" +
 	"\vCloseReason\x12\x1c\n" +
 	"\x18CLOSE_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLOSE_REASON_REQUESTED\x10\x01\x12\x19\n" +
 	"\x15CLOSE_REASON_SHUTDOWN\x10\x02\x12\x16\n" +
 	"\x12CLOSE_REASON_PANIC\x10\x03\x12\x16\n" +
-	"\x12CLOSE_REASON_STUCK\x10\x04B5Z3github.com/ny4rl4th0t3p/playhold/internal/wire;wireb\x06proto3"
+	"\x12CLOSE_REASON_STUCK\x10\x04\x12\x19\n" +
+	"\x15CLOSE_REASON_INACTIVE\x10\x05B5Z3github.com/ny4rl4th0t3p/playhold/internal/wire;wireb\x06proto3"
 
 var (
 	file_playhold_v1_frames_proto_rawDescOnce sync.Once

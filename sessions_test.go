@@ -458,6 +458,7 @@ func TestReconnectStormLosesNoRoom(t *testing.T) {
 			MaxConnsPerIP: 2 * players,
 			MemoryLimit:   -1,
 			Logger:        slog.New(slog.DiscardHandler),
+			Development:   true,
 		})
 		require.NoError(t, err)
 		httpServer := httptest.NewServer(server)

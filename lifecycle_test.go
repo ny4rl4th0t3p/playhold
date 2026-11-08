@@ -28,6 +28,7 @@ func startSavingServer(t *testing.T, records store.Store, rooms RoomConfig, rtCf
 		Store:       records,
 		MemoryLimit: -1,
 		Logger:      slog.New(slog.DiscardHandler),
+		Development: true,
 	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)

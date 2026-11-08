@@ -30,7 +30,7 @@ func TestBotPlaysWholeGamesAgainstARealServer(t *testing.T) {
 	rt := playhold.NewRuntime(playhold.Config{Logger: slog.New(slog.DiscardHandler)})
 	typ, err := cards.NewRoomType()
 	require.NoError(t, err)
-	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1, MaxConnsPerIP: 1024})
+	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1, MaxConnsPerIP: 1024, Development: true})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
 	t.Cleanup(func() {
@@ -63,7 +63,7 @@ func TestBotHoldsIdleConnections(t *testing.T) {
 	rt := playhold.NewRuntime(playhold.Config{Logger: slog.New(slog.DiscardHandler)})
 	typ, err := cards.NewRoomType()
 	require.NoError(t, err)
-	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1})
+	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1, Development: true})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
 	t.Cleanup(func() {
@@ -179,6 +179,7 @@ func gameServer(t *testing.T, addr string, records store.Store, options cards.Op
 		Store:       records,
 		MemoryLimit: -1,
 		Logger:      slog.New(slog.DiscardHandler),
+		Development: true,
 	})
 	require.NoError(t, err)
 	var listen net.ListenConfig

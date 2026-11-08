@@ -3,10 +3,14 @@ package playhold
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
+	"path"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/memlimit"
@@ -49,8 +53,22 @@ type ServerConfig struct {
 	// new code gets an error, and existing rooms carry on. The default is 10,000.
 	MaxRooms int
 	// OriginPatterns lists the other web origins allowed to connect, such as "*.itch.zone". The server's own
-	// host is always allowed.
+	// host is always allowed. A pattern that matches every origin, such as "*", is refused outside development.
 	OriginPatterns []string
+	// TrustedProxies lists the address ranges of the proxies in front of the server, such as a load balancer that ends
+	// TLS. A connection from one of them may arrive without TLS, and its client address is read from the proxy's header.
+	// From anywhere else, that header is ignored, since a client could make it up. A range covering every address is
+	// refused outside development.
+	TrustedProxies []netip.Prefix
+	// ProxyClientIP reads the client's address from a request that came through a trusted proxy, and reports whether it
+	// found one; if not, the proxy's own address is used. Nil reads X-Forwarded-For, taking the rightmost address that
+	// isn't a trusted proxy. Set it for a proxy that sends another header, such as Forwarded.
+	ProxyClientIP func(r *http.Request) (netip.Addr, bool)
+	// Development turns off the checks that keep a public server safe, so it can run on a developer's machine over plain
+	// HTTP. Without it, NewServer refuses settings that would expose players, a connection that arrives without TLS and
+	// not through a trusted proxy is refused, and ListenAndServe won't start without TLS or a trusted proxy. Never set it
+	// on a server players reach; the server logs a warning when it's on.
+	Development bool
 	// MaxConns is the most connections the server accepts at once.
 	MaxConns int
 	// MaxConnsPerIP is the most connections accepted at once from one IP address.
@@ -68,11 +86,14 @@ type ServerConfig struct {
 
 // Server lets clients connect, identify themselves and join rooms over WebSocket. It is an http.Handler.
 type Server struct {
-	transport *transport.Server
-	writer    *snapshotWriter // nil if rooms aren't saved
-	rt        *Runtime
-	lobby     *lobby
-	records   store.Store
+	transport   *transport.Server
+	writer      *snapshotWriter // nil if rooms aren't saved
+	rt          *Runtime
+	lobby       *lobby
+	records     store.Store
+	logger      *slog.Logger
+	development bool
+	proxied     bool // there are trusted proxies, which may end TLS in front of the server
 }
 
 // NewServer returns a Server that runs its rooms on rt. With a store, it first brings back every room saved there, and
@@ -84,6 +105,11 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = rt.logger
+	}
+	if cfg.Development {
+		logger.Warn("development mode: the checks that keep a public server safe are off; never use it on a server players reach")
+	} else if err := checkSecure(cfg); err != nil {
+		return nil, err
 	}
 	idle := cfg.EmptyRoomTimeout
 	if idle <= 0 {
@@ -121,19 +147,44 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		}
 	}
 	return &Server{
-		writer:  writer,
-		rt:      rt,
-		lobby:   g.lobby,
-		records: records,
+		writer:      writer,
+		rt:          rt,
+		lobby:       g.lobby,
+		records:     records,
+		logger:      logger,
+		development: cfg.Development,
+		proxied:     len(cfg.TrustedProxies) > 0,
 		transport: transport.NewServer(&transport.Config{
 			MaxMessageBytes:  cfg.MaxMessageBytes,
 			MaxConns:         cfg.MaxConns,
 			MaxConnsPerIP:    cfg.MaxConnsPerIP,
 			HandshakeTimeout: cfg.HandshakeTimeout,
 			OriginPatterns:   cfg.OriginPatterns,
+			TrustedProxies:   cfg.TrustedProxies,
+			ProxyClientIP:    cfg.ProxyClientIP,
+			RequireSecure:    !cfg.Development,
 			Logger:           logger,
 		}, g.connect),
 	}, nil
+}
+
+// checkSecure refuses settings that would expose players on a public server.
+func checkSecure(cfg *ServerConfig) error {
+	// Hosts no real game uses, so a pattern matching them would match any site.
+	probes := []string{"playhold-origin-check.invalid", "playhold-origin-check.invalid:443"}
+	for _, pattern := range cfg.OriginPatterns {
+		for _, probe := range probes {
+			if matched, err := path.Match(strings.ToLower(pattern), probe); err != nil || matched {
+				return fmt.Errorf("playhold: origin pattern %q would let any website connect; list the origins instead", pattern)
+			}
+		}
+	}
+	for _, p := range cfg.TrustedProxies {
+		if !p.IsValid() || p.Bits() == 0 {
+			return fmt.Errorf("playhold: trusted proxy range %q would trust every client's header; list the proxies instead", p)
+		}
+	}
+	return nil
 }
 
 // ServeHTTP upgrades the request to a WebSocket and serves it until the connection ends.

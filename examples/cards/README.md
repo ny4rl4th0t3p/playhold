@@ -28,7 +28,8 @@ Open <http://localhost:8080> and start a new game, then open the room's link in 
 Two tabs in the same browser share one identity, so the newest tab replaces the older one.
 
 The game runs limited to 1 CPU and 1 GB of memory, the size of a small VPS. To play from another machine on your
-network, start it with `BIND=0.0.0.0`. There's no TLS or rate limiting yet, so don't expose it to the internet.
+network, start it with `BIND=0.0.0.0`. It runs in development mode (`-dev`), over plain HTTP with the safety checks off,
+and there's no rate limiting yet, so don't expose it to the internet.
 
 Games are saved in PostgreSQL, so they survive the server stopping. Try it partway through a game, and each player gets
 their seat and cards back when the page reconnects:
@@ -204,10 +205,58 @@ npm --prefix sdk/ts install
 npm --prefix examples/cards/web install
 make gen
 npm --prefix examples/cards/web run build
-go run ./examples/cards/server -web examples/cards/web/dist
+go run ./examples/cards/server -dev -web examples/cards/web/dist
 ```
 
-Then open <http://localhost:8080>.
+Then open <http://localhost:8080>. `-dev` allows plain HTTP; without it, the server refuses to start with neither TLS
+nor a trusted proxy.
+
+## Run it on a public server
+
+Outside `-dev`, the server needs TLS, in one of three ways:
+
+```bash
+# Automatic certificates from Let's Encrypt; game.example must point at this server, with port 443 open
+go run ./examples/cards/server -tls-domains game.example -tls-cache /var/lib/cards/certs
+
+# A certificate you already have
+go run ./examples/cards/server -tls-cert cert.pem -tls-key key.pem
+
+# Behind a proxy that ends TLS, such as a load balancer at 10.0.0.2
+go run ./examples/cards/server -trusted-proxies 10.0.0.2/32
+```
+
+How automatic certificates work:
+
+- The server asks Let's Encrypt for a certificate when the first player connects, not when it starts. That first
+  connection waits a few seconds.
+- It renews the certificate by itself while it runs.
+- It keeps the certificate in the `-tls-cache` folder, so a restart doesn't ask for a new one.
+- If Let's Encrypt can't reach the server, for example because the domain points elsewhere or port 443 is closed, the
+  connection fails and the server's log says why.
+
+Let's Encrypt blocks a domain for a while after a few failed requests. To try a new setup without that risk, use their
+test service first. It works the same way, but browsers don't trust its certificates.
+
+```bash
+# 1. Test run: Let's Encrypt's test service, with a cache folder only for test certificates
+go run ./examples/cards/server -tls-domains game.example -tls-cache /var/lib/cards/certs-test -tls-acme-directory https://acme-staging-v02.api.letsencrypt.org/directory
+
+# From another terminal: an issuer with (STAGING) in its name means the setup works
+curl -kv https://game.example/healthz 2>&1 | grep issuer
+```
+
+```bash
+# 2. Real run: the real Let's Encrypt, the default, with the real cache folder
+go run ./examples/cards/server -tls-domains game.example -tls-cache /var/lib/cards/certs
+```
+
+The two runs need different cache folders: certificates are kept by domain name, so a shared folder would keep serving
+the test certificate.
+
+Without `-addr`, it listens on `:443` with TLS and `:8080` without. Behind a proxy, the client's address comes from
+the proxy's `X-Forwarded-For` header, and only from the listed proxies. Outside `-dev`, the server also refuses an
+`-origins` pattern that matches any site, such as `*`, and a `-debug-addr` that isn't on localhost.
 
 ## Host the page elsewhere
 
@@ -215,7 +264,7 @@ Build the page with the server's address, and let the page's origin connect:
 
 ```bash
 VITE_SERVER_URL=wss://game.example/ws npm --prefix examples/cards/web run build
-go run ./examples/cards/server -origins "page.example"
+go run ./examples/cards/server -origins "page.example" -tls-domains game.example -tls-cache /var/lib/cards/certs
 ```
 
 The build in `examples/cards/web/dist` uses relative paths, so it can be zipped and uploaded.

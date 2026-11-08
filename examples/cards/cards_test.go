@@ -94,6 +94,7 @@ func startConfigured(t *testing.T, seed [32]byte, options cards.Options, cfg *pl
 	require.NoError(t, err)
 	cfg.RoomType = typ
 	cfg.MemoryLimit = -1
+	cfg.Development = true // plain HTTP
 	server, err := playhold.NewServer(rt, cfg)
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)

@@ -3,14 +3,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"os/signal"
-	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -26,7 +25,17 @@ const (
 )
 
 func main() {
-	addr := flag.String("addr", ":8080", "address to listen on")
+	addr := flag.String("addr", "", "address to listen on; empty uses :443 with TLS and :8080 without")
+	dev := flag.Bool("dev", false, "development mode: plain HTTP without a proxy, and the safety checks off; never on a server players reach")
+	tlsDomains := flag.String("tls-domains", "", "comma-separated domains for automatic certificates from Let's Encrypt")
+	tlsCache := flag.String("tls-cache", "", "folder that keeps the automatic certificates across restarts")
+	tlsEmail := flag.String("tls-email", "", "email Let's Encrypt writes to about the certificates; optional")
+	tlsDirectory := flag.String("tls-acme-directory", "",
+		"ACME directory for automatic certificates; empty uses Let's Encrypt's; "+
+			"use its staging directory, with its own -tls-cache, to check a first setup")
+	tlsCert := flag.String("tls-cert", "", "certificate file (PEM), instead of automatic certificates")
+	tlsKey := flag.String("tls-key", "", "the certificate's key file (PEM)")
+	proxies := flag.String("trusted-proxies", "", "comma-separated address ranges of the proxies in front of this server, such as 10.0.0.0/8")
 	web := flag.String("web", "", "folder with the built browser page, to serve it from this server")
 	origins := flag.String("origins", "", "comma-separated web origins allowed to connect, besides this server's own")
 	maxPerIP := flag.Int("max-conns-per-ip", 0, "most connections from one IP address; 0 uses the default")
@@ -50,7 +59,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	trusted, err := parseProxies(*proxies)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if *debugAddr != "" {
+		if err := checkDebugAddr(*debugAddr, *dev); err != nil {
+			log.Fatal(err)
+		}
 		serveDebug(*debugAddr)
 	}
 	cfg := &playhold.ServerConfig{
@@ -60,8 +76,24 @@ func main() {
 		MaxRooms:           *maxRooms,
 		EmptyRoomTimeout:   *emptyRoom,
 		DisconnectGrace:    *grace,
+		OriginPatterns:     splitList(*origins),
+		TrustedProxies:     trusted,
+		Development:        *dev,
 	}
-	if err := run(*addr, *web, *origins, *databaseURL, options, cfg, *shutdownTimeout); err != nil {
+	listen := &playhold.ListenConfig{
+		Addr:                 *addr,
+		AutocertDomains:      splitList(*tlsDomains),
+		AutocertCacheDir:     *tlsCache,
+		AutocertEmail:        *tlsEmail,
+		AutocertDirectoryURL: *tlsDirectory,
+		CertFile:             *tlsCert,
+		KeyFile:              *tlsKey,
+		ShutdownTimeout:      *shutdownTimeout,
+	}
+	if *web != "" {
+		listen.Handler = http.FileServer(http.Dir(*web))
+	}
+	if err := run(*databaseURL, options, cfg, listen); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -79,7 +111,42 @@ func parseTimers(value string) (playhold.TimersAfterRestart, error) {
 	}
 }
 
-func run(addr, web, origins, databaseURL string, options cards.Options, cfg *playhold.ServerConfig, shutdownTimeout time.Duration) error {
+func parseProxies(value string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, item := range splitList(value) {
+		p, err := netip.ParsePrefix(item)
+		if err != nil {
+			return nil, fmt.Errorf("-trusted-proxies: %w", err)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// checkDebugAddr keeps the profiling endpoints, which show the server's internals, off public addresses outside
+// development.
+func checkDebugAddr(addr string, dev bool) error {
+	if dev {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("-debug-addr: %w", err)
+	}
+	if ip, err := netip.ParseAddr(host); host == "localhost" || (err == nil && ip.IsLoopback()) {
+		return nil
+	}
+	return fmt.Errorf("-debug-addr %q isn't on localhost; the profiling endpoints must stay private outside -dev", addr)
+}
+
+func splitList(value string) []string {
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, ",")
+}
+
+func run(databaseURL string, options cards.Options, cfg *playhold.ServerConfig, listen *playhold.ListenConfig) error {
 	typ, err := cards.NewRoomTypeWith(options)
 	if err != nil {
 		return err
@@ -91,56 +158,23 @@ func run(addr, web, origins, databaseURL string, options cards.Options, cfg *pla
 		if err != nil {
 			return err
 		}
-		defer records.Close()
+		defer records.Close() // after ListenAndServe has written everything
 		cfg.Store = records
-	}
-	if origins != "" {
-		cfg.OriginPatterns = strings.Split(origins, ",")
 	}
 	server, err := playhold.NewServer(rt, cfg)
 	if err != nil {
 		return err
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/ws", server)
-	mux.HandleFunc("/healthz", server.Live)
-	mux.HandleFunc("/readyz", server.Ready)
-	if web != "" {
-		mux.Handle("/", http.FileServer(http.Dir(web)))
-	}
-	httpServer := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: readHeaderTimeout}
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	serving := make(chan error, 1)
-	go func() { serving <- httpServer.ListenAndServe() }()
-	slog.Info("listening", "addr", addr, "memory_limit_bytes", debug.SetMemoryLimit(-1))
-
-	select {
-	case err := <-serving:
-		return err // it never started, for example because the port is taken, so no player has anything to save
-	case <-ctx.Done():
+	go func() {
+		<-ctx.Done()
+		stop() // from here, a second signal kills the process, as a way out if the shutdown hangs
+	}()
+	err = server.ListenAndServe(ctx, listen)
+	if ctx.Err() == nil {
+		server.Close() // it never served, for example because the port is taken, so no player has anything to save
 	}
-
-	stop() // from here, a second signal kills the process, as a way out if the shutdown hangs
-	shutdown(httpServer, server, shutdownTimeout)
-	// The store closes after this, so everything has to be written by now.
-	if err := <-serving; !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
-}
-
-// shutdown saves the games first, while the HTTP server is still answering health checks.
-func shutdown(httpServer *http.Server, server *playhold.Server, timeout time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		slog.Warn("game server shutdown", "error", err)
-	}
-	if err := httpServer.Shutdown(ctx); err != nil {
-		slog.Warn("http server shutdown", "error", err)
-	}
+	return err
 }

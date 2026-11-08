@@ -4,8 +4,9 @@ package transport
 import (
 	"context"
 	"log/slog"
-	"net"
 	"net/http"
+	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +53,14 @@ type Config struct {
 	QueueSize int
 	// OriginPatterns lists the other web origins allowed to connect. The server's own host is always allowed.
 	OriginPatterns []string
+	// TrustedProxies lists the addresses of the proxies in front of the server. Only a request from one of them has its
+	// client address read from a header; from anywhere else, the header could be made up.
+	TrustedProxies []netip.Prefix
+	// ProxyClientIP reads the client's address from a request that came through a trusted proxy, and reports whether it
+	// found one. Nil reads X-Forwarded-For.
+	ProxyClientIP func(r *http.Request) (netip.Addr, bool)
+	// RequireSecure refuses a connection that arrived without TLS and not through a trusted proxy.
+	RequireSecure bool
 	// Logger receives transport logs. Nil uses slog.Default.
 	Logger *slog.Logger
 }
@@ -121,7 +130,12 @@ func (s *Server) Close() {
 
 // ServeHTTP upgrades the request to a WebSocket and serves it until the connection ends.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
+	ip, proxied := s.clientIP(r)
+	if s.cfg.RequireSecure && r.TLS == nil && !proxied {
+		s.cfg.Logger.Warn("connection refused: no TLS and not through a trusted proxy", "remote_addr", r.RemoteAddr)
+		http.Error(w, "TLS required", http.StatusForbidden)
+		return
+	}
 	if status := s.acquire(ip); status != http.StatusOK {
 		http.Error(w, http.StatusText(status), status)
 		return
@@ -237,10 +251,51 @@ func (s *Server) release(ip string) {
 	s.active.Done()
 }
 
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+// clientIP returns the client's address, and whether the request came through a trusted proxy. Behind one, the address
+// comes from the proxy's header; if the header gives none, it's the proxy's own.
+func (s *Server) clientIP(r *http.Request) (ip string, proxied bool) {
+	addrPort, err := netip.ParseAddrPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		return r.RemoteAddr, false
 	}
-	return host
+	remote := addrPort.Addr().Unmap()
+	if !trusted(s.cfg.TrustedProxies, remote) {
+		return remote.String(), false
+	}
+	read := s.cfg.ProxyClientIP
+	if read == nil {
+		read = func(r *http.Request) (netip.Addr, bool) { return forwardedFor(r, s.cfg.TrustedProxies) }
+	}
+	if client, ok := read(r); ok {
+		return client.Unmap().String(), true
+	}
+	return remote.String(), true
+}
+
+// forwardedFor returns the rightmost address in X-Forwarded-For that isn't a trusted proxy. Each proxy appends the
+// address it got the request from, so everything left of the first untrusted one could have been made up by the client.
+func forwardedFor(r *http.Request, proxies []netip.Prefix) (netip.Addr, bool) {
+	var hops []string
+	for _, line := range r.Header.Values("X-Forwarded-For") {
+		hops = append(hops, strings.Split(line, ",")...)
+	}
+	for i := len(hops) - 1; i >= 0; i-- {
+		addr, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
+		if err != nil {
+			return netip.Addr{}, false
+		}
+		if addr = addr.Unmap(); !trusted(proxies, addr) {
+			return addr, true
+		}
+	}
+	return netip.Addr{}, false
+}
+
+func trusted(proxies []netip.Prefix, addr netip.Addr) bool {
+	for _, p := range proxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }

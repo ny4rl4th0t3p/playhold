@@ -1,5 +1,5 @@
-# Run, play and measure the sample game on your own machine. There's no TLS or rate limiting yet, so don't expose it to
-# the internet. See README.md.
+# Run, play and measure the sample game on your own machine. It runs in development mode, over plain HTTP with the safety
+# checks off, and there's no rate limiting yet, so don't expose it to the internet. See README.md.
 name: playhold-cards
 
 services:
@@ -10,6 +10,7 @@ services:
       target: server
     # One bot holds many connections from one address, so the usual per-address cap is raised.
     command:
+      - -dev
       - -max-conns-per-ip
       - "4096"
       - -empty-room-timeout

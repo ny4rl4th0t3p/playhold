@@ -72,6 +72,7 @@ func startServer(t *testing.T) string {
 		RoomType:    typ,
 		MemoryLimit: -1,
 		Logger:      slog.New(slog.DiscardHandler),
+		Development: true,
 	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)

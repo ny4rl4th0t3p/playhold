@@ -43,6 +43,7 @@ func startServerWith(t *testing.T, cfg *ServerConfig) string {
 	t.Helper()
 	cfg.MemoryLimit = -1
 	cfg.Logger = slog.New(slog.DiscardHandler)
+	cfg.Development = true // plain HTTP, as in every test that doesn't check TLS
 	server, err := NewServer(newTestRuntime(t), cfg)
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
@@ -592,6 +593,7 @@ func TestPlayersAreToldWhenTheirRoomIsStuck(t *testing.T) {
 		RoomType:    newTestRoomType(t, RoomConfig{Modules: []Module{module}}),
 		MemoryLimit: -1,
 		Logger:      slog.New(slog.DiscardHandler),
+		Development: true,
 	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)

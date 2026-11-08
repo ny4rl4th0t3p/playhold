@@ -70,7 +70,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	server, err := playhold.NewServer(playhold.NewRuntime(playhold.Config{}), &playhold.ServerConfig{RoomType: typ})
+	// Development: it serves plain HTTP on localhost, for the SDKs' tests.
+	server, err := playhold.NewServer(playhold.NewRuntime(playhold.Config{}), &playhold.ServerConfig{RoomType: typ, Development: true})
 	if err != nil {
 		return err
 	}

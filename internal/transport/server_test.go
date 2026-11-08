@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -245,6 +246,96 @@ func TestConnectErrorClosesTheConnection(t *testing.T) {
 
 	_, _, err := ws.Read(testContext(t))
 	assert.Equal(t, websocket.StatusInternalError, websocket.CloseStatus(err))
+}
+
+func TestClientIP(t *testing.T) {
+	proxies := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	fromBehindProxy := func(_ *http.Request) (netip.Addr, bool) { return netip.MustParseAddr("192.0.2.9"), true }
+	tests := []struct {
+		name        string
+		remote      string
+		forwarded   []string
+		proxies     []netip.Prefix
+		read        func(*http.Request) (netip.Addr, bool)
+		want        string
+		wantProxied bool
+	}{
+		{name: "no proxy configured", remote: "203.0.113.5:4000", want: "203.0.113.5"},
+		{
+			name: "no proxy configured ignores the header", remote: "203.0.113.5:4000", forwarded: []string{"198.51.100.1"},
+			want: "203.0.113.5",
+		},
+		{
+			name: "an untrusted sender can't pick its address", remote: "203.0.113.5:4000", forwarded: []string{"198.51.100.1"},
+			proxies: proxies, want: "203.0.113.5",
+		},
+		{
+			name: "a trusted proxy's header is read", remote: "10.0.0.2:4000", forwarded: []string{"198.51.100.1"},
+			proxies: proxies, want: "198.51.100.1", wantProxied: true,
+		},
+		{
+			name: "the rightmost untrusted address, past other trusted proxies", remote: "10.0.0.2:4000",
+			forwarded: []string{"6.6.6.6, 198.51.100.1, 10.0.0.7"}, proxies: proxies, want: "198.51.100.1", wantProxied: true,
+		},
+		{
+			name: "header lines are read as one list", remote: "10.0.0.2:4000",
+			forwarded: []string{"6.6.6.6", "198.51.100.1"}, proxies: proxies, want: "198.51.100.1", wantProxied: true,
+		},
+		{
+			name: "no header gives the proxy's own address", remote: "10.0.0.2:4000",
+			proxies: proxies, want: "10.0.0.2", wantProxied: true,
+		},
+		{
+			name: "an unreadable hop gives the proxy's own address", remote: "10.0.0.2:4000",
+			forwarded: []string{"198.51.100.1, not-an-address"}, proxies: proxies, want: "10.0.0.2", wantProxied: true,
+		},
+		{
+			name: "an IPv4 address written as IPv6 is unwrapped", remote: "[::ffff:10.0.0.2]:4000",
+			forwarded: []string{"::ffff:198.51.100.1"}, proxies: proxies, want: "198.51.100.1", wantProxied: true,
+		},
+		{
+			name: "the game's own reader replaces the header", remote: "10.0.0.2:4000",
+			forwarded: []string{"198.51.100.1"}, proxies: proxies, read: fromBehindProxy, want: "192.0.2.9", wantProxied: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := NewServer(&Config{TrustedProxies: tt.proxies, ProxyClientIP: tt.read}, ignoreFrames)
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
+			r.RemoteAddr = tt.remote
+			for _, line := range tt.forwarded {
+				r.Header.Add("X-Forwarded-For", line)
+			}
+
+			got, proxied := server.clientIP(r)
+
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantProxied, proxied)
+		})
+	}
+}
+
+func TestRequireSecureRefusesPlainConnectionsNotFromATrustedProxy(t *testing.T) {
+	refused := startServer(t, &Config{RequireSecure: true}, ignoreFrames)
+	assert.Equal(t, http.StatusForbidden, dialStatus(t, refused, nil))
+
+	// The test client connects from 127.0.0.1, standing in for a proxy that ends TLS in front of the server.
+	proxied := startServer(t, &Config{
+		RequireSecure:  true,
+		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
+	}, ignoreFrames)
+	_ = dial(t, proxied)
+
+	server := NewServer(&Config{RequireSecure: true, Logger: slog.New(slog.DiscardHandler)}, ignoreFrames)
+	httpServer := httptest.NewTLSServer(server)
+	t.Cleanup(func() {
+		server.Close()
+		httpServer.Close()
+	})
+	ws, _, err := websocket.Dial(testContext(t), "wss"+strings.TrimPrefix(httpServer.URL, "https"), //nolint:bodyclose // Dial's docs say the body needs no closing
+		&websocket.DialOptions{HTTPClient: httpServer.Client()})
+	require.NoError(t, err, "a TLS connection is accepted")
+	_ = ws.CloseNow()
 }
 
 func TestCloseDisconnectsClientsAndRefusesNewOnes(t *testing.T) {

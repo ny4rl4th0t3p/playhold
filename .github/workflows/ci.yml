@@ -28,9 +28,16 @@ jobs:
       - run: make web
       - run: make vuln
       - run: make buflint
-      - run: make bufbreaking
+      - name: Check the .proto files only changed compatibly
         env:
-          BUF_AGAINST: .git#ref=${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # A force-push or a new branch gives a base that isn't in the history, so this compares with the parent instead.
+        run: |
+          if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "Base commit ${BASE} isn't in the history; comparing with the parent commit instead"
+            BASE="$(git rev-parse HEAD~1)"
+          fi
+          make bufbreaking BUF_AGAINST=".git#ref=${BASE}"
       - name: Check generated code is up to date
         run: |
           make gen

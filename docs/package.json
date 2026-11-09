@@ -1,0 +1,16 @@
+{
+  "name": "playhold-docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The playhold documentation site",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev --host",
+    "build": "vitepress build",
+    "preview": "vitepress preview --host"
+  },
+  "devDependencies": {
+    "vitepress": "2.0.0-alpha.21"
+  }
+}

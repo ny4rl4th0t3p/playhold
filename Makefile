@@ -6,12 +6,12 @@ BUF_AGAINST ?= .git\#branch=main
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check build vet gamevet test integration web lint buflint bufbreaking vuln gen fmt tidy
+.PHONY: help check build vet gamevet test integration web docs lint buflint bufbreaking vuln gen fmt tidy
 
 help: ## Show the available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z]+:.*## / {printf "  %-8s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-check: build vet gamevet test web lint buflint bufbreaking vuln ## Run every check that needs nothing running (see also: integration)
+check: build vet gamevet test web docs lint buflint bufbreaking vuln ## Run every check that needs nothing running (see also: integration)
 
 build: ## Build all packages
 	go build ./...
@@ -43,6 +43,13 @@ sdk/ts/node_modules: sdk/ts/package-lock.json
 examples/cards/web/node_modules: examples/cards/web/package-lock.json
 	npm --prefix examples/cards/web ci
 	touch examples/cards/web/node_modules
+
+docs: docs/node_modules ## Build the documentation site; a dead link or a missing code snippet fails it
+	npm --prefix docs run build
+
+docs/node_modules: docs/package-lock.json
+	npm --prefix docs ci
+	touch docs/node_modules
 
 lint: ## Run golangci-lint with the repo's config
 	golangci-lint cache clean

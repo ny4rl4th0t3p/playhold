@@ -263,7 +263,8 @@ func On[E any](r *Registry, handler func(rc *RoomContext, event E)) {
 
 // RoomConfig describes a kind of room.
 type RoomConfig struct {
-	// Name identifies the room type in logs.
+	// Name identifies the room type in logs and in saved rooms. A server only restores saved rooms of its own room type,
+	// so renaming one leaves its saved rooms unrestored.
 	Name string
 	// QueueSize is the inbound queue capacity. Zero or less uses the default.
 	QueueSize int

@@ -8,6 +8,8 @@ A self-hosted game backend in Go, built from authoritative rooms and composable 
 playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After
 that, each release adds support for another kind of game.
 
+**Documentation:** <https://ny4rl4th0t3p.github.io/playhold/>.
+
 ## The idea
 
 - **Authoritative rooms:** each room owns its state and handles messages one at a time, so game code needs no locks.
@@ -25,9 +27,8 @@ that, each release adds support for another kind of game.
 - [x] TypeScript SDK for web games
 - [x] Go SDK for bots and load tests
 - [x] Persistence and safe deploys
-- [ ] Security and abuse protection
+- [x] Security and abuse protection (bans come with accounts)
 - [ ] Matchmaking, private rooms and bots
-- [ ] Admin tools
 - [ ] Match replay and test tools
 
 **More kinds of games**
@@ -40,6 +41,7 @@ that, each release adds support for another kind of game.
 
 **Also planned**
 
+- [ ] Accounts, with bans and admin tools
 - [ ] Code generation and scaffolding
 - [ ] Unity and Godot SDKs
 - [ ] Modules in other languages

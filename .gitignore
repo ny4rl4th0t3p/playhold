@@ -9,6 +9,10 @@ go.work.sum
 # Node
 node_modules/
 
+# Documentation site
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
 # Editors and OS
 .idea/
 .vscode/

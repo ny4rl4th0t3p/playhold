@@ -99,9 +99,7 @@ Reading the numbers:
 
 - The bot's latency includes its own delays, so run it on a machine with CPU to spare, or give the game fewer CPUs than
   the machine has.
-- A finished game's room stays open until it has been empty for `EMPTY_ROOM_TIMEOUT`, so a long run holds more rooms
-  than
-  are being played.
+- A finished game's room stays open for `FINISHED_ROOM_TIME`, so a long run holds more rooms than are being played.
 - Results depend on your machine, so they aren't a benchmark of playhold.
 
 With `RATE` set, moves go out on a fixed schedule whether or not the server keeps up, and each one's latency counts from
@@ -146,27 +144,21 @@ game has finished.
 
 ## Read the crash journal
 
-The server writes each turn to its crash journal before running it, then marks how far it got. After a crash, copy the
-file and print it, oldest turn first:
+After a crash, copy the journal out of the container and print it, oldest turn first:
 
 ```bash
 docker compose cp game:/var/lib/cards/journal journal
 go run ../../cmd/playholdjournal journal
 ```
 
-A turn marked `crashed` was running when the server died, and the server also logs it once when it starts again. With
-the room's last save, its message is what it takes to reproduce the crash. The journal holds players' moves, so keep the
-copy private and delete it when you're done.
+The journal holds players' moves, so keep the copy private and delete it when you're done. What its states mean:
+[When something crashes](https://ny4rl4th0t3p.github.io/playhold/guides/crashes.html#the-crash-journal).
 
 ## Turn a message back on
 
-An incident is a turn that hurt the whole server: it's marked `crashed` in the journal, or its room got stuck and its
-handler was still running 30 seconds later. Incidents are saved in the database. Three from one kind of message within
-10 minutes turn that message off for an hour after the last one: the server answers it with a `TURNED_OFF` error and
-logs `message turned off`. Two from one room within 10 minutes keep that room from being restored when the server starts
-again. A panic isn't an incident: only its room is affected, and it goes back to its last save. A new build of the
-server starts with no incidents. To clear them without one, delete them, then restart the server, which reads them only
-when it starts:
+A message that kept crashing the server is turned off for an hour, and the server logs `message turned off`. How the
+breaker decides: [The breaker](https://ny4rl4th0t3p.github.io/playhold/guides/crashes.html#the-breaker). To turn every
+message back on before then, delete the incidents and restart the server:
 
 ```bash
 docker compose exec postgres psql -U postgres -c 'DELETE FROM incidents'
@@ -261,17 +253,9 @@ go run ./examples/cards/server -tls-cert cert.pem -tls-key key.pem
 go run ./examples/cards/server -trusted-proxies 10.0.0.2/32
 ```
 
-How automatic certificates work:
-
-- The server asks Let's Encrypt for a certificate when the first player connects, not when it starts. That first
-  connection waits a few seconds.
-- It renews the certificate by itself while it runs.
-- It keeps the certificate in the `-tls-cache` folder, so a restart doesn't ask for a new one.
-- If Let's Encrypt can't reach the server, for example because the domain points elsewhere or port 443 is closed, the
-  connection fails and the server's log says why.
-
-Let's Encrypt blocks a domain for a while after a few failed requests. To try a new setup without that risk, use their
-test service first. It works the same way, but browsers don't trust its certificates.
+How each works, and why to try Let's Encrypt's test service first:
+[Run in production](https://ny4rl4th0t3p.github.io/playhold/guides/production.html#tls). With the sample's flags, that's
+two runs:
 
 ```bash
 # 1. Test run: Let's Encrypt's test service, with a cache folder only for test certificates
@@ -286,22 +270,18 @@ curl -kv https://game.example/healthz 2>&1 | grep issuer
 go run ./examples/cards/server -tls-domains game.example -tls-cache /var/lib/cards/certs
 ```
 
-The two runs need different cache folders: certificates are kept by domain name, so a shared folder would keep serving
-the test certificate.
+Keep the two cache folders apart, or the test certificate keeps being served.
 
-Rate limits are on by default: new connections and new guests per address, and frames per connection. Change them with
-`-connect-rate`, `-guest-rate` and `-message-rate`, as `EVERY/BURST` such as `200ms/20`. `off` turns one off, for a
-server behind a proxy that already limits it; the server then logs a warning at startup.
+Change the rate limits with `-connect-rate`, `-guest-rate` and `-message-rate`, as `EVERY/BURST` such as `200ms/20`, or
+`off`. What each limits: [Limit abuse and load](https://ny4rl4th0t3p.github.io/playhold/guides/limits.html).
 
-If a service manager restarts the server when it exits, such as systemd with `Restart=always` or a container restart
-policy, add `-restart-when-stuck`. A room whose goroutine keeps running after the watchdog gave up on it, while the
-server stays overloaded, is most likely spinning forever, and only a new process gets rid of it: the server drains,
-saves every room and exits, and comes back with every game. Without a service manager, leave it out, or the server stays
-down. The Compose demo turns it on, with `restart: unless-stopped`.
+Add `-restart-when-stuck` only if a service manager starts the server again when it exits, such as systemd with
+`Restart=always` or a container restart policy; otherwise the server stays down. The Compose demo turns it on, with
+`restart: unless-stopped`. When it restarts:
+[Restart when stuck](https://ny4rl4th0t3p.github.io/playhold/guides/keeping-games-running.html#restart-when-stuck).
 
-Without `-addr`, it listens on `:443` with TLS and `:8080` without. Behind a proxy, the client's address comes from
-the proxy's `X-Forwarded-For` header, and only from the listed proxies. Outside `-dev`, the server also refuses an
-`-origins` pattern that matches any site, such as `*`, and a `-debug-addr` that isn't on localhost.
+Without `-addr`, it listens on `:443` with TLS and `:8080` without. Outside `-dev`, it refuses a `-debug-addr` that
+isn't on localhost.
 
 ## Host the page elsewhere
 

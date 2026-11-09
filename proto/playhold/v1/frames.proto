@@ -71,6 +71,8 @@ message RoomState {
   repeated ModuleView views = 1;
 }
 
+// #region error-codes
+
 // ErrorCode says what kind of problem an Error reports.
 enum ErrorCode {
   ERROR_CODE_UNSPECIFIED = 0;
@@ -108,12 +110,16 @@ enum ErrorCode {
   ERROR_CODE_TURNED_OFF = 14;
 }
 
+// #endregion error-codes
+
 // Error reports a problem with one client frame.
 message Error {
   uint64 seq = 1;
   ErrorCode code = 2;
   string message = 3;
 }
+
+// #region close-reasons
 
 // CloseReason says why a room closed.
 enum CloseReason {
@@ -125,6 +131,8 @@ enum CloseReason {
   // CLOSE_REASON_INACTIVE means no player sent anything to the room for too long.
   CLOSE_REASON_INACTIVE = 5;
 }
+
+// #endregion close-reasons
 
 // RoomClosed says the room has closed.
 message RoomClosed {

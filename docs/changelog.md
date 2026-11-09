@@ -60,6 +60,8 @@ like any other; a client built before them sees an unknown code. See [Errors and
   isn't restored.
 - Prometheus metrics, on a listener of their own at `127.0.0.1:9464` by default.
 - OpenTelemetry traces of turns, store calls and the restore, with `ServerConfig.TracerProvider`.
+- Logs name the player on a connection once it has said Hello, and the turn a stuck or panicking room was running.
+  `ServerConfig.HidePlayerIDs` leaves player IDs out of logs and traces.
 - This documentation site.
 - The sample: profiles of the server during a `t12.sh` run.
 

@@ -118,6 +118,10 @@ type ServerConfig struct {
 	MemoryLimit int64
 	// Logger receives server logs. Nil uses the runtime's logger.
 	Logger *slog.Logger
+	// HidePlayerIDs leaves players' IDs out of the server's logs and traces, for a game that would rather not record them.
+	// A log line about a player's connection or turn then can't be traced back to that player. The crash journal, when on,
+	// still records each turn's player, since reproducing a crash is what it's for. The server logs it at startup.
+	HidePlayerIDs bool
 	// TracerProvider receives OpenTelemetry traces: a span for each room's turn, each call to the store, and restoring the
 	// rooms at startup. Nil traces nothing, at no cost. playhold only uses OpenTelemetry's API: the game sets up its SDK,
 	// and where the traces go.
@@ -149,10 +153,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	if cfg.RoomType == nil {
 		return nil, errors.New("playhold: server config has no room type")
 	}
-	logger := cfg.Logger
-	if logger == nil {
-		logger = rt.logger
-	}
+	logger := serverLogger(cfg, rt)
 	if cfg.Development {
 		logger.Warn("development mode: the checks that keep a public server safe are off; never use it on a server players reach")
 	} else if err := checkSecure(cfg); err != nil {

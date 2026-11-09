@@ -133,6 +133,7 @@ func (s *session) hello(seq uint64, hello *wire.Hello) {
 	}
 
 	s.player = player
+	s.conn.SetPlayer(string(player))
 	if old := guests.attach(player, s.conn); old != nil {
 		old.Replace()
 	}

@@ -50,7 +50,7 @@ func (r *Room) startTurnSpan(in *input) trace.Span {
 	attrs := []attribute.KeyValue{
 		attrRoom.String(string(r.id)), attrRoomType.String(r.typ.cfg.Name), attrKind.String(turnKindNames[kindOf(in)]),
 	}
-	if in.player != "" {
+	if in.player != "" && !r.hidePlayers {
 		attrs = append(attrs, attrPlayer.String(string(in.player)))
 	}
 	if in.module != "" {

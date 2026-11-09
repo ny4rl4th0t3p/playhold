@@ -47,6 +47,8 @@ type Runtime struct {
 	breaker *breaker     // set by a Server
 	metrics *metrics     // set by a Server
 	tracer  trace.Tracer // set by a Server with a TracerProvider
+
+	hidePlayers bool // set by a Server with HidePlayerIDs
 }
 
 // NewRuntime returns a Runtime with no rooms.
@@ -180,6 +182,16 @@ func (rt *Runtime) attach(room *Room) {
 	room.incidents = rt.breaker
 	room.metrics = rt.metrics
 	room.tracer = rt.tracer
+	if rt.hidePlayers {
+		room.hidePlayers = true
+		room.logger = hidePlayers(room.logger)
+	}
+}
+
+func (rt *Runtime) hidePlayerIDs() {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.hidePlayers = true
 }
 
 func (rt *Runtime) useJournal(j *journal) {

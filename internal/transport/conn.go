@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -17,8 +18,9 @@ type Conn struct {
 	cancel       context.CancelFunc
 	write        func(ctx context.Context, data []byte) error
 	writeTimeout time.Duration
-	logger       *slog.Logger
-	ip           string // the client's address, set by the server before any frame arrives
+	baseLogger   *slog.Logger
+	logger       atomic.Pointer[slog.Logger] // baseLogger, with the player once known; both goroutines log
+	ip           string                      // the client's address, set by the server before any frame arrives
 
 	mu     sync.Mutex
 	latest *wire.RoomState // the newest state not yet written
@@ -39,17 +41,26 @@ func newConn(
 	logger *slog.Logger,
 	write func(ctx context.Context, data []byte) error,
 ) *Conn {
-	return &Conn{
+	c := &Conn{
 		ctx:          ctx,
 		cancel:       cancel,
 		write:        write,
 		writeTimeout: cfg.WriteTimeout,
-		logger:       logger,
+		baseLogger:   logger,
 		wake:         make(chan struct{}, 1),
 		queue:        make(chan *wire.ServerFrame, cfg.QueueSize),
 		replaced:     make(chan struct{}, 1),
 	}
+	c.logger.Store(logger)
+	return c
 }
+
+// SetPlayer tags the connection's logs with the player, once the client has said who it is.
+func (c *Conn) SetPlayer(player string) {
+	c.logger.Store(c.baseLogger.With("player", player))
+}
+
+func (c *Conn) log() *slog.Logger { return c.logger.Load() }
 
 // IP is the client's address: behind a trusted proxy, the one the proxy reported.
 func (c *Conn) IP() string { return c.ip }
@@ -120,7 +131,7 @@ func (c *Conn) enqueue(frame *wire.ServerFrame) {
 	select {
 	case c.queue <- frame:
 	default:
-		c.logger.Warn("client too slow, disconnecting")
+		c.log().Warn("client too slow, disconnecting")
 		c.cancel()
 	}
 }
@@ -186,13 +197,13 @@ func (c *Conn) tryDequeue() *wire.ServerFrame {
 func (c *Conn) writeFrame(frame *wire.ServerFrame) bool {
 	data, err := proto.Marshal(frame)
 	if err != nil {
-		c.logger.Error("encoding frame failed", "error", err)
+		c.log().Error("encoding frame failed", "error", err)
 		return true
 	}
 	ctx, cancel := context.WithTimeout(c.ctx, c.writeTimeout)
 	defer cancel()
 	if err := c.write(ctx, data); err != nil {
-		c.logger.Debug("writing frame failed", "error", err)
+		c.log().Debug("writing frame failed", "error", err)
 		c.cancel()
 		return false
 	}

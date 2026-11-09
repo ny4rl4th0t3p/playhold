@@ -71,6 +71,27 @@ A room's close `reason` is one of `requested`, `shutdown`, `panic`, `init_failed
 
 See [Limit abuse and load](./limits.md).
 
+## Logs
+
+The server logs through `log/slog`, to `ServerConfig.Logger`. Its lines carry what they're about:
+
+| Lines about                                   | Carry                                                                                 |
+|-----------------------------------------------|---------------------------------------------------------------------------------------|
+| A room                                        | `room` and `room_type`                                                                |
+| A turn, such as a panic, a slow or stuck turn | The room, and the turn's `player`, and its `module` and `message_id` or `timer_event` |
+| A connection, once its client has said Hello  | `player`                                                                              |
+| The crash journal's turns                     | The turn's room, player, module, message and event                                    |
+
+A client's IP address appears only in the lines about a connection refused for lacking TLS.
+
+### Leaving player IDs out
+
+A player's ID is a random guest ID, not a name, but it can still count as personal data where it could be linked back
+to someone. The logs keep it by default, since it's what ties a problem to the player who hit it. A game that would
+rather not record it sets `ServerConfig.HidePlayerIDs`: every log line drops its `player`, a turn's span drops
+`playhold.player.id`, and the server logs `player IDs left out of logs and traces` at startup. The crash journal, when
+on, still records each turn's player, since reproducing a crash is what it's for.
+
 ## Traces
 
 Set `ServerConfig.TracerProvider` to an OpenTelemetry tracer provider, and the server traces its work. playhold only

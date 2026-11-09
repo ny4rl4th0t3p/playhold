@@ -73,6 +73,7 @@ See [Watch the server](../guides/observability.md).
 | Field            | Default             | What it does                                  |
 |------------------|---------------------|-----------------------------------------------|
 | `Logger`         | The runtime's       | Where server logs go                          |
+| `HidePlayerIDs`  | False               | Leaves players' IDs out of logs and traces    |
 | `TracerProvider` | Nil, traces nothing | The OpenTelemetry tracer provider for traces  |
 
 ## ListenConfig

@@ -195,11 +195,11 @@ func (s *Server) serve(ws *websocket.Conn, ip string) {
 	}
 }
 
-func (s *Server) readLoop(ctx context.Context, conn *Conn, ws *websocket.Conn, onFrame func(*wire.ClientFrame)) {
+func (*Server) readLoop(ctx context.Context, conn *Conn, ws *websocket.Conn, onFrame func(*wire.ClientFrame)) {
 	for {
 		typ, data, err := ws.Read(ctx)
 		if err != nil {
-			s.cfg.Logger.Debug("connection ended", "error", err)
+			conn.log().Debug("connection ended", "error", err)
 			return
 		}
 		if typ != websocket.MessageBinary {
@@ -231,7 +231,7 @@ func (s *Server) keepalive(ctx context.Context, conn *Conn, ws *websocket.Conn) 
 		err := ws.Ping(pingCtx)
 		cancel()
 		if err != nil {
-			s.cfg.Logger.Debug("client stopped answering", "error", err)
+			conn.log().Debug("client stopped answering", "error", err)
 			conn.Close()
 			return
 		}

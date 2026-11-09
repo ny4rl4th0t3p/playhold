@@ -247,9 +247,11 @@ type Room struct {
 	incidents *breaker
 	metrics   *metrics     // nil without a Server
 	tracer    trace.Tracer // nil traces nothing
-	turnMu    sync.Mutex
-	current   turnInfo
-	stuckTurn turnInfo
+	// hidePlayers leaves players' IDs out of traces; the room's logger already leaves them out of logs.
+	hidePlayers bool
+	turnMu      sync.Mutex
+	current     turnInfo
+	stuckTurn   turnInfo
 }
 
 // turnInfo names what started a turn: a player's message, a timer or grace event, or neither for a join.
@@ -258,6 +260,22 @@ type turnInfo struct {
 	module string
 	id     uint32
 	event  string
+}
+
+// logAttrs returns what's known about the turn, for a log line. Inside a server, rooms track their running turn; a room
+// used without one tracks nothing, so this is empty.
+func (t *turnInfo) logAttrs() []any {
+	var attrs []any
+	if t.player != "" {
+		attrs = append(attrs, "player", string(t.player))
+	}
+	if t.module != "" {
+		attrs = append(attrs, "module", t.module, "message_id", t.id)
+	}
+	if t.event != "" {
+		attrs = append(attrs, "timer_event", t.event)
+	}
+	return attrs
 }
 
 func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
@@ -451,14 +469,15 @@ func (r *Room) startWork() {
 // abandon closes a room whose goroutine has run for too long. Go can't kill that goroutine, so if it ever wakes it
 // finds the room closed and ends without touching anything outside the room.
 func (r *Room) abandon() {
-	r.logger.Error("room stuck, closing it", "timeout", r.stuckTimeout)
+	r.turnMu.Lock()
+	r.stuckTurn = r.current
+	turn := r.current
+	r.turnMu.Unlock()
+	r.logger.Error("room stuck, closing it", append([]any{"timeout", r.stuckTimeout}, turn.logAttrs()...)...)
 	r.gate.Lock() // waits for anything already on its way out, and stops everything after it
 	r.stuck.Store(true)
 	r.gate.Unlock()
 	r.journalMark(JournalStuck, true)
-	r.turnMu.Lock()
-	r.stuckTurn = r.current
-	r.turnMu.Unlock()
 	r.requestStop(CloseStuck)
 	r.finish(CloseStuck)
 	if r.onStuck != nil {
@@ -737,7 +756,8 @@ func (r *Room) reportFailedInput(in input) {
 	}
 	defer func() {
 		if v := recover(); v != nil {
-			r.logger.Error("reporting a failed input panicked", "panic", v, "stack", string(debug.Stack()))
+			r.logger.Error("reporting a failed input panicked",
+				"player", string(in.player), "panic", v, "stack", string(debug.Stack()))
 		}
 	}()
 	in.result(ErrMessageFailed)
@@ -751,8 +771,8 @@ func (r *Room) turn(in input) (panicked bool) {
 	defer func() {
 		if v := recover(); v != nil {
 			panicked = true
-			r.logger.Error("room handler panicked",
-				"player", string(in.player), "timer_event", in.timerEvent, "panic", v, "stack", string(debug.Stack()))
+			r.logger.Error("room handler panicked", "player", string(in.player), "module", in.module, "message_id", in.id,
+				"timer_event", in.timerEvent, "panic", v, "stack", string(debug.Stack()))
 		}
 		if panicked {
 			r.journalMark(JournalPanicked, true)

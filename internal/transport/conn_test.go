@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"sync"
@@ -127,6 +128,25 @@ func TestClientThatFallsBehindOnErrorsIsDisconnected(t *testing.T) {
 		conn.SendError(4, wire.ErrorCode_ERROR_CODE_REJECTED, "overflow")
 		<-conn.Done()
 	})
+}
+
+func TestConnectionLogsNameThePlayerOnceKnown(t *testing.T) {
+	var logs bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// No writer runs, so the queue of one fills at once and every frame after it overflows.
+	conn := newConn(ctx, cancel, (&Config{QueueSize: 1}).withDefaults(), slog.New(slog.NewTextHandler(&logs, nil)),
+		func(_ context.Context, _ []byte) error { return nil })
+	conn.SendError(1, wire.ErrorCode_ERROR_CODE_REJECTED, "queued")
+
+	conn.SendError(2, wire.ErrorCode_ERROR_CODE_REJECTED, "overflow")
+	assert.Contains(t, logs.String(), "client too slow")
+	assert.NotContains(t, logs.String(), "player=", "not known before Hello")
+
+	logs.Reset()
+	conn.SetPlayer("alice")
+	conn.SendError(3, wire.ErrorCode_ERROR_CODE_REJECTED, "overflow")
+	assert.Contains(t, logs.String(), "player=alice")
 }
 
 func TestSendAfterTheWriterStopsDoesNotBlock(t *testing.T) {

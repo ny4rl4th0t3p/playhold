@@ -28,6 +28,7 @@ type gateway struct {
 	newGuests   *perIP // nil if off
 	messageRate RateLimit
 	admission   *admission // nil if off
+	breaker     *breaker   // nil turns no message off
 }
 
 func (g *gateway) connect(c *transport.Conn) (func(*wire.ClientFrame), error) {
@@ -268,6 +269,7 @@ func (s *session) message(seq uint64, msg *wire.ModuleMessage) {
 	room, joined := s.room, s.joined
 	s.mu.Unlock()
 
+	key := handlerKey{module: msg.GetModule(), id: msg.GetId()}
 	switch {
 	case !joined:
 		s.malformed(seq, "join a room before sending messages")
@@ -275,8 +277,11 @@ func (s *session) message(seq uint64, msg *wire.ModuleMessage) {
 	case msg.GetModule() == "":
 		s.malformed(seq, "message has no module")
 		return
-	case !s.allowMessage(handlerKey{module: msg.GetModule(), id: msg.GetId()}):
+	case !s.allowMessage(key):
 		s.rateLimited(seq)
+		return
+	case s.gateway.breaker.turnedOff(key):
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_TURNED_OFF, ErrTurnedOff.Error())
 		return
 	}
 	report := func(err error) {

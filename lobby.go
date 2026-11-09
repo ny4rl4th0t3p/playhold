@@ -37,6 +37,7 @@ type lobby struct {
 	grace    time.Duration
 	inactive time.Duration // zero never closes a room for inactivity
 	admit    func() bool   // whether new rooms and new players are taken now; nil always allows
+	breaker  *breaker      // says which saved rooms keep crashing the server; nil restores them all
 
 	mu       sync.Mutex
 	rooms    map[string]*lobbyRoom
@@ -223,8 +224,8 @@ func (l *lobby) replacement(code string, old *Room) *Room {
 	return entry.room
 }
 
-// restoreAll brings back every saved room, each starting with nobody connected. A room that can't be restored is
-// logged and left in the store, so a fixed server can try again, and doesn't stop the others.
+// restoreAll brings back every saved room, each starting with nobody connected. A room that can't be restored, or that
+// kept crashing the server, is logged and left in the store, so a fixed server can try again, and doesn't stop the others.
 func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 	rooms, err := records.LoadRooms(ctx)
 	if err != nil {
@@ -245,6 +246,11 @@ func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 		}
 		if record.RoomType != l.typ.cfg.Name {
 			l.rt.logger.Error("skipping a saved room of another type", "room", record.ID, "room_type", record.RoomType)
+			continue
+		}
+		if l.breaker.keepsCrashing(RoomID(record.ID)) {
+			l.rt.logger.Error("skipping a saved room that kept crashing the server; a start with a new build, or once its "+
+				"incidents are older than the window, tries it again", "room", record.ID, "incidents", roomIncidents, "window", incidentWindow)
 			continue
 		}
 		entry := &lobbyRoom{}

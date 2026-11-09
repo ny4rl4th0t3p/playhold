@@ -132,6 +132,7 @@ type Server struct {
 	admission      *admission // nil if off
 	stuck          *stuckWatch
 	journal        *journal // nil if off
+	breaker        *breaker
 	stopBackground context.CancelFunc
 }
 
@@ -162,9 +163,9 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		writer.interval = cfg.SnapshotInterval
 	}
 	applyMemoryLimit(cfg.MemoryLimit, logger)
-	crashJournal, journalErr := openServerJournal(cfg.CrashJournal, rt, logger) // before rooms are restored, so they write to it
-	if journalErr != nil {
-		return nil, journalErr
+	crashJournal, incidents, err := openIncidents(cfg, rt, records, logger) // before rooms are restored, so they use both
+	if err != nil {
+		return nil, err
 	}
 
 	connectRate := cfg.ConnectRate.orDefault(defaultConnectRate)
@@ -180,11 +181,12 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 
 	g := &gateway{
 		guests:      newGuests(records),
-		lobby:       newServerLobby(rt, cfg, writer, admit, logger),
+		lobby:       newServerLobby(rt, cfg, writer, admit, incidents, logger),
 		logger:      logger,
 		newGuests:   newPerIP(guestRate),
 		messageRate: messageRate,
 		admission:   admit,
+		breaker:     incidents,
 	}
 	if writer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
@@ -216,6 +218,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		admission:      admit,
 		stuck:          stuck,
 		journal:        crashJournal,
+		breaker:        incidents,
 		stopBackground: stopBackground,
 		transport: transport.NewServer(&transport.Config{
 			MaxMessageBytes:  cfg.MaxMessageBytes,
@@ -230,6 +233,34 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			Logger:           logger,
 		}, g.connect),
 	}, nil
+}
+
+// openIncidents opens the crash journal, if there's one, and the breaker, which also counts the turns the journal shows
+// were running when the process last died, and gives both to the runtime's rooms.
+func openIncidents(cfg *ServerConfig, rt *Runtime, records store.Store, logger *slog.Logger) (*journal, *breaker, error) {
+	crashJournal, err := openServerJournal(cfg.CrashJournal, rt, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	var crashed []JournalEntry
+	if crashJournal != nil {
+		crashed = crashJournal.crashed
+	}
+	build, err := currentBuild()
+	if err != nil {
+		logger.Warn("could not read the server's executable, so a new build won't turn messages back on", "error", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
+	defer cancel()
+	incidents, err := newBreaker(ctx, records, build, logger, crashed)
+	if err != nil {
+		if crashJournal != nil {
+			_ = crashJournal.close()
+		}
+		return nil, nil, err
+	}
+	rt.useBreaker(incidents)
+	return crashJournal, incidents, nil
 }
 
 // openServerJournal opens the crash journal if the config has a path, reports what it shows about the last crash, and
@@ -253,8 +284,10 @@ func openServerJournal(cfg JournalConfig, rt *Runtime, logger *slog.Logger) (*jo
 }
 
 // newServerLobby makes the lobby from the config: the room cap, the three timeouts with a warning for each turned off,
-// and admission control.
-func newServerLobby(rt *Runtime, cfg *ServerConfig, writer *snapshotWriter, admit *admission, logger *slog.Logger) *lobby {
+// admission control, and the breaker, which keeps rooms that kept crashing the server from being restored.
+func newServerLobby(
+	rt *Runtime, cfg *ServerConfig, writer *snapshotWriter, admit *admission, incidents *breaker, logger *slog.Logger,
+) *lobby {
 	idle := cfg.EmptyRoomTimeout.orDefault(defaultEmptyRoomTimeout)
 	grace := cfg.DisconnectGrace.orDefault(defaultDisconnectGrace)
 	inactive := cfg.InactiveRoomTimeout.orDefault(defaultInactiveRoom)
@@ -276,6 +309,7 @@ func newServerLobby(rt *Runtime, cfg *ServerConfig, writer *snapshotWriter, admi
 	l.grace = grace.duration()
 	l.inactive = inactive.duration()
 	l.admit = admit.allow
+	l.breaker = incidents
 	return l
 }
 
@@ -336,6 +370,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.stopBackground()
 	s.Drain()
 	err := s.rt.Shutdown(ctx)
+	s.breaker.wait()
 	if s.writer != nil {
 		s.writer.close(ctx)
 	}

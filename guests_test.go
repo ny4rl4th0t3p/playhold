@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,12 @@ func (downStore) WriteRooms(_ context.Context, _ []store.RoomRecord, _ []string)
 func (downStore) LoadRooms(_ context.Context) ([]store.RoomRecord, error) {
 	return nil, nil
 }
+
+func (downStore) SaveIncident(_ context.Context, _ *store.Incident) error { return errStoreDown }
+
+func (downStore) LoadIncidents(_ context.Context) ([]store.Incident, error) { return nil, nil }
+
+func (downStore) DeleteIncidents(_ context.Context, _ string, _ time.Time) error { return nil }
 
 func TestGuestSecrets(t *testing.T) {
 	g := newGuests(memory.New())

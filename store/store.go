@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // ErrNotFound means the store has no such record.
@@ -16,6 +17,23 @@ type RoomRecord struct {
 	Code     string
 	RoomType string
 	Data     []byte
+}
+
+// Incident is a turn that hurt the whole server: it was running when the process died, or it got stuck and kept running.
+// The server counts them to turn off for a while a message that keeps doing it, and to keep a room that keeps doing it
+// from coming back.
+type Incident struct {
+	// Build identifies the server's build. A new build starts with no incidents.
+	Build string
+	// Kind is "stuck" or "crashed".
+	Kind   string
+	Room   string
+	Player string
+	// Module and MessageID name a player's message. Event names the event of a timer or grace period instead.
+	Module    string
+	MessageID uint32
+	Event     string
+	At        time.Time
 }
 
 // Store keeps what has to outlive the process.
@@ -34,4 +52,11 @@ type Store interface {
 	WriteRooms(ctx context.Context, saves []RoomRecord, deletes []string) error
 	// LoadRooms returns every saved room, in no particular order.
 	LoadRooms(ctx context.Context) ([]RoomRecord, error)
+
+	// SaveIncident records an incident.
+	SaveIncident(ctx context.Context, incident *Incident) error
+	// LoadIncidents returns every recorded incident, oldest first.
+	LoadIncidents(ctx context.Context) ([]Incident, error)
+	// DeleteIncidents deletes the incidents of every build but keepBuild, and those that happened before the given time.
+	DeleteIncidents(ctx context.Context, keepBuild string, before time.Time) error
 }

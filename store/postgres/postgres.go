@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -128,6 +129,49 @@ func (s *Store) LoadRooms(ctx context.Context) ([]store.RoomRecord, error) {
 		return nil, fmt.Errorf("postgres: loading rooms: %w", err)
 	}
 	return rooms, nil
+}
+
+// SaveIncident implements store.Store.
+func (s *Store) SaveIncident(ctx context.Context, incident *store.Incident) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO incidents (build, kind, room_id, player_id, module, message_id, event, at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		incident.Build, incident.Kind, incident.Room, incident.Player, incident.Module, int64(incident.MessageID),
+		incident.Event, incident.At)
+	if err != nil {
+		return fmt.Errorf("postgres: saving incident: %w", err)
+	}
+	return nil
+}
+
+// LoadIncidents implements store.Store.
+func (s *Store) LoadIncidents(ctx context.Context) ([]store.Incident, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT build, kind, room_id, player_id, module, message_id, event, at FROM incidents ORDER BY at, id`)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: loading incidents: %w", err)
+	}
+	incidents, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (store.Incident, error) {
+		var incident store.Incident
+		var messageID int64
+		err := row.Scan(&incident.Build, &incident.Kind, &incident.Room, &incident.Player, &incident.Module, &messageID,
+			&incident.Event, &incident.At)
+		incident.MessageID = uint32(messageID) //nolint:gosec // saved from a uint32
+		incident.At = incident.At.UTC()
+		return incident, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("postgres: loading incidents: %w", err)
+	}
+	return incidents, nil
+}
+
+// DeleteIncidents implements store.Store.
+func (s *Store) DeleteIncidents(ctx context.Context, keepBuild string, before time.Time) error {
+	if _, err := s.pool.Exec(ctx, `DELETE FROM incidents WHERE build <> $1 OR at < $2`, keepBuild, before); err != nil {
+		return fmt.Errorf("postgres: deleting incidents: %w", err)
+	}
+	return nil
 }
 
 // migrate applies the migrations the database hasn't had yet. The lock lets servers start together safely.

@@ -128,6 +128,8 @@ type journal struct {
 	next     atomic.Uint64 // the last sequence number given out
 	logger   *slog.Logger
 	failed   atomic.Bool // a write failed, which is logged once
+	// crashed holds the turns that were running when the process last died, found at open, for the breaker to count.
+	crashed []JournalEntry
 }
 
 // openJournal opens the journal at cfg.Path, creating it if needed, reports the turns it shows were in flight when the
@@ -360,8 +362,8 @@ func decodeEntry(b []byte) (JournalEntry, bool) {
 	return e, true
 }
 
-// reportCrashed logs the turns that were in flight when the process last died, and marks them so they're reported once,
-// unless the file is about to start over anyway.
+// reportCrashed logs the turns that were in flight when the process last died, keeps those whose handler was running,
+// and marks them so they're reported once, unless the file is about to start over anyway.
 func (j *journal) reportCrashed(entries []JournalEntry, mark bool) {
 	for i := range entries {
 		e := &entries[i]
@@ -371,6 +373,7 @@ func (j *journal) reportCrashed(entries []JournalEntry, mark bool) {
 			next = JournalCrashed
 			j.logger.Error("the server died while this turn's handler ran; it may have caused the crash",
 				journalAttrs(e)...)
+			j.crashed = append(j.crashed, *e)
 		case JournalHandled:
 			next = JournalCrashedAfter
 			j.logger.Warn("the server died after this turn's handler finished, while saving or sending views",

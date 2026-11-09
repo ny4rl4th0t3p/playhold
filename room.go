@@ -240,6 +240,21 @@ type Room struct {
 	journal    *journal
 	journalBuf []byte
 	journalSeq atomic.Uint64
+
+	// The breaker, if any, counts this room's incidents. current is the running turn, and stuckTurn the one the watchdog
+	// gave up on, which is an incident if its goroutine is still running after stuckGrace.
+	incidents *breaker
+	turnMu    sync.Mutex
+	current   turnInfo
+	stuckTurn turnInfo
+}
+
+// turnInfo names what started a turn: a player's message, a timer or grace event, or neither for a join.
+type turnInfo struct {
+	player PlayerID
+	module string
+	id     uint32
+	event  string
 }
 
 func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
@@ -437,6 +452,9 @@ func (r *Room) abandon() {
 	r.stuck.Store(true)
 	r.gate.Unlock()
 	r.journalMark(JournalStuck, true)
+	r.turnMu.Lock()
+	r.stuckTurn = r.current
+	r.turnMu.Unlock()
 	r.requestStop(CloseStuck)
 	r.finish(CloseStuck)
 	if r.onStuck != nil {
@@ -723,6 +741,7 @@ func (r *Room) reportFailedInput(in input) {
 
 // turn handles one input. A panic is contained here, so it closes only this room.
 func (r *Room) turn(in input) (panicked bool) {
+	info := turnInfo{player: in.player, module: in.module, id: in.id, event: in.timerEvent}
 	defer func() {
 		if v := recover(); v != nil {
 			panicked = true
@@ -734,7 +753,9 @@ func (r *Room) turn(in input) (panicked bool) {
 		} else {
 			r.journalMark(JournalDone, true) // nothing, if the watchdog already wrote stuck
 		}
+		r.setCurrent(turnInfo{})
 	}()
+	r.setCurrent(info)
 	r.startWork()
 	defer r.watchdog.Stop()
 
@@ -756,6 +777,31 @@ func (r *Room) turn(in input) (panicked bool) {
 		r.sendViews()
 	}
 	return false
+}
+
+// setCurrent records the running turn for the watchdog, if a breaker counts incidents.
+func (r *Room) setCurrent(info turnInfo) {
+	if r.incidents == nil {
+		return
+	}
+	r.turnMu.Lock()
+	r.current = info
+	r.turnMu.Unlock()
+}
+
+// stillStuck tells the breaker, if any, that the turn the watchdog gave up on is still running long after: its handler
+// spins or waits forever, and the same message would likely do it again.
+func (r *Room) stillStuck() {
+	if r.incidents == nil {
+		return
+	}
+	r.turnMu.Lock()
+	info := r.stuckTurn
+	r.turnMu.Unlock()
+	r.incidents.record(&store.Incident{
+		Kind: string(JournalStuck), Room: string(r.id), Player: string(info.player), Module: info.module, MessageID: info.id,
+		Event: info.event,
+	})
 }
 
 // reportSlowTurn logs a turn that took longer than the time budget: the room carries on, but its game code is slow

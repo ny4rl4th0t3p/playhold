@@ -5,15 +5,17 @@ import (
 	"context"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/ny4rl4th0t3p/playhold/store"
 )
 
 // Store keeps everything in memory.
 type Store struct {
-	mu     sync.Mutex
-	guests map[string][]byte
-	rooms  map[string]store.RoomRecord
+	mu        sync.Mutex
+	guests    map[string][]byte
+	rooms     map[string]store.RoomRecord
+	incidents []store.Incident
 }
 
 var _ store.Store = (*Store)(nil)
@@ -51,6 +53,33 @@ func (s *Store) LoadRooms(_ context.Context) ([]store.RoomRecord, error) {
 		rooms = append(rooms, record)
 	}
 	return rooms, nil
+}
+
+// SaveIncident implements store.Store.
+func (s *Store) SaveIncident(_ context.Context, incident *store.Incident) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.incidents = append(s.incidents, *incident)
+	return nil
+}
+
+// LoadIncidents implements store.Store.
+func (s *Store) LoadIncidents(_ context.Context) ([]store.Incident, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	incidents := slices.Clone(s.incidents)
+	slices.SortStableFunc(incidents, func(a, b store.Incident) int { return a.At.Compare(b.At) })
+	return incidents, nil
+}
+
+// DeleteIncidents implements store.Store.
+func (s *Store) DeleteIncidents(_ context.Context, keepBuild string, before time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.incidents = slices.DeleteFunc(s.incidents, func(incident store.Incident) bool {
+		return incident.Build != keepBuild || incident.At.Before(before)
+	})
+	return nil
 }
 
 // SaveGuest implements store.Store.

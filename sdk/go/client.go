@@ -40,6 +40,7 @@ const (
 	ErrorServerFull          = wire.ErrorCode_ERROR_CODE_SERVER_FULL
 	ErrorUpdateRequired      = wire.ErrorCode_ERROR_CODE_UPDATE_REQUIRED
 	ErrorRateLimited         = wire.ErrorCode_ERROR_CODE_RATE_LIMITED
+	ErrorTurnedOff           = wire.ErrorCode_ERROR_CODE_TURNED_OFF
 )
 
 // Error is a problem the server reported. Seq is the number of the frame it's about.

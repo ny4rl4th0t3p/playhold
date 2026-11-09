@@ -42,6 +42,7 @@ type Runtime struct {
 	closed  bool
 	onStuck func(*Room) // set by a Server, to watch what an abandoned room's goroutine does next
 	journal *journal    // set by a Server with a crash journal
+	breaker *breaker    // set by a Server
 }
 
 // NewRuntime returns a Runtime with no rooms.
@@ -172,12 +173,19 @@ func (rt *Runtime) attach(room *Room) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	room.journal = rt.journal
+	room.incidents = rt.breaker
 }
 
 func (rt *Runtime) useJournal(j *journal) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.journal = j
+}
+
+func (rt *Runtime) useBreaker(b *breaker) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.breaker = b
 }
 
 // reportStuck passes a room the watchdog gave up on to whoever watches for it.

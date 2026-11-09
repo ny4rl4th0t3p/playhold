@@ -103,6 +103,9 @@ enum ErrorCode {
   // ERROR_CODE_RATE_LIMITED means this client sent too much, too fast. The frame was not handled. Slow down and try
   // again later.
   ERROR_CODE_RATE_LIMITED = 13;
+  // ERROR_CODE_TURNED_OFF means the server has turned this message off for a while, because it kept crashing the server
+  // or hanging rooms. The message was not handled. Other messages still work.
+  ERROR_CODE_TURNED_OFF = 14;
 }
 
 // Error reports a problem with one client frame.

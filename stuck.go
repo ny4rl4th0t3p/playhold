@@ -43,7 +43,7 @@ func newStuckWatch(logger *slog.Logger, admit *admission, restart bool, drain fu
 	return &stuckWatch{logger: logger, admission: admit, restart: restart, drain: drain, restartNeeded: make(chan struct{})}
 }
 
-// follow watches one stuck room's goroutine until it ends.
+// follow watches one stuck room's goroutine until it ends. Still running after stuckGrace, it's an incident.
 func (w *stuckWatch) follow(ctx context.Context, room *Room) {
 	select {
 	case <-room.exited:
@@ -56,6 +56,7 @@ func (w *stuckWatch) follow(ctx context.Context, room *Room) {
 	room.logger.Warn("stuck room's goroutine is still running; it uses memory, and CPU if it's spinning, until it ends or "+
 		"the server restarts", "after", stuckGrace)
 	w.running.Add(1)
+	room.stillStuck()
 	select {
 	case <-room.exited:
 		w.running.Add(-1)

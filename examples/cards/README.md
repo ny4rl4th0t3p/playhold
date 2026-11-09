@@ -158,6 +158,21 @@ A turn marked `crashed` was running when the server died, and the server also lo
 the room's last save, its message is what it takes to reproduce the crash. The journal holds players' moves, so keep the
 copy private and delete it when you're done.
 
+## Turn a message back on
+
+An incident is a turn that hurt the whole server: it's marked `crashed` in the journal, or its room got stuck and its
+handler was still running 30 seconds later. Incidents are saved in the database. Three from one kind of message within
+10 minutes turn that message off for an hour after the last one: the server answers it with a `TURNED_OFF` error and
+logs `message turned off`. Two from one room within 10 minutes keep that room from being restored when the server starts
+again. A panic isn't an incident: only its room is affected, and it goes back to its last save. A new build of the
+server starts with no incidents. To clear them without one, delete them, then restart the server, which reads them only
+when it starts:
+
+```bash
+docker compose exec postgres psql -U postgres -c 'DELETE FROM incidents'
+docker compose restart game
+```
+
 ## Measure what saving costs
 
 `t12.sh` runs the same load with PostgreSQL off and on, to see what saving games costs the server. Stop anything else

@@ -56,7 +56,9 @@ type flags struct {
 
 	emptyRoom, grace, inactiveRoom string
 
-	admission string
+	admission, crashJournal string
+
+	crashJournalEntries int
 
 	maxPerIP, maxRooms int
 
@@ -95,6 +97,9 @@ func defineFlags(fs *flag.FlagSet) *flags {
 		"how long a player can be disconnected before others are told, or off; empty uses the default")
 	fs.StringVar(&f.inactiveRoom, "inactive-room-timeout", "",
 		"how long a room stays open with no player sending anything, or off; empty uses the default")
+	fs.StringVar(&f.crashJournal, "crash-journal", "",
+		"file to keep the last turns in, to find and reproduce a crash; empty keeps none; keep it private, it holds players' moves")
+	fs.IntVar(&f.crashJournalEntries, "crash-journal-entries", 0, "how many turns the crash journal keeps; 0 uses the default")
 	fs.BoolVar(&f.restartWhenStuck, "restart-when-stuck", false,
 		"exit so the service manager restarts the server, when a stuck room's goroutine keeps running while it's overloaded")
 	fs.StringVar(&f.admission, "admission", "",
@@ -158,6 +163,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		InactiveRoomTimeout: timeouts[2],
 		Admission:           playhold.Admission{Off: f.admission == off},
 		RestartWhenStuck:    f.restartWhenStuck,
+		CrashJournal:        playhold.JournalConfig{Path: f.crashJournal, Entries: f.crashJournalEntries},
 		OriginPatterns:      splitList(f.origins),
 		TrustedProxies:      trusted,
 		Development:         f.dev,

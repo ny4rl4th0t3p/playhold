@@ -169,7 +169,12 @@ func (r *Room) fireNext() (panicked bool) {
 	}
 	timer := r.timers[0]
 	r.timers = slices.Delete(r.timers, 0, 1)
-	return r.turn(input{timerEvent: string(proto.MessageName(timer.event)), run: func(rc *RoomContext) error {
+	name := string(proto.MessageName(timer.event))
+	return r.turn(input{timerEvent: name, run: func(rc *RoomContext) error {
+		if r.journal != nil {
+			payload, _ := proto.Marshal(timer.event) // it was saved with the room, so it encodes
+			r.journalBegin(&JournalEntry{Event: name, Size: len(payload), Payload: payload})
+		}
 		rc.Emit(timer.event)
 		return nil
 	}})

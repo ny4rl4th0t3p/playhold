@@ -62,6 +62,9 @@ type ServerConfig struct {
 	// so connections themselves are never refused for this: who is connecting is only known once they say Hello. See
 	// Admission for the defaults.
 	Admission Admission
+	// CrashJournal keeps the last turns on disk, to find and reproduce what crashed the server. Off unless it has a Path.
+	// See JournalConfig.
+	CrashJournal JournalConfig
 	// RestartWhenStuck lets the server restart its process when a stuck room's goroutine is still running 30 seconds after
 	// the watchdog gave up on it, and the server has been overloaded for a minute since: most likely a goroutine spinning
 	// forever, which Go can't stop. The server drains for 10 seconds, saves every room, and ListenAndServe returns
@@ -128,6 +131,7 @@ type Server struct {
 
 	admission      *admission // nil if off
 	stuck          *stuckWatch
+	journal        *journal // nil if off
 	stopBackground context.CancelFunc
 }
 
@@ -158,6 +162,10 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		writer.interval = cfg.SnapshotInterval
 	}
 	applyMemoryLimit(cfg.MemoryLimit, logger)
+	crashJournal, journalErr := openServerJournal(cfg.CrashJournal, rt, logger) // before rooms are restored, so they write to it
+	if journalErr != nil {
+		return nil, journalErr
+	}
 
 	connectRate := cfg.ConnectRate.orDefault(defaultConnectRate)
 	messageRate := cfg.MessageRate.orDefault(defaultMessageRate)
@@ -183,6 +191,9 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		defer cancel()
 		if err := g.lobby.restoreAll(ctx, records); err != nil {
 			writer.close(ctx)
+			if crashJournal != nil {
+				_ = crashJournal.close()
+			}
 			return nil, err
 		}
 	}
@@ -204,6 +215,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		proxied:        len(cfg.TrustedProxies) > 0,
 		admission:      admit,
 		stuck:          stuck,
+		journal:        crashJournal,
 		stopBackground: stopBackground,
 		transport: transport.NewServer(&transport.Config{
 			MaxMessageBytes:  cfg.MaxMessageBytes,
@@ -218,6 +230,26 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			Logger:           logger,
 		}, g.connect),
 	}, nil
+}
+
+// openServerJournal opens the crash journal if the config has a path, reports what it shows about the last crash, and
+// gives it to the runtime's rooms. It returns nil if there's no path.
+func openServerJournal(cfg JournalConfig, rt *Runtime, logger *slog.Logger) (*journal, error) {
+	if cfg.Path == "" {
+		logger.Info("no crash journal; set ServerConfig.CrashJournal.Path to keep the last turns before a crash")
+		return nil, nil // no path means no journal, which isn't an error
+	}
+	cfg, err := cfg.withDefaults()
+	if err != nil {
+		return nil, err
+	}
+	j, err := openJournal(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	rt.useJournal(j)
+	logger.Info("crash journal on", "path", cfg.Path, "entries", cfg.Entries, "entry_size", cfg.EntrySize)
+	return j, nil
 }
 
 // newServerLobby makes the lobby from the config: the room cap, the three timeouts with a warning for each turned off,
@@ -306,6 +338,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	err := s.rt.Shutdown(ctx)
 	if s.writer != nil {
 		s.writer.close(ctx)
+	}
+	if s.journal != nil {
+		_ = s.journal.close() // a second Shutdown finds it closed already, which is fine
 	}
 	s.transport.Close()
 	return err

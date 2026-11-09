@@ -32,6 +32,10 @@ export RATE="${RATE:-3000}"
 export WARMUP="${WARMUP:-30s}"
 export DURATION="${DURATION:-5m30s}"
 export FINISHED_ROOM_TIME="${FINISHED_ROOM_TIME:-5s}" # so finished games don't pile up over a long run
+# Off unless asked for, so runs compare with earlier ones: CRASH_JOURNAL=/var/lib/cards/journal measures its cost, and
+# refusing new players under load would change what's measured.
+export CRASH_JOURNAL="${CRASH_JOURNAL-}"
+export ADMISSION="${ADMISSION-off}"
 
 mkdir -p "$results"
 

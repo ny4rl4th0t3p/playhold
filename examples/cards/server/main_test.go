@@ -118,6 +118,7 @@ func TestConfigFromFlags(t *testing.T) {
 		{name: "a bad proxy", args: []string{"-trusted-proxies", "10.0.0.2"}, wantErr: "-trusted-proxies"},
 		{name: "a bad timer policy", args: []string{"-timers-after-restart", "stop"}, wantErr: "stop"},
 		{name: "admission off", args: []string{"-admission", "off"}},
+		{name: "a crash journal", args: []string{"-crash-journal", "/var/lib/cards/journal", "-crash-journal-entries", "100000"}},
 		{name: "admission anything else", args: []string{"-admission", "on"}, wantErr: "-admission"},
 		{name: "public profiling outside -dev", args: []string{"-debug-addr", ":6060"}, wantErr: "-debug-addr"},
 	}

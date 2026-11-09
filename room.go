@@ -234,6 +234,12 @@ type Room struct {
 	// goroutine really returns, which for a stuck room can be much later than done, or never.
 	onStuck func(*Room)
 	exited  chan struct{}
+
+	// The crash journal, if any. journalBuf is the room goroutine's; journalSeq is the running turn's entry, zero between
+	// turns, and also read by the watchdog.
+	journal    *journal
+	journalBuf []byte
+	journalSeq atomic.Uint64
 }
 
 func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
@@ -320,6 +326,9 @@ func (r *Room) submitWait(in input) error {
 // handler's error on the room's goroutine.
 func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byte, result func(error)) error {
 	return r.submit(input{player: player, result: result, module: module, id: id, run: func(rc *RoomContext) error {
+		if r.journal != nil {
+			r.journalBegin(&JournalEntry{Player: player, Module: module, MessageID: id, Size: len(payload), Payload: payload})
+		}
 		r.playerActive()
 		handler, ok := r.typ.handlers[handlerKey{module: module, id: id}]
 		if !ok {
@@ -427,6 +436,7 @@ func (r *Room) abandon() {
 	r.gate.Lock() // waits for anything already on its way out, and stops everything after it
 	r.stuck.Store(true)
 	r.gate.Unlock()
+	r.journalMark(JournalStuck, true)
 	r.requestStop(CloseStuck)
 	r.finish(CloseStuck)
 	if r.onStuck != nil {
@@ -719,6 +729,11 @@ func (r *Room) turn(in input) (panicked bool) {
 			r.logger.Error("room handler panicked",
 				"player", string(in.player), "timer_event", in.timerEvent, "panic", v, "stack", string(debug.Stack()))
 		}
+		if panicked {
+			r.journalMark(JournalPanicked, true)
+		} else {
+			r.journalMark(JournalDone, true) // nothing, if the watchdog already wrote stuck
+		}
 	}()
 	r.startWork()
 	defer r.watchdog.Stop()
@@ -726,6 +741,7 @@ func (r *Room) turn(in input) (panicked bool) {
 	started := time.Now() // the real time, whatever clock the room reads
 	err := in.run(&RoomContext{room: r, player: in.player})
 	r.deliverEvents(in.player)
+	r.journalMark(JournalHandled, false)
 	r.reportSlowTurn(&in, time.Since(started))
 	if r.stuck.Load() {
 		return false // players were already told the room closed, and nothing below would get out anyway

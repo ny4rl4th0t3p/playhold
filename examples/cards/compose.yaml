@@ -1,5 +1,6 @@
 # Run, play and measure the sample game on your own machine. It runs in development mode, over plain HTTP with the safety
-# checks off, and there's no rate limiting yet, so don't expose it to the internet. See README.md.
+# checks off, and with the rate limits per address off for the load bot, so don't expose it to the internet. See
+# README.md.
 name: playhold-cards
 
 services:
@@ -23,6 +24,10 @@ services:
       - ${MESSAGE_RATE:-50ms/40}
       - -admission
       - ${ADMISSION:-}
+      - -crash-journal
+      - ${CRASH_JOURNAL-/var/lib/cards/journal}
+      - -crash-journal-entries
+      - ${CRASH_JOURNAL_ENTRIES:-0}
       - -empty-room-timeout
       - ${EMPTY_ROOM_TIMEOUT:-5m}
       - -max-rooms
@@ -45,6 +50,9 @@ services:
       - ${DEBUG_ADDR:-}
       - -shutdown-timeout
       - ${SHUTDOWN_TIMEOUT:-8s}
+    # The crash journal lives on a volume, so it's still there after the crash it's for.
+    volumes:
+      - journal:/var/lib/cards
     # Docker kills the process after this, so it has to be longer than the shutdown timeout.
     stop_grace_period: ${STOP_GRACE_PERIOD:-10s}
     # Starts the server again when it exits on its own: a crash, or -restart-when-stuck asking for a new process.
@@ -103,3 +111,4 @@ services:
 
 volumes:
   postgres:
+  journal:

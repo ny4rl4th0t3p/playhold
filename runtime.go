@@ -41,6 +41,7 @@ type Runtime struct {
 	rooms   map[RoomID]*Room
 	closed  bool
 	onStuck func(*Room) // set by a Server, to watch what an abandoned room's goroutine does next
+	journal *journal    // set by a Server with a crash journal
 }
 
 // NewRuntime returns a Runtime with no rooms.
@@ -89,7 +90,7 @@ func (rt *Runtime) restoreRoom(
 	policy TimersAfterRestart,
 ) (*Room, error) {
 	room := newRoom(id, typ, &rt.cfg, rt.forget)
-	room.onStuck = rt.reportStuck
+	rt.attach(room)
 	room.code = code
 	room.writer = writer
 	room.restart = restart
@@ -106,7 +107,7 @@ func (rt *Runtime) restoreRoom(
 // createRoom also gives the room its code, what saves it and what restores it after a crash, if anything does.
 func (rt *Runtime) createRoom(typ *RoomType, code string, writer *snapshotWriter, restart func(*Room) bool) (*Room, error) {
 	room := newRoom(newRoomID(), typ, &rt.cfg, rt.forget)
-	room.onStuck = rt.reportStuck
+	rt.attach(room)
 	room.code = code
 	room.writer = writer
 	room.restart = restart
@@ -163,6 +164,20 @@ func (rt *Runtime) register(room *Room) error {
 	}
 	rt.rooms[room.id] = room
 	return nil
+}
+
+// attach connects a new room, before it starts, to what the server set on the runtime.
+func (rt *Runtime) attach(room *Room) {
+	room.onStuck = rt.reportStuck
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	room.journal = rt.journal
+}
+
+func (rt *Runtime) useJournal(j *journal) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.journal = j
 }
 
 // reportStuck passes a room the watchdog gave up on to whoever watches for it.

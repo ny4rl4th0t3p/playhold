@@ -81,6 +81,8 @@ sh record-stats.sh
 | `CONNECT_RATE`           | off, for the bot       | New connections per address, as `EVERY/BURST`, or `off`. The server's own default is `200ms/20`            |
 | `GUEST_RATE`             | off, for the bot       | New guests per address, as `EVERY/BURST`, or `off`. The server's own default is `6s/20`                    |
 | `MESSAGE_RATE`           | 50ms/40                | Frames per connection, as `EVERY/BURST`, or `off`. The same as the server's own default                    |
+| `CRASH_JOURNAL`          | `/var/lib/cards/journal`, on a volume | The crash journal's file; set it empty to keep none. `t12.sh` leaves it off unless set |
+| `CRASH_JOURNAL_ENTRIES`  | 0, the default of 1,024 | How many turns the crash journal keeps                                                |
 | `ADMISSION`              | empty, on              | `off` stops refusing new guests, rooms and seats when the server is overloaded, to measure past that point |
 | `DEBUG_ADDR`             | empty, off             | Address for Go's profiling endpoints, such as `:6060`. With `t12.sh`, published on `127.0.0.1:6060` only   |
 | `GAME_GODEBUG`           | empty                  | With `t12.sh`, the game server's `GODEBUG`, such as `gctrace=1` to log every garbage collection            |
@@ -141,6 +143,20 @@ The test fails if:
 It ends with a line per seat: reconnects, moves lost or unseen, moves the server refused around a reconnect, and the
 slowest return. The server is left saving at version 2; `docker compose up -d game` puts it back to version 1 once that
 game has finished.
+
+## Read the crash journal
+
+The server writes each turn to its crash journal before running it, then marks how far it got. After a crash, copy the
+file and print it, oldest turn first:
+
+```bash
+docker compose cp game:/var/lib/cards/journal journal
+go run ../../cmd/playholdjournal journal
+```
+
+A turn marked `crashed` was running when the server died, and the server also logs it once when it starts again. With
+the room's last save, its message is what it takes to reproduce the crash. The journal holds players' moves, so keep the
+copy private and delete it when you're done.
 
 ## Measure what saving costs
 

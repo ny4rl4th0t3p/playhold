@@ -80,6 +80,9 @@ func (r *Room) fireGrace() (panicked bool) {
 	player := r.graces[0].player
 	r.graces = slices.Delete(r.graces, 0, 1)
 	return r.turn(input{player: player, timerEvent: "PlayerDisconnected", run: func(rc *RoomContext) error {
+		if r.journal != nil {
+			r.journalBegin(&JournalEntry{Player: player, Event: "PlayerDisconnected"})
+		}
 		r.away = append(r.away, player)
 		rc.Emit(PlayerDisconnected{Player: player})
 		return nil

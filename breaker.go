@@ -42,6 +42,7 @@ type breaker struct {
 	logger  *slog.Logger
 	now     func() time.Time
 	saving  sync.WaitGroup
+	metrics *metrics // nil counts nothing
 
 	mu        sync.Mutex
 	incidents []store.Incident // this build's, oldest first
@@ -150,6 +151,7 @@ func (b *breaker) keepsCrashing(room RoomID) bool {
 // comes from the watchdog's side of the server.
 func (b *breaker) record(incident *store.Incident) {
 	incident.Build, incident.At = b.build, b.now()
+	b.metrics.incident(JournalState(incident.Kind))
 	key := handlerKey{module: incident.Module, id: incident.MessageID}
 	b.mu.Lock()
 	b.incidents = slices.DeleteFunc(b.incidents, func(old store.Incident) bool {
@@ -184,6 +186,20 @@ func (b *breaker) record(incident *store.Incident) {
 			b.logger.Error("saving an incident failed; it won't count after a restart", "error", err)
 		}
 	})
+}
+
+// turnedOffNow returns how many messages the breaker refuses now.
+func (b *breaker) turnedOffNow() int {
+	if b == nil {
+		return 0
+	}
+	now, n := b.now(), 0
+	for _, until := range *b.off.Load() {
+		if now.Before(until) {
+			n++
+		}
+	}
+	return n
 }
 
 // wait waits for the incidents being saved.

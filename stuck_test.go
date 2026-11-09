@@ -144,7 +144,7 @@ func TestListenAndServeReturnsErrRestartNeededAfterAShutdown(t *testing.T) {
 	listener, err := listen.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	done := make(chan error, 1)
-	go func() { done <- server.serve(context.Background(), listener, nil, &ListenConfig{}) }()
+	go func() { done <- server.serve(context.Background(), listener, nil, &ListenConfig{}, nil) }()
 
 	close(server.stuck.restartNeeded) // what restartSoon does after draining
 

@@ -29,6 +29,7 @@ type gateway struct {
 	messageRate RateLimit
 	admission   *admission // nil if off
 	breaker     *breaker   // nil turns no message off
+	metrics     *metrics   // nil counts nothing
 }
 
 func (g *gateway) connect(c *transport.Conn) (func(*wire.ClientFrame), error) {
@@ -59,6 +60,7 @@ type session struct {
 func (s *session) frame(frame *wire.ClientFrame) {
 	seq := frame.GetSeq()
 	if !allow(s.frames) {
+		s.gateway.metrics.limited("frame")
 		s.rateLimited(seq)
 		return
 	}
@@ -106,10 +108,12 @@ func (s *session) hello(seq uint64, hello *wire.Hello) {
 	var err error
 	if player == "" && hello.GetSecret() == "" {
 		if !s.gateway.newGuests.allow(s.conn.IP()) {
+			s.gateway.metrics.limited("guest")
 			s.rateLimited(seq)
 			return
 		}
 		if !s.gateway.admission.allow() {
+			s.gateway.metrics.refused("guest")
 			s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, ErrOverloaded.Error())
 			return
 		}
@@ -160,6 +164,7 @@ func (s *session) join(seq uint64, code string) {
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_SERVER_FULL, "the server has no space for more games")
 		return
 	case errors.Is(err, ErrOverloaded):
+		s.gateway.metrics.refused("room")
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_SERVER_FULL, err.Error())
 		return
 	case errors.Is(err, ErrDraining):
@@ -200,6 +205,9 @@ func (s *session) seated(seq uint64, code string, err error) {
 	if room != nil { // otherwise the connection has already ended
 		close(failed)
 		s.gateway.lobby.leave(code, room)
+	}
+	if errors.Is(err, ErrOverloaded) {
+		s.gateway.metrics.refused("seat")
 	}
 	if errors.Is(err, ErrRoomClosed) {
 		// The room stopped just as the player arrived, and it may be coming back after a crash or a restart. A client
@@ -270,6 +278,7 @@ func (s *session) message(seq uint64, msg *wire.ModuleMessage) {
 	s.mu.Unlock()
 
 	key := handlerKey{module: msg.GetModule(), id: msg.GetId()}
+	arrived := time.Now()
 	switch {
 	case !joined:
 		s.malformed(seq, "join a room before sending messages")
@@ -278,18 +287,24 @@ func (s *session) message(seq uint64, msg *wire.ModuleMessage) {
 		s.malformed(seq, "message has no module")
 		return
 	case !s.allowMessage(key):
+		s.gateway.metrics.limited("module")
 		s.rateLimited(seq)
 		return
 	case s.gateway.breaker.turnedOff(key):
+		s.gateway.metrics.message(key, ErrTurnedOff, arrived)
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_TURNED_OFF, ErrTurnedOff.Error())
 		return
 	}
-	report := func(err error) {
+	// result runs once, either with the room's answer or with why the message never reached the room.
+	result := func(err error) {
+		s.gateway.metrics.message(key, err, arrived)
 		if err != nil {
 			s.conn.SendError(seq, wireErrorCode(err), err.Error())
 		}
 	}
-	report(room.dispatch(s.player, msg.GetModule(), msg.GetId(), msg.GetPayload(), report))
+	if err := room.dispatch(s.player, msg.GetModule(), msg.GetId(), msg.GetPayload(), result); err != nil {
+		result(err)
+	}
 }
 
 // allowMessage applies the limit a module set on this message, if any.

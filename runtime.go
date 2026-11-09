@@ -43,6 +43,7 @@ type Runtime struct {
 	onStuck func(*Room) // set by a Server, to watch what an abandoned room's goroutine does next
 	journal *journal    // set by a Server with a crash journal
 	breaker *breaker    // set by a Server
+	metrics *metrics    // set by a Server
 }
 
 // NewRuntime returns a Runtime with no rooms.
@@ -174,6 +175,7 @@ func (rt *Runtime) attach(room *Room) {
 	defer rt.mu.Unlock()
 	room.journal = rt.journal
 	room.incidents = rt.breaker
+	room.metrics = rt.metrics
 }
 
 func (rt *Runtime) useJournal(j *journal) {
@@ -186,6 +188,12 @@ func (rt *Runtime) useBreaker(b *breaker) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.breaker = b
+}
+
+func (rt *Runtime) useMetrics(m *metrics) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.metrics = m
 }
 
 // reportStuck passes a room the watchdog gave up on to whoever watches for it.
@@ -202,6 +210,13 @@ func (rt *Runtime) watchStuck(fn func(*Room)) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.onStuck = fn
+}
+
+// roomCount returns how many rooms are running.
+func (rt *Runtime) roomCount() int {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return len(rt.rooms)
 }
 
 // queueFill returns the share of all running rooms' inbound queues in use, zero with no rooms.

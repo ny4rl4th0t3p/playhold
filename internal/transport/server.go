@@ -130,6 +130,13 @@ func (s *Server) Close() {
 	s.active.Wait()
 }
 
+// Conns returns how many connections are open.
+func (s *Server) Conns() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.total
+}
+
 // ServeHTTP upgrades the request to a WebSocket and serves it until the connection ends.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ip, proxied := s.clientIP(r)

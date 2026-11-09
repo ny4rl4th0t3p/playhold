@@ -60,6 +60,13 @@ func (g *guests) attach(player PlayerID, c *transport.Conn) *transport.Conn {
 	return old
 }
 
+// connected returns how many players have a connection.
+func (g *guests) connected() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return len(g.conns)
+}
+
 // detach forgets c, unless a newer connection has already replaced it.
 func (g *guests) detach(player PlayerID, c *transport.Conn) {
 	g.mu.Lock()

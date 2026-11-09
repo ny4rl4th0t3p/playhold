@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"golang.org/x/crypto/acme"
@@ -18,6 +19,7 @@ const (
 	defaultPath            = "/ws"
 	defaultTLSAddr         = ":443"
 	defaultPlainAddr       = ":8080"
+	defaultMetricsAddr     = "127.0.0.1:9464"
 	defaultShutdownTimeout = 8 * time.Second
 	readHeaderTimeout      = 5 * time.Second
 )
@@ -53,6 +55,17 @@ type ListenConfig struct {
 	// ShutdownTimeout is how long saving the games may take once ctx ends. The default is 8 seconds. Keep it below what
 	// the service manager waits before killing the process.
 	ShutdownTimeout time.Duration
+
+	// Metrics is where the Prometheus metrics are served, on a listener of their own, never the game's.
+	Metrics MetricsListen
+}
+
+// MetricsListen says where ListenAndServe serves the metrics, at /metrics. The default address is 127.0.0.1:9464, so
+// only the machine itself can read them. Another address, such as the one a container's monitoring scrapes, logs a
+// warning outside development, since the metrics show how busy the server is. Off serves none.
+type MetricsListen struct {
+	Addr string
+	Off  bool
 }
 
 // ListenAndServe serves the game until ctx ends, then shuts down without losing a match: it saves every game while the
@@ -81,11 +94,52 @@ func (s *Server) ListenAndServe(ctx context.Context, cfg *ListenConfig) error {
 	if err != nil {
 		return err
 	}
-	return s.serve(ctx, listener, tlsConfig, cfg)
+	metricsListener, err := s.listenMetrics(ctx, cfg.Metrics)
+	if err != nil {
+		_ = listener.Close()
+		return err
+	}
+	return s.serve(ctx, listener, tlsConfig, cfg, metricsListener)
 }
 
-// serve is ListenAndServe on a listener that's already open.
-func (s *Server) serve(ctx context.Context, listener net.Listener, tlsConfig *tls.Config, cfg *ListenConfig) error {
+// listenMetrics opens the metrics' own listener, or returns nil if they're off.
+func (s *Server) listenMetrics(ctx context.Context, cfg MetricsListen) (net.Listener, error) {
+	if cfg.Off {
+		s.logger.Info("metrics off")
+		return nil, nil // off isn't an error
+	}
+	addr := cfg.Addr
+	if addr == "" {
+		addr = defaultMetricsAddr
+	}
+	if !s.development && !isLoopback(addr) {
+		s.logger.Warn("metrics served on an address other machines can reach; make sure only your monitoring can", "addr", addr)
+	}
+	var listen net.ListenConfig
+	listener, err := listen.Listen(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("playhold: listening for metrics: %w", err)
+	}
+	return listener, nil
+}
+
+// isLoopback reports whether addr only listens on this machine.
+func isLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
+}
+
+// serve is ListenAndServe on listeners that are already open. A nil metricsListener serves no metrics.
+func (s *Server) serve(
+	ctx context.Context, listener net.Listener, tlsConfig *tls.Config, cfg *ListenConfig, metricsListener net.Listener,
+) error {
 	path := cfg.Path
 	if path == "" {
 		path = defaultPath
@@ -114,10 +168,14 @@ func (s *Server) serve(ctx context.Context, listener net.Listener, tlsConfig *tl
 		}
 	}()
 	s.logger.Info("listening", "addr", listener.Addr().String(), "tls", tlsConfig != nil, "path", path)
+	metricsServer := s.serveMetrics(metricsListener)
 
 	var restart error
 	select {
 	case err := <-serving:
+		if metricsServer != nil {
+			_ = metricsServer.Close()
+		}
 		return err // it stopped before ctx ended, so no player was ever served by it
 	case <-ctx.Done():
 	case <-s.RestartNeeded():
@@ -135,7 +193,32 @@ func (s *Server) serve(ctx context.Context, listener net.Listener, tlsConfig *tl
 	if err := <-serving; !errors.Is(err, http.ErrServerClosed) {
 		httpErr = errors.Join(httpErr, err)
 	}
+	if metricsServer != nil {
+		httpErr = errors.Join(httpErr, metricsServer.Shutdown(shutdownCtx)) // last, so the shutdown itself can be watched
+	}
 	return errors.Join(restart, gameErr, httpErr)
+}
+
+// serveMetrics serves the metrics on their listener until shut down, and returns their HTTP server, or nil without a
+// listener.
+func (s *Server) serveMetrics(listener net.Listener) *http.Server {
+	if listener == nil {
+		return nil
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", s.MetricsHandler())
+	server := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ErrorLog:          slog.NewLogLogger(s.logger.Handler(), slog.LevelWarn),
+	}
+	go func() {
+		if err := server.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("serving metrics stopped", "error", err)
+		}
+	}()
+	s.logger.Info("serving metrics", "addr", listener.Addr().String(), "path", "/metrics")
+	return server
 }
 
 // tlsConfig returns the TLS settings for the chosen mode, or nil for plain HTTP.

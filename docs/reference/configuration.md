@@ -77,17 +77,18 @@ See [Restart when stuck](../guides/keeping-games-running.md#restart-when-stuck) 
 What `ListenAndServe` takes. The health checks are always at `/healthz` and `/readyz`. See
 [Run in production](../guides/production.md#tls).
 
-| Field                  | Default                          | What it does                                                         |
-|------------------------|----------------------------------|----------------------------------------------------------------------|
-| `Addr`                 | `:443` with TLS, `:8080` without | The address to listen on                                             |
-| `Path`                 | `/ws`                            | Where clients connect                                                |
-| `Handler`              | Nil, which answers 404           | Serves every other path, such as the game's page                     |
-| `AutocertDomains`      | None                             | Turns on automatic certificates from Let's Encrypt for these domains |
-| `AutocertCacheDir`     | Required with `AutocertDomains`  | The folder that keeps the certificates across restarts               |
-| `AutocertEmail`        | None                             | Where Let's Encrypt writes about problems with the certificates      |
-| `AutocertDirectoryURL` | Let's Encrypt's                  | The ACME directory; set Let's Encrypt's staging one to test a setup  |
-| `CertFile`, `KeyFile`  | None                             | A certificate and its key, in PEM files, read at start               |
-| `ShutdownTimeout`      | 8 s                              | How long saving the games may take once the context ends             |
+| Field                  | Default                          | What it does                                                                                |
+|------------------------|----------------------------------|---------------------------------------------------------------------------------------------|
+| `Addr`                 | `:443` with TLS, `:8080` without | The address to listen on                                                                    |
+| `Path`                 | `/ws`                            | Where clients connect                                                                       |
+| `Handler`              | Nil, which answers 404           | Serves every other path, such as the game's page                                            |
+| `AutocertDomains`      | None                             | Turns on automatic certificates from Let's Encrypt for these domains                        |
+| `AutocertCacheDir`     | Required with `AutocertDomains`  | The folder that keeps the certificates across restarts                                      |
+| `AutocertEmail`        | None                             | Where Let's Encrypt writes about problems with the certificates                             |
+| `AutocertDirectoryURL` | Let's Encrypt's                  | The ACME directory; set Let's Encrypt's staging one to test a setup                         |
+| `CertFile`, `KeyFile`  | None                             | A certificate and its key, in PEM files, read at start                                      |
+| `ShutdownTimeout`      | 8 s                              | How long saving the games may take once the context ends                                    |
+| `Metrics`              | `127.0.0.1:9464`                 | Where the Prometheus metrics are served; see [Watch the server](../guides/observability.md) |
 
 Set either the automatic certificate fields or the certificate files, not both. With neither, the server serves plain
 HTTP, which it allows only behind a trusted proxy or in development mode.

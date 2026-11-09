@@ -34,6 +34,7 @@ type snapshotWriter struct {
 	// interval is the least time between two saves of a room, which rooms read. Zero saves after every change. It's set
 	// before any room uses the writer.
 	interval time.Duration
+	metrics  *metrics // set before any room uses the writer; nil counts nothing
 
 	mu      sync.Mutex
 	pending map[string]pendingRoom
@@ -131,6 +132,7 @@ func (w *snapshotWriter) writePending() {
 			continue
 		}
 		w.putBack(batch)
+		w.metrics.snapshotFailed()
 		if w.ctx.Err() != nil {
 			w.logger.Error("giving up on room snapshots", "rooms", len(batch), "error", err)
 			return
@@ -148,7 +150,9 @@ func (w *snapshotWriter) writePending() {
 func (w *snapshotWriter) written(batch map[string]pendingRoom) {
 	now := time.Now()
 	for _, room := range batch {
-		w.maxDelay = max(w.maxDelay, now.Sub(room.since))
+		delay := now.Sub(room.since)
+		w.maxDelay = max(w.maxDelay, delay)
+		w.metrics.snapshotWritten(delay)
 	}
 	w.roomsWritten += len(batch)
 	if now.Sub(w.reportedAt) < snapshotReportEvery {

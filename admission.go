@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"math"
-	"runtime/metrics"
+	gometrics "runtime/metrics" // named apart from the server's own metrics type
 	"sync/atomic"
 	"time"
 )
@@ -215,13 +215,13 @@ func (h schedHistogram) p99Since(earlier schedHistogram) (p99 time.Duration, sam
 type runtimeMetrics struct{}
 
 func (runtimeMetrics) read() (memory float64, sched schedHistogram) {
-	samples := []metrics.Sample{
+	samples := []gometrics.Sample{
 		{Name: "/memory/classes/total:bytes"},
 		{Name: "/memory/classes/heap/released:bytes"},
 		{Name: "/gc/gomemlimit:bytes"},
 		{Name: "/sched/latencies:seconds"},
 	}
-	metrics.Read(samples)
+	gometrics.Read(samples)
 	if limit := samples[2].Value.Uint64(); limit > 0 && limit < math.MaxInt64 {
 		held := samples[0].Value.Uint64() - samples[1].Value.Uint64()
 		memory = float64(held) / float64(limit)

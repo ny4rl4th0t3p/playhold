@@ -120,6 +120,8 @@ func TestConfigFromFlags(t *testing.T) {
 		{name: "admission off", args: []string{"-admission", "off"}},
 		{name: "a crash journal", args: []string{"-crash-journal", "/var/lib/cards/journal", "-crash-journal-entries", "100000"}},
 		{name: "admission anything else", args: []string{"-admission", "on"}, wantErr: "-admission"},
+		{name: "metrics elsewhere", args: []string{"-metrics-addr", ":9464"}},
+		{name: "metrics off", args: []string{"-metrics-addr", "off"}},
 		{name: "public profiling outside -dev", args: []string{"-debug-addr", ":6060"}, wantErr: "-debug-addr"},
 	}
 	for _, tt := range tests {

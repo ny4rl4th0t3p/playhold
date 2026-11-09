@@ -50,6 +50,9 @@ services:
       - ${DEBUG_ADDR:-}
       - -shutdown-timeout
       - ${SHUTDOWN_TIMEOUT:-8s}
+      # On every address inside the container, so Docker can publish it; only this machine reaches it, see ports.
+      - -metrics-addr
+      - ":9464"
     # The crash journal lives on a volume, so it's still there after the crash it's for.
     volumes:
       - journal:/var/lib/cards
@@ -59,6 +62,7 @@ services:
     restart: unless-stopped
     ports:
       - "${BIND:-127.0.0.1}:8080:8080"
+      - "127.0.0.1:9464:9464" # the Prometheus metrics, at /metrics
     # A small VPS. Change these to try other sizes.
     cpus: ${GAME_CPUS:-1}
     mem_limit: ${GAME_MEMORY:-1g}

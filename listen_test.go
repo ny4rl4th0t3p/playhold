@@ -164,7 +164,7 @@ func TestServeOverTLS(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- server.serve(ctx, listener, tlsConfig, cfg) }()
+	go func() { done <- server.serve(ctx, listener, tlsConfig, cfg, nil) }()
 
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}}
 	base := "https://" + listener.Addr().String()

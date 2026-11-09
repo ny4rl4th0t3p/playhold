@@ -133,6 +133,7 @@ type Server struct {
 	stuck          *stuckWatch
 	journal        *journal // nil if off
 	breaker        *breaker
+	metrics        *metrics
 	stopBackground context.CancelFunc
 }
 
@@ -151,6 +152,8 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	} else if err := checkSecure(cfg); err != nil {
 		return nil, err
 	}
+	m := newMetrics(cfg.RoomType)
+	rt.useMetrics(m)
 	records := cfg.Store
 	var writer *snapshotWriter
 	if records == nil {
@@ -160,33 +163,25 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			return nil, err
 		}
 		writer = newSnapshotWriter(records, logger)
-		writer.interval = cfg.SnapshotInterval
+		writer.interval, writer.metrics = cfg.SnapshotInterval, m
 	}
 	applyMemoryLimit(cfg.MemoryLimit, logger)
-	crashJournal, incidents, err := openIncidents(cfg, rt, records, logger) // before rooms are restored, so they use both
+	crashJournal, incidents, err := openIncidents(cfg, rt, records, m, logger) // before rooms are restored, so they use both
 	if err != nil {
 		return nil, err
 	}
 
-	connectRate := cfg.ConnectRate.orDefault(defaultConnectRate)
-	messageRate := cfg.MessageRate.orDefault(defaultMessageRate)
-	guestRate := cfg.GuestRate.orDefault(defaultGuestRate)
-	for layer, limit := range map[string]RateLimit{"ConnectRate": connectRate, "GuestRate": guestRate, "MessageRate": messageRate} {
-		if limit.Off {
-			logger.Warn("rate limit off; make sure something in front of the server limits this instead", "layer", layer)
-		}
-	}
-	connects := newPerIP(connectRate)
+	allowConnect, guestRate, messageRate := newRateLimits(cfg, m, logger)
 	admit := newAdmission(cfg.Admission.orDefault(), rt.queueFill, logger)
-
 	g := &gateway{
 		guests:      newGuests(records),
-		lobby:       newServerLobby(rt, cfg, writer, admit, incidents, logger),
+		lobby:       newServerLobby(rt, cfg, writer, admit, incidents, m, logger),
 		logger:      logger,
-		newGuests:   newPerIP(guestRate),
+		newGuests:   guestRate,
 		messageRate: messageRate,
 		admission:   admit,
 		breaker:     incidents,
+		metrics:     m,
 	}
 	if writer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
@@ -207,7 +202,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	stuck := newStuckWatch(logger, admit, cfg.RestartWhenStuck, g.lobby.drain)
 	rt.watchStuck(func(room *Room) { go stuck.follow(background, room) })
 	go stuck.run(background)
-	return &Server{
+	server := &Server{
 		writer:         writer,
 		rt:             rt,
 		lobby:          g.lobby,
@@ -219,6 +214,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		stuck:          stuck,
 		journal:        crashJournal,
 		breaker:        incidents,
+		metrics:        m,
 		stopBackground: stopBackground,
 		transport: transport.NewServer(&transport.Config{
 			MaxMessageBytes:  cfg.MaxMessageBytes,
@@ -229,15 +225,61 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			TrustedProxies:   cfg.TrustedProxies,
 			ProxyClientIP:    cfg.ProxyClientIP,
 			RequireSecure:    !cfg.Development,
-			AllowConnect:     connects.allow,
+			AllowConnect:     allowConnect,
 			Logger:           logger,
 		}, g.connect),
-	}, nil
+	}
+	server.watchGauges(g.guests)
+	return server, nil
+}
+
+// newRateLimits reads the rate limit layers, with a warning for each one turned off. It returns what the transport asks
+// before taking a new connection, the limit on new guests, and the limit on frames.
+func newRateLimits(
+	cfg *ServerConfig, m *metrics, logger *slog.Logger,
+) (allowConnect func(ip string) bool, guests *perIP, messageRate RateLimit) {
+	connectRate := cfg.ConnectRate.orDefault(defaultConnectRate)
+	messageRate = cfg.MessageRate.orDefault(defaultMessageRate)
+	guestRate := cfg.GuestRate.orDefault(defaultGuestRate)
+	for layer, limit := range map[string]RateLimit{"ConnectRate": connectRate, "GuestRate": guestRate, "MessageRate": messageRate} {
+		if limit.Off {
+			logger.Warn("rate limit off; make sure something in front of the server limits this instead", "layer", layer)
+		}
+	}
+	connects := newPerIP(connectRate)
+	allowConnect = func(ip string) bool {
+		if connects.allow(ip) {
+			return true
+		}
+		m.limited("connect")
+		return false
+	}
+	return allowConnect, newPerIP(guestRate), messageRate
+}
+
+// watchGauges reports what's running now each time Prometheus asks.
+func (s *Server) watchGauges(players *guests) {
+	m := s.metrics
+	m.gauge("rooms", "Rooms running, counting finished ones until they close.", func() float64 { return float64(s.rt.roomCount()) })
+	m.gauge("connections", "Open connections.", func() float64 { return float64(s.transport.Conns()) })
+	m.gauge("players_connected", "Players with a connection.", func() float64 { return float64(players.connected()) })
+	m.gauge("queue_fill", "The share of all rooms' inbound queues in use.", s.rt.queueFill)
+	m.gauge("overloaded", "1 while admission control refuses new guests, rooms and seats.", func() float64 {
+		if s.admission != nil && s.admission.overloaded.Load() {
+			return 1
+		}
+		return 0
+	})
+	m.gauge("stuck_goroutines", "Goroutines of stuck rooms still running long after the watchdog gave up on them.",
+		func() float64 { return float64(s.stuck.running.Load()) })
+	m.gauge("messages_turned_off", "Messages the breaker refuses now.", func() float64 { return float64(s.breaker.turnedOffNow()) })
 }
 
 // openIncidents opens the crash journal, if there's one, and the breaker, which also counts the turns the journal shows
 // were running when the process last died, and gives both to the runtime's rooms.
-func openIncidents(cfg *ServerConfig, rt *Runtime, records store.Store, logger *slog.Logger) (*journal, *breaker, error) {
+func openIncidents(
+	cfg *ServerConfig, rt *Runtime, records store.Store, m *metrics, logger *slog.Logger,
+) (*journal, *breaker, error) {
 	crashJournal, err := openServerJournal(cfg.CrashJournal, rt, logger)
 	if err != nil {
 		return nil, nil, err
@@ -258,6 +300,10 @@ func openIncidents(cfg *ServerConfig, rt *Runtime, records store.Store, logger *
 			_ = crashJournal.close()
 		}
 		return nil, nil, err
+	}
+	incidents.metrics = m
+	for range crashed {
+		m.incident(JournalCrashed)
 	}
 	rt.useBreaker(incidents)
 	return crashJournal, incidents, nil
@@ -286,7 +332,8 @@ func openServerJournal(cfg JournalConfig, rt *Runtime, logger *slog.Logger) (*jo
 // newServerLobby makes the lobby from the config: the room cap, the three timeouts with a warning for each turned off,
 // admission control, and the breaker, which keeps rooms that kept crashing the server from being restored.
 func newServerLobby(
-	rt *Runtime, cfg *ServerConfig, writer *snapshotWriter, admit *admission, incidents *breaker, logger *slog.Logger,
+	rt *Runtime, cfg *ServerConfig, writer *snapshotWriter, admit *admission, incidents *breaker, m *metrics,
+	logger *slog.Logger,
 ) *lobby {
 	idle := cfg.EmptyRoomTimeout.orDefault(defaultEmptyRoomTimeout)
 	grace := cfg.DisconnectGrace.orDefault(defaultDisconnectGrace)
@@ -309,7 +356,7 @@ func newServerLobby(
 	l.grace = grace.duration()
 	l.inactive = inactive.duration()
 	l.admit = admit.allow
-	l.breaker = incidents
+	l.breaker, l.metrics = incidents, m
 	return l
 }
 

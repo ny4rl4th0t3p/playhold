@@ -244,6 +244,7 @@ type Room struct {
 	// The breaker, if any, counts this room's incidents. current is the running turn, and stuckTurn the one the watchdog
 	// gave up on, which is an incident if its goroutine is still running after stuckGrace.
 	incidents *breaker
+	metrics   *metrics // nil without a Server
 	turnMu    sync.Mutex
 	current   turnInfo
 	stuckTurn turnInfo
@@ -433,6 +434,7 @@ func (r *Room) stateFor(player PlayerID) *wire.RoomState {
 		view := &r.typ.views[i]
 		if data, ok := view.build(rc); ok {
 			state.Views = append(state.Views, &wire.ModuleView{Module: view.module, View: data})
+			r.metrics.sentView(i, len(data))
 		}
 	}
 	return state
@@ -763,7 +765,9 @@ func (r *Room) turn(in input) (panicked bool) {
 	err := in.run(&RoomContext{room: r, player: in.player})
 	r.deliverEvents(in.player)
 	r.journalMark(JournalHandled, false)
-	r.reportSlowTurn(&in, time.Since(started))
+	took := time.Since(started)
+	r.metrics.turn(kindOf(&in), took)
+	r.reportSlowTurn(&in, took)
 	if r.stuck.Load() {
 		return false // players were already told the room closed, and nothing below would get out anyway
 	}
@@ -810,6 +814,7 @@ func (r *Room) reportSlowTurn(in *input, took time.Duration) {
 	if r.slowTurn <= 0 || took <= r.slowTurn {
 		return
 	}
+	r.metrics.slowTurn()
 	r.logger.Warn("slow turn", "took", took, "budget", r.slowTurn,
 		"player", string(in.player), "module", in.module, "message_id", in.id, "timer_event", in.timerEvent)
 }
@@ -838,6 +843,7 @@ func (r *Room) finish(reason CloseReason) {
 	r.finishOnce.Do(func() {
 		r.requestStop(reason)
 		r.reason = reason
+		r.metrics.closed(reason)
 		r.onExit(r)
 		if reason == ClosePanic || reason == CloseStuck {
 			r.restartOrForget()

@@ -30,6 +30,12 @@ The defaults are far above what a player needs, but a load test from one address
 - For a game whose rooms wait longer between moves, raise `InactiveRoomTimeout`, or turn it off. See
   [Timeouts](./guides/keeping-games-running.md#timeouts).
 
+**`ListenAndServe` also serves metrics, on `127.0.0.1:9464`.** A second server on the same machine can't start until
+it uses another address.
+
+- Give each server its own `ListenConfig.Metrics.Addr`, or turn the metrics off with `Metrics.Off`. See
+  [Watch the server](./guides/observability.md).
+
 **`store.Store` has three new methods**, `SaveIncident`, `LoadIncidents` and `DeleteIncidents`, for the breaker.
 
 - A store implemented outside playhold must add them. The memory and PostgreSQL stores have them; the PostgreSQL store
@@ -52,6 +58,7 @@ like any other; a client built before them sees an unknown code. See [Errors and
 - The crash journal and `playholdjournal`.
 - The breaker: a message that keeps crashing the server is turned off for an hour, and a room that keeps crashing it
   isn't restored.
+- Prometheus metrics, on a listener of their own at `127.0.0.1:9464` by default.
 - This documentation site.
 - The sample: profiles of the server during a `t12.sh` run.
 

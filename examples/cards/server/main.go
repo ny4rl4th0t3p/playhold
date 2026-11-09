@@ -44,7 +44,7 @@ func main() {
 
 // flags are the command line as given, before config checks it.
 type flags struct {
-	addr, web, databaseURL, debugAddr string
+	addr, web, databaseURL, debugAddr, metricsAddr string
 
 	dev, restartWhenStuck bool
 
@@ -113,6 +113,8 @@ func defineFlags(fs *flag.FlagSet) *flags {
 	fs.DurationVar(&f.shutdownTimeout, "shutdown-timeout", defaultShutdownTimeout,
 		"how long to wait for games to be saved before exiting; keep it below what your service manager allows")
 	fs.StringVar(&f.debugAddr, "debug-addr", "", "address for Go's profiling endpoints; keep it private; empty turns them off")
+	fs.StringVar(&f.metricsAddr, "metrics-addr", "",
+		"address for the Prometheus metrics, at /metrics, or off; empty uses 127.0.0.1:9464")
 	fs.DurationVar(&f.options.TurnTime, "turn-time", 0, "how long a player has for each turn; 0 uses the default")
 	fs.DurationVar(&f.options.FinishedRoomTime, "finished-room-time", 0,
 		"how long a room stays open after its game ends; 0 uses the default")
@@ -177,6 +179,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		CertFile:             f.tlsCert,
 		KeyFile:              f.tlsKey,
 		ShutdownTimeout:      f.shutdownTimeout,
+		Metrics:              playhold.MetricsListen{Addr: f.metricsAddr, Off: f.metricsAddr == off}, // Off ignores Addr
 	}
 	if f.web != "" {
 		listen.Handler = http.FileServer(http.Dir(f.web))

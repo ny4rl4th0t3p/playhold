@@ -38,6 +38,7 @@ type lobby struct {
 	inactive time.Duration // zero never closes a room for inactivity
 	admit    func() bool   // whether new rooms and new players are taken now; nil always allows
 	breaker  *breaker      // says which saved rooms keep crashing the server; nil restores them all
+	metrics  *metrics      // nil counts nothing
 
 	mu       sync.Mutex
 	rooms    map[string]*lobbyRoom
@@ -207,6 +208,7 @@ func (l *lobby) restart(code string, entry *lobbyRoom, old *Room) bool {
 	next.draining.Store(l.draining)
 	next.startSessions(l.sessions()) // the players still connected come back as soon as their sessions follow the room
 	entry.restarts = append(entry.restarts, now)
+	l.metrics.restored(old.reason)
 	old.logger.Error("room crashed, restored from its last snapshot",
 		"reason", old.reason.String(), "restarts", len(entry.restarts), "limit", maxRestarts, "window", restartWindow)
 	entry.room = next

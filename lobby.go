@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/ny4rl4th0t3p/playhold/store"
 )
 
@@ -229,6 +231,11 @@ func (l *lobby) replacement(code string, old *Room) *Room {
 // restoreAll brings back every saved room, each starting with nobody connected. A room that can't be restored, or that
 // kept crashing the server, is logged and left in the store, so a fixed server can try again, and doesn't stop the others.
 func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
+	if tracer := l.rt.currentTracer(); tracer != nil {
+		var span trace.Span
+		ctx, span = tracer.Start(ctx, "playhold.restore")
+		defer span.End()
+	}
 	rooms, err := records.LoadRooms(ctx)
 	if err != nil {
 		return fmt.Errorf("playhold: loading rooms: %w", err)

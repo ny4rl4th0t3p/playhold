@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -40,10 +42,11 @@ type Runtime struct {
 	mu      sync.Mutex
 	rooms   map[RoomID]*Room
 	closed  bool
-	onStuck func(*Room) // set by a Server, to watch what an abandoned room's goroutine does next
-	journal *journal    // set by a Server with a crash journal
-	breaker *breaker    // set by a Server
-	metrics *metrics    // set by a Server
+	onStuck func(*Room)  // set by a Server, to watch what an abandoned room's goroutine does next
+	journal *journal     // set by a Server with a crash journal
+	breaker *breaker     // set by a Server
+	metrics *metrics     // set by a Server
+	tracer  trace.Tracer // set by a Server with a TracerProvider
 }
 
 // NewRuntime returns a Runtime with no rooms.
@@ -176,6 +179,7 @@ func (rt *Runtime) attach(room *Room) {
 	room.journal = rt.journal
 	room.incidents = rt.breaker
 	room.metrics = rt.metrics
+	room.tracer = rt.tracer
 }
 
 func (rt *Runtime) useJournal(j *journal) {
@@ -194,6 +198,19 @@ func (rt *Runtime) useMetrics(m *metrics) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.metrics = m
+}
+
+func (rt *Runtime) useTracer(tracer trace.Tracer) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.tracer = tracer
+}
+
+// currentTracer returns the tracer a Server set, or nil.
+func (rt *Runtime) currentTracer() trace.Tracer {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return rt.tracer
 }
 
 // reportStuck passes a room the watchdog gave up on to whoever watches for it.

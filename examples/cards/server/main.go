@@ -15,6 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/ny4rl4th0t3p/playhold"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards"
 	"github.com/ny4rl4th0t3p/playhold/store/postgres"
@@ -44,7 +47,7 @@ func main() {
 
 // flags are the command line as given, before config checks it.
 type flags struct {
-	addr, web, databaseURL, debugAddr, metricsAddr string
+	addr, web, databaseURL, debugAddr, metricsAddr, traces string
 
 	dev, restartWhenStuck bool
 
@@ -115,6 +118,8 @@ func defineFlags(fs *flag.FlagSet) *flags {
 	fs.StringVar(&f.debugAddr, "debug-addr", "", "address for Go's profiling endpoints; keep it private; empty turns them off")
 	fs.StringVar(&f.metricsAddr, "metrics-addr", "",
 		"address for the Prometheus metrics, at /metrics, or off; empty uses 127.0.0.1:9464")
+	fs.StringVar(&f.traces, "traces", off,
+		"off, or measure: trace every turn and store call, then drop the spans, to see what tracing costs")
 	fs.DurationVar(&f.options.TurnTime, "turn-time", 0, "how long a player has for each turn; 0 uses the default")
 	fs.DurationVar(&f.options.FinishedRoomTime, "finished-room-time", 0,
 		"how long a room stays open after its game ends; 0 uses the default")
@@ -152,6 +157,10 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 	if f.admission != "" && f.admission != off {
 		return nil, nil, fmt.Errorf("-admission %q: use off, or leave it empty", f.admission)
 	}
+	tracer, err := parseTraces(f.traces)
+	if err != nil {
+		return nil, nil, err
+	}
 	cfg := &playhold.ServerConfig{
 		SnapshotInterval:    f.snapshotInterval,
 		TimersAfterRestart:  policy,
@@ -169,6 +178,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		OriginPatterns:      splitList(f.origins),
 		TrustedProxies:      trusted,
 		Development:         f.dev,
+		TracerProvider:      tracer,
 	}
 	listen := &playhold.ListenConfig{
 		Addr:                 f.addr,
@@ -247,6 +257,26 @@ func parseTimeout(value string) (playhold.Timeout, error) {
 	return playhold.Timeout{After: after}, nil
 }
 
+// parseTraces reads the -traces flag: off traces nothing, and measure samples every span and drops it, so a load test
+// shows what tracing costs without needing somewhere to send the traces.
+func parseTraces(value string) (trace.TracerProvider, error) {
+	switch value {
+	case off:
+		return nil, nil // nil traces nothing, which isn't an error
+	case "measure":
+		return sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.AlwaysSample()), sdktrace.WithBatcher(dropSpans{})), nil
+	default:
+		return nil, fmt.Errorf("-traces %q: use off or measure", value)
+	}
+}
+
+// dropSpans is an exporter that throws its spans away.
+type dropSpans struct{}
+
+func (dropSpans) ExportSpans(_ context.Context, _ []sdktrace.ReadOnlySpan) error { return nil }
+
+func (dropSpans) Shutdown(_ context.Context) error { return nil }
+
 // checkDebugAddr keeps the profiling endpoints, which show the server's internals, off public addresses outside
 // development.
 func checkDebugAddr(addr string, dev bool) error {
@@ -277,6 +307,9 @@ func run(databaseURL string, options cards.Options, cfg *playhold.ServerConfig, 
 	}
 	rt := playhold.NewRuntime(playhold.Config{})
 	cfg.RoomType = typ
+	if provider, ok := cfg.TracerProvider.(*sdktrace.TracerProvider); ok {
+		defer func() { _ = provider.Shutdown(context.Background()) }() // after the last span, at shutdown
+	}
 	if databaseURL != "" {
 		records, err := postgres.Open(context.Background(), databaseURL)
 		if err != nil {

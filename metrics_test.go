@@ -22,7 +22,7 @@ import (
 // startObservedServer is startServerWith, also returning the server, to read its metrics.
 func startObservedServer(t *testing.T, cfg *ServerConfig) (server *Server, url string) {
 	t.Helper()
-	cfg.RoomType = newTestRoomType(t, RoomConfig{Modules: []Module{viewOfSaved, savedModule}})
+	cfg.RoomType = newTestRoomType(t, RoomConfig{Name: "match", Modules: []Module{viewOfSaved, savedModule}})
 	cfg.MemoryLimit = -1
 	cfg.Logger = slog.New(slog.DiscardHandler)
 	cfg.Development = true

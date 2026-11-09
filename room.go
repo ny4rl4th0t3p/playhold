@@ -13,6 +13,7 @@ import (
 	"time"
 	"uuid"
 
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
@@ -244,7 +245,8 @@ type Room struct {
 	// The breaker, if any, counts this room's incidents. current is the running turn, and stuckTurn the one the watchdog
 	// gave up on, which is an incident if its goroutine is still running after stuckGrace.
 	incidents *breaker
-	metrics   *metrics // nil without a Server
+	metrics   *metrics     // nil without a Server
+	tracer    trace.Tracer // nil traces nothing
 	turnMu    sync.Mutex
 	current   turnInfo
 	stuckTurn turnInfo
@@ -744,6 +746,8 @@ func (r *Room) reportFailedInput(in input) {
 // turn handles one input. A panic is contained here, so it closes only this room.
 func (r *Room) turn(in input) (panicked bool) {
 	info := turnInfo{player: in.player, module: in.module, id: in.id, event: in.timerEvent}
+	span := r.startTurnSpan(&in)
+	var err error
 	defer func() {
 		if v := recover(); v != nil {
 			panicked = true
@@ -756,13 +760,14 @@ func (r *Room) turn(in input) (panicked bool) {
 			r.journalMark(JournalDone, true) // nothing, if the watchdog already wrote stuck
 		}
 		r.setCurrent(turnInfo{})
+		endTurnSpan(span, in.module, err, panicked)
 	}()
 	r.setCurrent(info)
 	r.startWork()
 	defer r.watchdog.Stop()
 
 	started := time.Now() // the real time, whatever clock the room reads
-	err := in.run(&RoomContext{room: r, player: in.player})
+	err = in.run(&RoomContext{room: r, player: in.player})
 	r.deliverEvents(in.player)
 	r.journalMark(JournalHandled, false)
 	took := time.Since(started)

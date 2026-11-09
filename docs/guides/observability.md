@@ -1,7 +1,7 @@
 # Watch the server
 
 A playhold server serves Prometheus metrics: what's running, how fast it answers, and everything it refuses or
-recovers from.
+recovers from. With an OpenTelemetry tracer provider, it also traces each turn and each call to the store.
 
 ## Where the metrics are
 
@@ -70,3 +70,31 @@ A room's close `reason` is one of `requested`, `shutdown`, `panic`, `init_failed
 | `playhold_admission_refused_total` | Counter | `what`  | What admission control refused: `guest`, `room` or `seat`                 |
 
 See [Limit abuse and load](./limits.md).
+
+## Traces
+
+Set `ServerConfig.TracerProvider` to an OpenTelemetry tracer provider, and the server traces its work. playhold only
+uses OpenTelemetry's API, so the game picks the SDK and where the traces go. Without a provider, nothing is traced,
+and tracing costs nothing.
+
+| Span                      | When                                                     | Attributes                                                                     |
+|---------------------------|----------------------------------------------------------|--------------------------------------------------------------------------------|
+| `playhold.turn`           | Each turn of each room                                   | Room and its type, player, turn kind; for a message, its module, ID and result |
+| `playhold.store.<method>` | Each call to the store, such as `WriteRooms`; not `Ping` | For room saves and loads, how many rooms                                       |
+| `playhold.restore`        | Restoring the saved rooms at startup                     | Its `LoadRooms` call is part of it                                             |
+
+The attributes are named `playhold.room.id`, `playhold.room.type`, `playhold.player.id`, `playhold.turn.kind`,
+`playhold.message.module`, `playhold.message.id`, `playhold.message.result`, `playhold.timer.event`, `playhold.rooms`
+and `playhold.rooms.deleted`.
+
+Clients don't send trace context, so each turn starts a trace of its own. A turn that panicked is marked as an error; a
+message the game refused isn't, since that's the game working. A turn the watchdog gave up on never ends its span. A
+store call that failed is an error, but not finding a record isn't. The server logs `tracing on` at startup when it has
+a provider.
+
+### What tracing costs
+
+Every span the provider samples costs CPU. In the [rough measurements](../measurements.md) setup, tracing every turn
+took about a tenth more of the game server's CPU, and with saving on, 99% of moves were answered within about 10 ms
+instead of 3 to 8 ms. On a busy server, have the provider sample a share of the traces, such as with the OpenTelemetry
+SDK's ratio-based sampler.

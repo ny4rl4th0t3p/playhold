@@ -66,11 +66,14 @@ See [Restart when stuck](../guides/keeping-games-running.md#restart-when-stuck) 
 | `CrashJournal`     | Off     | The crash journal                                                      |
 | `RestartWhenStuck` | False   | Restarts the process when a stuck room's goroutine keeps it overloaded |
 
-### Logs
+### Logs and traces
 
-| Field    | Default       | What it does         |
-|----------|---------------|----------------------|
-| `Logger` | The runtime's | Where server logs go |
+See [Watch the server](../guides/observability.md).
+
+| Field            | Default             | What it does                                  |
+|------------------|---------------------|-----------------------------------------------|
+| `Logger`         | The runtime's       | Where server logs go                          |
+| `TracerProvider` | Nil, traces nothing | The OpenTelemetry tracer provider for traces  |
 
 ## ListenConfig
 

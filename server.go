@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/ny4rl4th0t3p/playhold/internal/memlimit"
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
 	"github.com/ny4rl4th0t3p/playhold/store"
@@ -116,6 +118,10 @@ type ServerConfig struct {
 	MemoryLimit int64
 	// Logger receives server logs. Nil uses the runtime's logger.
 	Logger *slog.Logger
+	// TracerProvider receives OpenTelemetry traces: a span for each room's turn, each call to the store, and restoring the
+	// rooms at startup. Nil traces nothing, at no cost. playhold only uses OpenTelemetry's API: the game sets up its SDK,
+	// and where the traces go.
+	TracerProvider trace.TracerProvider
 }
 
 // Server lets clients connect, identify themselves and join rooms over WebSocket. It is an http.Handler.
@@ -154,6 +160,8 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	}
 	m := newMetrics(cfg.RoomType)
 	rt.useMetrics(m)
+	tracer := newTracer(cfg.TracerProvider, logger)
+	rt.useTracer(tracer)
 	records := cfg.Store
 	var writer *snapshotWriter
 	if records == nil {
@@ -162,9 +170,10 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		if err := cfg.RoomType.requireSnapshots(); err != nil {
 			return nil, err
 		}
-		writer = newSnapshotWriter(records, logger)
+		writer = newSnapshotWriter(traceStore(records, tracer), logger)
 		writer.interval, writer.metrics = cfg.SnapshotInterval, m
 	}
+	records = traceStore(records, tracer)
 	applyMemoryLimit(cfg.MemoryLimit, logger)
 	crashJournal, incidents, err := openIncidents(cfg, rt, records, m, logger) // before rooms are restored, so they use both
 	if err != nil {

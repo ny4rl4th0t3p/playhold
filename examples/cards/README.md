@@ -85,6 +85,7 @@ sh record-stats.sh
 | `CRASH_JOURNAL`          | `/var/lib/cards/journal`, on a volume | The crash journal's file; set it empty to keep none. `t12.sh` leaves it off unless set                     |
 | `CRASH_JOURNAL_ENTRIES`  | 0, the default of 1,024               | How many turns the crash journal keeps                                                                     |
 | `ADMISSION`              | empty, on                             | `off` stops refusing new guests, rooms and seats when the server is overloaded, to measure past that point |
+| `TRACES`                 | off                                   | `measure` traces every turn and store call, then drops the spans, to measure what tracing costs            |
 | `DEBUG_ADDR`             | empty, off                            | Address for Go's profiling endpoints, such as `:6060`. With `t12.sh`, published on `127.0.0.1:6060` only   |
 | `GAME_GODEBUG`           | empty                                 | With `t12.sh`, the game server's `GODEBUG`, such as `gctrace=1` to log every garbage collection            |
 | `GAME_GOGC`              | empty, Go's default                   | With `t12.sh`, the game server's `GOGC`, such as `400` for rarer garbage collections and a larger heap     |

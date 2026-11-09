@@ -53,6 +53,8 @@ services:
       # On every address inside the container, so Docker can publish it; only this machine reaches it, see ports.
       - -metrics-addr
       - ":9464"
+      - -traces
+      - ${TRACES:-off}
     # The crash journal lives on a volume, so it's still there after the crash it's for.
     volumes:
       - journal:/var/lib/cards

@@ -59,6 +59,7 @@ like any other; a client built before them sees an unknown code. See [Errors and
 - The breaker: a message that keeps crashing the server is turned off for an hour, and a room that keeps crashing it
   isn't restored.
 - Prometheus metrics, on a listener of their own at `127.0.0.1:9464` by default.
+- OpenTelemetry traces of turns, store calls and the restore, with `ServerConfig.TracerProvider`.
 - This documentation site.
 - The sample: profiles of the server during a `t12.sh` run.
 

@@ -12,6 +12,7 @@ services:
     # connections and guests per address are off by default.
     command:
       - -dev
+      - -restart-when-stuck
       - -max-conns-per-ip
       - "4096"
       - -connect-rate
@@ -46,6 +47,8 @@ services:
       - ${SHUTDOWN_TIMEOUT:-8s}
     # Docker kills the process after this, so it has to be longer than the shutdown timeout.
     stop_grace_period: ${STOP_GRACE_PERIOD:-10s}
+    # Starts the server again when it exits on its own: a crash, or -restart-when-stuck asking for a new process.
+    restart: unless-stopped
     ports:
       - "${BIND:-127.0.0.1}:8080:8080"
     # A small VPS. Change these to try other sizes.

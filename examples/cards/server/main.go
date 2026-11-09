@@ -46,7 +46,7 @@ func main() {
 type flags struct {
 	addr, web, databaseURL, debugAddr string
 
-	dev bool
+	dev, restartWhenStuck bool
 
 	tlsDomains, tlsCache, tlsEmail, tlsDirectory, tlsCert, tlsKey string
 
@@ -95,6 +95,8 @@ func defineFlags(fs *flag.FlagSet) *flags {
 		"how long a player can be disconnected before others are told, or off; empty uses the default")
 	fs.StringVar(&f.inactiveRoom, "inactive-room-timeout", "",
 		"how long a room stays open with no player sending anything, or off; empty uses the default")
+	fs.BoolVar(&f.restartWhenStuck, "restart-when-stuck", false,
+		"exit so the service manager restarts the server, when a stuck room's goroutine keeps running while it's overloaded")
 	fs.StringVar(&f.admission, "admission", "",
 		"off stops refusing new guests, rooms and seats when the server is overloaded; empty leaves it on")
 	fs.IntVar(&f.maxRooms, "max-rooms", 0, "most rooms at once, counting finished ones until they close; 0 uses the default")
@@ -155,6 +157,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		DisconnectGrace:     timeouts[1],
 		InactiveRoomTimeout: timeouts[2],
 		Admission:           playhold.Admission{Off: f.admission == off},
+		RestartWhenStuck:    f.restartWhenStuck,
 		OriginPatterns:      splitList(f.origins),
 		TrustedProxies:      trusted,
 		Development:         f.dev,

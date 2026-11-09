@@ -229,6 +229,11 @@ type Room struct {
 	finishOnce sync.Once
 	done       chan struct{}
 	reason     CloseReason // written before done closes, read after
+
+	// onStuck, if set, hears about the room once the watchdog has given up on it. exited closes when the room's
+	// goroutine really returns, which for a stuck room can be much later than done, or never.
+	onStuck func(*Room)
+	exited  chan struct{}
 }
 
 func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
@@ -252,8 +257,9 @@ func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
 		stuckTimeout: cfg.StuckTimeout,
 		slowTurn:     cfg.SlowTurn.duration(),
 
-		stop: make(chan struct{}),
-		done: make(chan struct{}),
+		stop:   make(chan struct{}),
+		done:   make(chan struct{}),
+		exited: make(chan struct{}),
 	}
 }
 
@@ -423,6 +429,9 @@ func (r *Room) abandon() {
 	r.gate.Unlock()
 	r.requestStop(CloseStuck)
 	r.finish(CloseStuck)
+	if r.onStuck != nil {
+		r.onStuck(r)
+	}
 }
 
 // applySnapshot fills a new room from a saved one. A module with no saved state, one added since, starts fresh. A
@@ -644,6 +653,7 @@ func (r *Room) deliverEvents(player PlayerID) {
 
 // run is the room's goroutine.
 func (r *Room) run() {
+	defer close(r.exited)
 	r.watchdog = time.AfterFunc(r.stuckTimeout, r.abandon)
 	r.watchdog.Stop()
 	r.alarm = time.NewTimer(r.stuckTimeout)

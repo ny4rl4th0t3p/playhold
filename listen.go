@@ -56,8 +56,10 @@ type ListenConfig struct {
 }
 
 // ListenAndServe serves the game until ctx ends, then shuts down without losing a match: it saves every game while the
-// health checks still answer, and only then stops the HTTP server. It returns before serving anything if the config is
-// incomplete or, outside development, if there is neither TLS nor a trusted proxy.
+// health checks still answer, and only then stops the HTTP server. With ServerConfig.RestartWhenStuck, it also shuts
+// down that way when a restart is needed, and returns ErrRestartNeeded; exit then, for the service manager to start the
+// process again. It returns before serving anything if the config is incomplete or, outside development, if there is
+// neither TLS nor a trusted proxy.
 func (s *Server) ListenAndServe(ctx context.Context, cfg *ListenConfig) error {
 	tlsConfig, err := cfg.tlsConfig()
 	if err != nil {
@@ -113,10 +115,13 @@ func (s *Server) serve(ctx context.Context, listener net.Listener, tlsConfig *tl
 	}()
 	s.logger.Info("listening", "addr", listener.Addr().String(), "tls", tlsConfig != nil, "path", path)
 
+	var restart error
 	select {
 	case err := <-serving:
 		return err // it stopped before ctx ended, so no player was ever served by it
 	case <-ctx.Done():
+	case <-s.RestartNeeded():
+		restart = ErrRestartNeeded // the same clean shutdown, so the next process restores every room
 	}
 
 	timeout := cfg.ShutdownTimeout
@@ -130,7 +135,7 @@ func (s *Server) serve(ctx context.Context, listener net.Listener, tlsConfig *tl
 	if err := <-serving; !errors.Is(err, http.ErrServerClosed) {
 		httpErr = errors.Join(httpErr, err)
 	}
-	return errors.Join(gameErr, httpErr)
+	return errors.Join(restart, gameErr, httpErr)
 }
 
 // tlsConfig returns the TLS settings for the chosen mode, or nil for plain HTTP.

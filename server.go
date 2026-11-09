@@ -62,6 +62,13 @@ type ServerConfig struct {
 	// so connections themselves are never refused for this: who is connecting is only known once they say Hello. See
 	// Admission for the defaults.
 	Admission Admission
+	// RestartWhenStuck lets the server restart its process when a stuck room's goroutine is still running 30 seconds after
+	// the watchdog gave up on it, and the server has been overloaded for a minute since: most likely a goroutine spinning
+	// forever, which Go can't stop. The server drains for 10 seconds, saves every room, and ListenAndServe returns
+	// ErrRestartNeeded; a server not using ListenAndServe watches RestartNeeded. Set it only where a service manager, such
+	// as systemd or a container restart policy, starts the process again; otherwise the server stays down. Without it,
+	// the server logs an error every minute while that lasts. It needs admission control on.
+	RestartWhenStuck bool
 	// MaxRooms is the most rooms the server runs at once, counting finished ones until they close. Over it, joining a
 	// new code gets an error, and existing rooms carry on. The default is 10,000.
 	MaxRooms int
@@ -119,8 +126,9 @@ type Server struct {
 	development bool
 	proxied     bool // there are trusted proxies, which may end TLS in front of the server
 
-	admission     *admission // nil if off
-	stopAdmission context.CancelFunc
+	admission      *admission // nil if off
+	stuck          *stuckWatch
+	stopBackground context.CancelFunc
 }
 
 // NewServer returns a Server that runs its rooms on rt. With a store, it first brings back every room saved there, and
@@ -137,22 +145,6 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		logger.Warn("development mode: the checks that keep a public server safe are off; never use it on a server players reach")
 	} else if err := checkSecure(cfg); err != nil {
 		return nil, err
-	}
-	idle := cfg.EmptyRoomTimeout.orDefault(defaultEmptyRoomTimeout)
-	grace := cfg.DisconnectGrace.orDefault(defaultDisconnectGrace)
-	inactive := cfg.InactiveRoomTimeout.orDefault(defaultInactiveRoom)
-	if idle.Off {
-		logger.Warn("rooms with nobody connected never close; only InactiveRoomTimeout closes them")
-	}
-	if grace.Off {
-		logger.Info("the game is never told that a player disconnected")
-	}
-	if inactive.Off {
-		logger.Warn("rooms never close for inactivity; a room with an idle player or only timers stays open and saved")
-	}
-	maxRooms := cfg.MaxRooms
-	if maxRooms <= 0 {
-		maxRooms = defaultMaxRooms
 	}
 	records := cfg.Store
 	var writer *snapshotWriter
@@ -180,16 +172,12 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 
 	g := &gateway{
 		guests:      newGuests(records),
-		lobby:       newLobby(rt, cfg.RoomType, idle.duration(), maxRooms, writer),
+		lobby:       newServerLobby(rt, cfg, writer, admit, logger),
 		logger:      logger,
 		newGuests:   newPerIP(guestRate),
 		messageRate: messageRate,
 		admission:   admit,
 	}
-	g.lobby.timers = cfg.TimersAfterRestart
-	g.lobby.grace = grace.duration()
-	g.lobby.inactive = inactive.duration()
-	g.lobby.admit = admit.allow
 	if writer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), restoreTimeout)
 		defer cancel()
@@ -198,21 +186,25 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			return nil, err
 		}
 	}
-	admissionCtx, stopAdmission := context.WithCancel(context.Background())
+	background, stopBackground := context.WithCancel(context.Background())
 	if admit != nil {
 		admit.check(admit.sample()) // so the server starts knowing where it stands
-		go admit.run(admissionCtx)
+		go admit.run(background)
 	}
+	stuck := newStuckWatch(logger, admit, cfg.RestartWhenStuck, g.lobby.drain)
+	rt.watchStuck(func(room *Room) { go stuck.follow(background, room) })
+	go stuck.run(background)
 	return &Server{
-		writer:        writer,
-		rt:            rt,
-		lobby:         g.lobby,
-		records:       records,
-		logger:        logger,
-		development:   cfg.Development,
-		proxied:       len(cfg.TrustedProxies) > 0,
-		admission:     admit,
-		stopAdmission: stopAdmission,
+		writer:         writer,
+		rt:             rt,
+		lobby:          g.lobby,
+		records:        records,
+		logger:         logger,
+		development:    cfg.Development,
+		proxied:        len(cfg.TrustedProxies) > 0,
+		admission:      admit,
+		stuck:          stuck,
+		stopBackground: stopBackground,
 		transport: transport.NewServer(&transport.Config{
 			MaxMessageBytes:  cfg.MaxMessageBytes,
 			MaxConns:         cfg.MaxConns,
@@ -226,6 +218,33 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			Logger:           logger,
 		}, g.connect),
 	}, nil
+}
+
+// newServerLobby makes the lobby from the config: the room cap, the three timeouts with a warning for each turned off,
+// and admission control.
+func newServerLobby(rt *Runtime, cfg *ServerConfig, writer *snapshotWriter, admit *admission, logger *slog.Logger) *lobby {
+	idle := cfg.EmptyRoomTimeout.orDefault(defaultEmptyRoomTimeout)
+	grace := cfg.DisconnectGrace.orDefault(defaultDisconnectGrace)
+	inactive := cfg.InactiveRoomTimeout.orDefault(defaultInactiveRoom)
+	if idle.Off {
+		logger.Warn("rooms with nobody connected never close; only InactiveRoomTimeout closes them")
+	}
+	if grace.Off {
+		logger.Info("the game is never told that a player disconnected")
+	}
+	if inactive.Off {
+		logger.Warn("rooms never close for inactivity; a room with an idle player or only timers stays open and saved")
+	}
+	maxRooms := cfg.MaxRooms
+	if maxRooms <= 0 {
+		maxRooms = defaultMaxRooms
+	}
+	l := newLobby(rt, cfg.RoomType, idle.duration(), maxRooms, writer)
+	l.timers = cfg.TimersAfterRestart
+	l.grace = grace.duration()
+	l.inactive = inactive.duration()
+	l.admit = admit.allow
+	return l
 }
 
 // Timeout is how long to wait before something happens. The zero value uses the default; there is no way to turn it
@@ -282,7 +301,7 @@ func (s *Server) Drain() { s.lobby.drain() }
 // It also shuts down the Runtime. It returns the context's error if a room didn't finish in time, though it still does
 // the rest. It's safe to call more than once.
 func (s *Server) Shutdown(ctx context.Context) error {
-	s.stopAdmission()
+	s.stopBackground()
 	s.Drain()
 	err := s.rt.Shutdown(ctx)
 	if s.writer != nil {
@@ -291,6 +310,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.transport.Close()
 	return err
 }
+
+// RestartNeeded is closed when the server needs its process restarted, with RestartWhenStuck on: the server is already
+// drained, and the caller should Shutdown and exit, for its service manager to start it again. ListenAndServe does this
+// itself.
+func (s *Server) RestartNeeded() <-chan struct{} { return s.stuck.restartNeeded }
 
 // Close is Shutdown with a default time limit, for when nothing is waiting on the result.
 func (s *Server) Close() {

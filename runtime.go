@@ -37,9 +37,10 @@ type Runtime struct {
 	cfg    Config
 	logger *slog.Logger
 
-	mu     sync.Mutex
-	rooms  map[RoomID]*Room
-	closed bool
+	mu      sync.Mutex
+	rooms   map[RoomID]*Room
+	closed  bool
+	onStuck func(*Room) // set by a Server, to watch what an abandoned room's goroutine does next
 }
 
 // NewRuntime returns a Runtime with no rooms.
@@ -88,6 +89,7 @@ func (rt *Runtime) restoreRoom(
 	policy TimersAfterRestart,
 ) (*Room, error) {
 	room := newRoom(id, typ, &rt.cfg, rt.forget)
+	room.onStuck = rt.reportStuck
 	room.code = code
 	room.writer = writer
 	room.restart = restart
@@ -104,6 +106,7 @@ func (rt *Runtime) restoreRoom(
 // createRoom also gives the room its code, what saves it and what restores it after a crash, if anything does.
 func (rt *Runtime) createRoom(typ *RoomType, code string, writer *snapshotWriter, restart func(*Room) bool) (*Room, error) {
 	room := newRoom(newRoomID(), typ, &rt.cfg, rt.forget)
+	room.onStuck = rt.reportStuck
 	room.code = code
 	room.writer = writer
 	room.restart = restart
@@ -160,6 +163,22 @@ func (rt *Runtime) register(room *Room) error {
 	}
 	rt.rooms[room.id] = room
 	return nil
+}
+
+// reportStuck passes a room the watchdog gave up on to whoever watches for it.
+func (rt *Runtime) reportStuck(room *Room) {
+	rt.mu.Lock()
+	onStuck := rt.onStuck
+	rt.mu.Unlock()
+	if onStuck != nil {
+		onStuck(room)
+	}
+}
+
+func (rt *Runtime) watchStuck(fn func(*Room)) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.onStuck = fn
 }
 
 // queueFill returns the share of all running rooms' inbound queues in use, zero with no rooms.

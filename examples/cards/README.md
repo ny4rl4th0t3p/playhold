@@ -262,6 +262,12 @@ Rate limits are on by default: new connections and new guests per address, and f
 `-connect-rate`, `-guest-rate` and `-message-rate`, as `EVERY/BURST` such as `200ms/20`. `off` turns one off, for a
 server behind a proxy that already limits it; the server then logs a warning at startup.
 
+If a service manager restarts the server when it exits, such as systemd with `Restart=always` or a container restart
+policy, add `-restart-when-stuck`. A room whose goroutine keeps running after the watchdog gave up on it, while the
+server stays overloaded, is most likely spinning forever, and only a new process gets rid of it: the server drains,
+saves every room and exits, and comes back with every game. Without a service manager, leave it out, or the server stays
+down. The Compose demo turns it on, with `restart: unless-stopped`.
+
 Without `-addr`, it listens on `:443` with TLS and `:8080` without. Behind a proxy, the client's address comes from
 the proxy's `X-Forwarded-For` header, and only from the listed proxies. Outside `-dev`, the server also refuses an
 `-origins` pattern that matches any site, such as `*`, and a `-debug-addr` that isn't on localhost.

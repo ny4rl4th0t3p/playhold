@@ -82,6 +82,7 @@ type admission struct {
 	queue      func() float64
 	process    processReader
 	overloaded atomic.Bool
+	since      atomic.Int64     // when it became overloaded, in Unix nanoseconds; zero while it isn't
 	window     []schedHistogram // the last schedWindow readings, oldest first
 	calm       int              // checks in a row under the recovery level while overloaded
 }
@@ -97,6 +98,19 @@ func newAdmission(limits Admission, queue func() float64, logger *slog.Logger) *
 
 // allow reports whether the server takes new work now. A nil admission always does.
 func (a *admission) allow() bool { return a == nil || !a.overloaded.Load() }
+
+// overloadedFor returns how long the server has been overloaded without a break, zero if it isn't. A nil admission is
+// never overloaded.
+func (a *admission) overloadedFor(now time.Time) time.Duration {
+	if a == nil {
+		return 0
+	}
+	since := a.since.Load()
+	if since == 0 {
+		return 0
+	}
+	return now.Sub(time.Unix(0, since))
+}
 
 // run checks the signals every second until ctx ends. The first check is made before it starts.
 func (a *admission) run(ctx context.Context) {
@@ -128,6 +142,7 @@ func (a *admission) sample() load {
 func (a *admission) check(l load) {
 	if !a.overloaded.Load() {
 		if signal := a.over(l, 1); signal != "" {
+			a.since.Store(time.Now().UnixNano())
 			a.overloaded.Store(true)
 			a.calm = 0
 			a.logger.Warn("server overloaded, refusing new guests, rooms and seats", "signal", signal,
@@ -142,6 +157,7 @@ func (a *admission) check(l load) {
 	a.calm++
 	if a.calm >= admissionCalm {
 		a.overloaded.Store(false)
+		a.since.Store(0)
 		a.logger.Info("server no longer overloaded", "memory", l.memory, "sched_p99", l.schedP99, "queue", l.queue)
 	}
 }

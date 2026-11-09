@@ -8,16 +8,24 @@ A self-hosted game backend in Go, built from authoritative rooms and composable 
 playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After
 that, each release adds support for another kind of game.
 
-**Documentation:** <https://ny4rl4th0t3p.github.io/playhold/>.
+**Documentation:** <https://ny4rl4th0t3p.github.io/playhold/>, including rough
+[measurements](https://ny4rl4th0t3p.github.io/playhold/measurements.html) from development.
 
 ## The idea
 
 - **Authoritative rooms:** each room owns its state and handles messages one at a time, so game code needs no locks.
-- **Composable modules:** game logic lives in modules that can be reused across games.
-- **Hidden information:** each player receives only what they're allowed to see.
-- **Matches that survive deploys:** rooms are saved and restored, and players reconnect automatically.
-- **Testable game logic:** matches can be replayed exactly, in tests and when debugging.
-- **Your own server:** designed to run on a small VPS with Postgres.
+- **Composable modules:** game logic lives in modules that never import each other. They call each other through small
+  interfaces and notify each other with events, so they can be reused across games.
+- **Hidden information:** the server builds each player's own view, so a client never receives what its player isn't
+  allowed to see.
+- **Matches that survive deploys:** rooms are saved and restored, a new version can migrate their saved state, players
+  reconnect by themselves, and a client too old for the server is told to update.
+- **Reproducible games:** a room's random numbers and clock can be set, so the same moves give the same game, and
+  `playholdvet` flags game code that would break that, such as reading the real clock.
+- **A server that protects itself:** safe settings by default, rate limits, no new games while it's overloaded, rooms
+  stuck in a turn cut off, and a message that keeps crashing it turned off for a while, with a crash journal to find
+  out why.
+- **Your own server:** designed to run on a small VPS with PostgreSQL.
 
 ## Intended features
 

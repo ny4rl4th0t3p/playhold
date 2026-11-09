@@ -27,6 +27,7 @@ export default defineConfig({
                     {text: "Errors and close reasons", link: "/reference/errors"},
                 ],
             },
+            {text: "Measurements", link: "/measurements"},
             {text: "Changelog", link: "/changelog"},
         ],
         socialLinks: [{icon: "github", link: "https://github.com/ny4rl4th0t3p/playhold"}],

@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file playhold/v1/frames.proto.
  */
 export const file_playhold_v1_frames: GenFile = /*@__PURE__*/
-  fileDesc("ChhwbGF5aG9sZC92MS9mcmFtZXMucHJvdG8SC3BsYXlob2xkLnYxIpkBCgtDbGllbnRGcmFtZRILCgNzZXEYASABKAQSIwoFaGVsbG8YAiABKAsyEi5wbGF5aG9sZC52MS5IZWxsb0gAEiEKBGpvaW4YAyABKAsyES5wbGF5aG9sZC52MS5Kb2luSAASLQoHbWVzc2FnZRgEIAEoCzIaLnBsYXlob2xkLnYxLk1vZHVsZU1lc3NhZ2VIAEIGCgRib2R5It4BCgtTZXJ2ZXJGcmFtZRInCgd3ZWxjb21lGAEgASgLMhQucGxheWhvbGQudjEuV2VsY29tZUgAEicKBXN0YXRlGAIgASgLMhYucGxheWhvbGQudjEuUm9vbVN0YXRlSAASIwoFZXJyb3IYAyABKAsyEi5wbGF5aG9sZC52MS5FcnJvckgAEikKBmNsb3NlZBgEIAEoCzIXLnBsYXlob2xkLnYxLlJvb21DbG9zZWRIABIlCgZqb2luZWQYBSABKAsyEy5wbGF5aG9sZC52MS5Kb2luZWRIAEIGCgRib2R5IrwBCgVIZWxsbxIYChBwcm90b2NvbF92ZXJzaW9uGAEgASgNEhEKCXBsYXllcl9pZBgCIAEoCRIOCgZzZWNyZXQYAyABKAkSPwoPc2NoZW1hX3ZlcnNpb25zGAQgAygLMiYucGxheWhvbGQudjEuSGVsbG8uU2NoZW1hVmVyc2lvbnNFbnRyeRo1ChNTY2hlbWFWZXJzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEiLAoHV2VsY29tZRIRCglwbGF5ZXJfaWQYASABKAkSDgoGc2VjcmV0GAIgASgJIhQKBEpvaW4SDAoEY29kZRgBIAEoCSIjCgZKb2luZWQSCwoDc2VxGAEgASgEEgwKBGNvZGUYAiABKAkiPAoNTW9kdWxlTWVzc2FnZRIOCgZtb2R1bGUYASABKAkSCgoCaWQYAiABKA0SDwoHcGF5bG9hZBgDIAEoDCIqCgpNb2R1bGVWaWV3Eg4KBm1vZHVsZRgBIAEoCRIMCgR2aWV3GAIgASgMIjMKCVJvb21TdGF0ZRImCgV2aWV3cxgBIAMoCzIXLnBsYXlob2xkLnYxLk1vZHVsZVZpZXciSwoFRXJyb3ISCwoDc2VxGAEgASgEEiQKBGNvZGUYAiABKA4yFi5wbGF5aG9sZC52MS5FcnJvckNvZGUSDwoHbWVzc2FnZRgDIAEoCSI2CgpSb29tQ2xvc2VkEigKBnJlYXNvbhgBIAEoDjIYLnBsYXlob2xkLnYxLkNsb3NlUmVhc29uKt4DCglFcnJvckNvZGUSGgoWRVJST1JfQ09ERV9VTlNQRUNJRklFRBAAEh4KGkVSUk9SX0NPREVfTUFMRk9STUVEX0ZSQU1FEAESHgoaRVJST1JfQ09ERV9VTktOT1dOX01FU1NBR0UQAhIaChZFUlJPUl9DT0RFX0JBRF9NRVNTQUdFEAMSGQoVRVJST1JfQ09ERV9RVUVVRV9GVUxMEAQSGgoWRVJST1JfQ09ERV9ST09NX0NMT1NFRBAFEhcKE0VSUk9SX0NPREVfUkVKRUNURUQQBhIbChdFUlJPUl9DT0RFX1VOQVVUSE9SSVpFRBAHEhgKFEVSUk9SX0NPREVfUk9PTV9GVUxMEAgSIwofRVJST1JfQ09ERV9VTlNVUFBPUlRFRF9QUk9UT0NPTBAJEhoKFkVSUk9SX0NPREVfVU5BVkFJTEFCTEUQChIaChZFUlJPUl9DT0RFX1NFUlZFUl9GVUxMEAsSHgoaRVJST1JfQ09ERV9VUERBVEVfUkVRVUlSRUQQDBIbChdFUlJPUl9DT0RFX1JBVEVfTElNSVRFRBANEhkKFUVSUk9SX0NPREVfVFVSTkVEX09GRhAOEh0KGUVSUk9SX0NPREVfUk9PTV9OT1RfRk9VTkQQDyqtAQoLQ2xvc2VSZWFzb24SHAoYQ0xPU0VfUkVBU09OX1VOU1BFQ0lGSUVEEAASGgoWQ0xPU0VfUkVBU09OX1JFUVVFU1RFRBABEhkKFUNMT1NFX1JFQVNPTl9TSFVURE9XThACEhYKEkNMT1NFX1JFQVNPTl9QQU5JQxADEhYKEkNMT1NFX1JFQVNPTl9TVFVDSxAEEhkKFUNMT1NFX1JFQVNPTl9JTkFDVElWRRAFQjVaM2dpdGh1Yi5jb20vbnk0cmw0dGgwdDNwL3BsYXlob2xkL2ludGVybmFsL3dpcmU7d2lyZWIGcHJvdG8z");
+  fileDesc("ChhwbGF5aG9sZC92MS9mcmFtZXMucHJvdG8SC3BsYXlob2xkLnYxIu4BCgtDbGllbnRGcmFtZRILCgNzZXEYASABKAQSIwoFaGVsbG8YAiABKAsyEi5wbGF5aG9sZC52MS5IZWxsb0gAEiEKBGpvaW4YAyABKAsyES5wbGF5aG9sZC52MS5Kb2luSAASLQoHbWVzc2FnZRgEIAEoCzIaLnBsYXlob2xkLnYxLk1vZHVsZU1lc3NhZ2VIABIjCgVxdWV1ZRgFIAEoCzISLnBsYXlob2xkLnYxLlF1ZXVlSAASLgoLbGVhdmVfcXVldWUYBiABKAsyFy5wbGF5aG9sZC52MS5MZWF2ZVF1ZXVlSABCBgoEYm9keSKuAgoLU2VydmVyRnJhbWUSJwoHd2VsY29tZRgBIAEoCzIULnBsYXlob2xkLnYxLldlbGNvbWVIABInCgVzdGF0ZRgCIAEoCzIWLnBsYXlob2xkLnYxLlJvb21TdGF0ZUgAEiMKBWVycm9yGAMgASgLMhIucGxheWhvbGQudjEuRXJyb3JIABIpCgZjbG9zZWQYBCABKAsyFy5wbGF5aG9sZC52MS5Sb29tQ2xvc2VkSAASJQoGam9pbmVkGAUgASgLMhMucGxheWhvbGQudjEuSm9pbmVkSAASJQoGcXVldWVkGAYgASgLMhMucGxheWhvbGQudjEuUXVldWVkSAASJwoHbWF0Y2hlZBgHIAEoCzIULnBsYXlob2xkLnYxLk1hdGNoZWRIAEIGCgRib2R5IrwBCgVIZWxsbxIYChBwcm90b2NvbF92ZXJzaW9uGAEgASgNEhEKCXBsYXllcl9pZBgCIAEoCRIOCgZzZWNyZXQYAyABKAkSPwoPc2NoZW1hX3ZlcnNpb25zGAQgAygLMiYucGxheWhvbGQudjEuSGVsbG8uU2NoZW1hVmVyc2lvbnNFbnRyeRo1ChNTY2hlbWFWZXJzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEiLAoHV2VsY29tZRIRCglwbGF5ZXJfaWQYASABKAkSDgoGc2VjcmV0GAIgASgJIhQKBEpvaW4SDAoEY29kZRgBIAEoCSIjCgZKb2luZWQSCwoDc2VxGAEgASgEEgwKBGNvZGUYAiABKAkicgoFUXVldWUSNgoKcHJvcGVydGllcxgBIAMoCzIiLnBsYXlob2xkLnYxLlF1ZXVlLlByb3BlcnRpZXNFbnRyeRoxCg9Qcm9wZXJ0aWVzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASIMCgpMZWF2ZVF1ZXVlIhUKBlF1ZXVlZBILCgNzZXEYASABKAQiFwoHTWF0Y2hlZBIMCgRjb2RlGAEgASgJIjwKDU1vZHVsZU1lc3NhZ2USDgoGbW9kdWxlGAEgASgJEgoKAmlkGAIgASgNEg8KB3BheWxvYWQYAyABKAwiKgoKTW9kdWxlVmlldxIOCgZtb2R1bGUYASABKAkSDAoEdmlldxgCIAEoDCIzCglSb29tU3RhdGUSJgoFdmlld3MYASADKAsyFy5wbGF5aG9sZC52MS5Nb2R1bGVWaWV3IksKBUVycm9yEgsKA3NlcRgBIAEoBBIkCgRjb2RlGAIgASgOMhYucGxheWhvbGQudjEuRXJyb3JDb2RlEg8KB21lc3NhZ2UYAyABKAkiNgoKUm9vbUNsb3NlZBIoCgZyZWFzb24YASABKA4yGC5wbGF5aG9sZC52MS5DbG9zZVJlYXNvbireAwoJRXJyb3JDb2RlEhoKFkVSUk9SX0NPREVfVU5TUEVDSUZJRUQQABIeChpFUlJPUl9DT0RFX01BTEZPUk1FRF9GUkFNRRABEh4KGkVSUk9SX0NPREVfVU5LTk9XTl9NRVNTQUdFEAISGgoWRVJST1JfQ09ERV9CQURfTUVTU0FHRRADEhkKFUVSUk9SX0NPREVfUVVFVUVfRlVMTBAEEhoKFkVSUk9SX0NPREVfUk9PTV9DTE9TRUQQBRIXChNFUlJPUl9DT0RFX1JFSkVDVEVEEAYSGwoXRVJST1JfQ09ERV9VTkFVVEhPUklaRUQQBxIYChRFUlJPUl9DT0RFX1JPT01fRlVMTBAIEiMKH0VSUk9SX0NPREVfVU5TVVBQT1JURURfUFJPVE9DT0wQCRIaChZFUlJPUl9DT0RFX1VOQVZBSUxBQkxFEAoSGgoWRVJST1JfQ09ERV9TRVJWRVJfRlVMTBALEh4KGkVSUk9SX0NPREVfVVBEQVRFX1JFUVVJUkVEEAwSGwoXRVJST1JfQ09ERV9SQVRFX0xJTUlURUQQDRIZChVFUlJPUl9DT0RFX1RVUk5FRF9PRkYQDhIdChlFUlJPUl9DT0RFX1JPT01fTk9UX0ZPVU5EEA8q0AEKC0Nsb3NlUmVhc29uEhwKGENMT1NFX1JFQVNPTl9VTlNQRUNJRklFRBAAEhoKFkNMT1NFX1JFQVNPTl9SRVFVRVNURUQQARIZChVDTE9TRV9SRUFTT05fU0hVVERPV04QAhIWChJDTE9TRV9SRUFTT05fUEFOSUMQAxIWChJDTE9TRV9SRUFTT05fU1RVQ0sQBBIZChVDTE9TRV9SRUFTT05fSU5BQ1RJVkUQBRIhCh1DTE9TRV9SRUFTT05fTUFUQ0hfSU5DT01QTEVURRAGQjVaM2dpdGh1Yi5jb20vbnk0cmw0dGgwdDNwL3BsYXlob2xkL2ludGVybmFsL3dpcmU7d2lyZWIGcHJvdG8z");
 
 /**
  * ClientFrame is everything a client can send.
@@ -46,6 +46,18 @@ export type ClientFrame = Message<"playhold.v1.ClientFrame"> & {
      */
     value: ModuleMessage;
     case: "message";
+  } | {
+    /**
+     * @generated from field: playhold.v1.Queue queue = 5;
+     */
+    value: Queue;
+    case: "queue";
+  } | {
+    /**
+     * @generated from field: playhold.v1.LeaveQueue leave_queue = 6;
+     */
+    value: LeaveQueue;
+    case: "leaveQueue";
   } | { case: undefined; value?: undefined };
 };
 
@@ -95,6 +107,18 @@ export type ServerFrame = Message<"playhold.v1.ServerFrame"> & {
      */
     value: Joined;
     case: "joined";
+  } | {
+    /**
+     * @generated from field: playhold.v1.Queued queued = 6;
+     */
+    value: Queued;
+    case: "queued";
+  } | {
+    /**
+     * @generated from field: playhold.v1.Matched matched = 7;
+     */
+    value: Matched;
+    case: "matched";
   } | { case: undefined; value?: undefined };
 };
 
@@ -212,6 +236,79 @@ export const JoinedSchema: GenMessage<Joined> = /*@__PURE__*/
   messageDesc(file_playhold_v1_frames, 5);
 
 /**
+ * Queue asks to be matched with other players. properties are what the player chose, such as a mode, for the game's
+ * matcher to read; the server limits how many there are and how long. The answer is Queued, or an Error.
+ *
+ * @generated from message playhold.v1.Queue
+ */
+export type Queue = Message<"playhold.v1.Queue"> & {
+  /**
+   * @generated from field: map<string, string> properties = 1;
+   */
+  properties: { [key: string]: string };
+};
+
+/**
+ * Describes the message playhold.v1.Queue.
+ * Use `create(QueueSchema)` to create a new message.
+ */
+export const QueueSchema: GenMessage<Queue> = /*@__PURE__*/
+  messageDesc(file_playhold_v1_frames, 6);
+
+/**
+ * LeaveQueue stops waiting for a match. It has no answer.
+ *
+ * @generated from message playhold.v1.LeaveQueue
+ */
+export type LeaveQueue = Message<"playhold.v1.LeaveQueue"> & {
+};
+
+/**
+ * Describes the message playhold.v1.LeaveQueue.
+ * Use `create(LeaveQueueSchema)` to create a new message.
+ */
+export const LeaveQueueSchema: GenMessage<LeaveQueue> = /*@__PURE__*/
+  messageDesc(file_playhold_v1_frames, 7);
+
+/**
+ * Queued accepts a Queue: the player is waiting for a match. Matched follows once the game's matcher has found a group.
+ *
+ * @generated from message playhold.v1.Queued
+ */
+export type Queued = Message<"playhold.v1.Queued"> & {
+  /**
+   * @generated from field: uint64 seq = 1;
+   */
+  seq: bigint;
+};
+
+/**
+ * Describes the message playhold.v1.Queued.
+ * Use `create(QueuedSchema)` to create a new message.
+ */
+export const QueuedSchema: GenMessage<Queued> = /*@__PURE__*/
+  messageDesc(file_playhold_v1_frames, 8);
+
+/**
+ * Matched says the player has been matched: a new room with this code has a seat for them, kept for a while. Join it.
+ *
+ * @generated from message playhold.v1.Matched
+ */
+export type Matched = Message<"playhold.v1.Matched"> & {
+  /**
+   * @generated from field: string code = 1;
+   */
+  code: string;
+};
+
+/**
+ * Describes the message playhold.v1.Matched.
+ * Use `create(MatchedSchema)` to create a new message.
+ */
+export const MatchedSchema: GenMessage<Matched> = /*@__PURE__*/
+  messageDesc(file_playhold_v1_frames, 9);
+
+/**
  * ModuleMessage is a message for one module's handler. IDs are local to the module.
  *
  * @generated from message playhold.v1.ModuleMessage
@@ -238,7 +335,7 @@ export type ModuleMessage = Message<"playhold.v1.ModuleMessage"> & {
  * Use `create(ModuleMessageSchema)` to create a new message.
  */
 export const ModuleMessageSchema: GenMessage<ModuleMessage> = /*@__PURE__*/
-  messageDesc(file_playhold_v1_frames, 6);
+  messageDesc(file_playhold_v1_frames, 10);
 
 /**
  * ModuleView is what one module shows this player.
@@ -262,7 +359,7 @@ export type ModuleView = Message<"playhold.v1.ModuleView"> & {
  * Use `create(ModuleViewSchema)` to create a new message.
  */
 export const ModuleViewSchema: GenMessage<ModuleView> = /*@__PURE__*/
-  messageDesc(file_playhold_v1_frames, 7);
+  messageDesc(file_playhold_v1_frames, 11);
 
 /**
  * RoomState is everything this player can see in the room.
@@ -281,7 +378,7 @@ export type RoomState = Message<"playhold.v1.RoomState"> & {
  * Use `create(RoomStateSchema)` to create a new message.
  */
 export const RoomStateSchema: GenMessage<RoomState> = /*@__PURE__*/
-  messageDesc(file_playhold_v1_frames, 8);
+  messageDesc(file_playhold_v1_frames, 12);
 
 /**
  * Error reports a problem with one client frame.
@@ -310,7 +407,7 @@ export type Error = Message<"playhold.v1.Error"> & {
  * Use `create(ErrorSchema)` to create a new message.
  */
 export const ErrorSchema: GenMessage<Error> = /*@__PURE__*/
-  messageDesc(file_playhold_v1_frames, 9);
+  messageDesc(file_playhold_v1_frames, 13);
 
 /**
  * RoomClosed says the room has closed.
@@ -329,7 +426,7 @@ export type RoomClosed = Message<"playhold.v1.RoomClosed"> & {
  * Use `create(RoomClosedSchema)` to create a new message.
  */
 export const RoomClosedSchema: GenMessage<RoomClosed> = /*@__PURE__*/
-  messageDesc(file_playhold_v1_frames, 10);
+  messageDesc(file_playhold_v1_frames, 14);
 
 /**
  * ErrorCode says what kind of problem an Error reports.
@@ -496,6 +593,14 @@ export enum CloseReason {
    * @generated from enum value: CLOSE_REASON_INACTIVE = 5;
    */
   INACTIVE = 5,
+
+  /**
+   * CLOSE_REASON_MATCH_INCOMPLETE means a player matched to the room didn't join it in time. Those who did can queue
+   * again.
+   *
+   * @generated from enum value: CLOSE_REASON_MATCH_INCOMPLETE = 6;
+   */
+  MATCH_INCOMPLETE = 6,
 }
 
 /**

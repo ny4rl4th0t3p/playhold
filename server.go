@@ -79,6 +79,9 @@ type ServerConfig struct {
 	// makes, so nobody can guess another room's code or claim a name; a code no room has is refused with ROOM_NOT_FOUND.
 	// Joining an existing room by its code works either way.
 	AllowClientCodes bool
+	// Matchmaking lets players queue to be matched with others, by the game's Matcher. Nil, the default, turns it off,
+	// and a Queue is refused. See Matchmaking.
+	Matchmaking *Matchmaking
 	// MaxRooms is the most rooms the server runs at once, counting finished ones until they close. Over it, joining a
 	// new code gets an error, and existing rooms carry on. The default is 10,000.
 	MaxRooms int
@@ -155,8 +158,8 @@ type Server struct {
 // NewServer returns a Server that runs its rooms on rt. With a store, it first brings back every room saved there, and
 // fails if it can't read them. A single room that can't be restored is logged and skipped.
 func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
-	if cfg.RoomType == nil {
-		return nil, errors.New("playhold: server config has no room type")
+	if err := checkConfig(cfg); err != nil {
+		return nil, err
 	}
 	logger := serverLogger(cfg, rt)
 	if cfg.Development {
@@ -217,6 +220,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	stuck := newStuckWatch(logger, admit, cfg.RestartWhenStuck, g.lobby.drain)
 	rt.watchStuck(func(room *Room) { go stuck.follow(background, room) })
 	go stuck.run(background)
+	go g.lobby.matchmaker.run(background) // returns at once without matchmaking
 	server := &Server{
 		writer:         writer,
 		rt:             rt,
@@ -288,6 +292,8 @@ func (s *Server) watchGauges(players *guests) {
 	m.gauge("stuck_goroutines", "Goroutines of stuck rooms still running long after the watchdog gave up on them.",
 		func() float64 { return float64(s.stuck.running.Load()) })
 	m.gauge("messages_turned_off", "Messages the breaker refuses now.", func() float64 { return float64(s.breaker.turnedOffNow()) })
+	m.gauge("players_waiting", "Players in the matchmaking queue.",
+		func() float64 { return float64(s.lobby.matchmaker.waitingCount()) })
 }
 
 // openIncidents opens the crash journal, if there's one, and the breaker, which also counts the turns the journal shows
@@ -373,6 +379,7 @@ func newServerLobby(
 	l.admit = admit.allow
 	l.breaker, l.metrics = incidents, m
 	l.clientCodes = cfg.AllowClientCodes
+	l.matchmaker = newMatchmaker(cfg.Matchmaking, l, m, logger)
 	return l
 }
 
@@ -396,6 +403,18 @@ func (t Timeout) duration() time.Duration {
 		return 0
 	}
 	return t.After
+}
+
+// checkConfig refuses a config the server can't run with.
+func checkConfig(cfg *ServerConfig) error {
+	switch {
+	case cfg.RoomType == nil:
+		return errors.New("playhold: server config has no room type")
+	case cfg.Matchmaking != nil && cfg.Matchmaking.Matcher == nil && cfg.RoomType.cfg.MaxPlayers <= 0:
+		return errors.New("playhold: the default matcher makes groups of RoomConfig.MaxPlayers, which isn't set; " +
+			"set it, or a Matcher")
+	}
+	return nil
 }
 
 // checkSecure refuses settings that would expose players on a public server.

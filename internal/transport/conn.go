@@ -93,6 +93,16 @@ func (c *Conn) SendJoined(seq uint64, code string) {
 	}})
 }
 
+// SendQueued accepts the client's Queue, the frame numbered seq.
+func (c *Conn) SendQueued(seq uint64) {
+	c.enqueue(&wire.ServerFrame{Body: &wire.ServerFrame_Queued{Queued: &wire.Queued{Seq: seq}}})
+}
+
+// SendMatched tells the client it was matched, and the code of the room it has a seat in.
+func (c *Conn) SendMatched(code string) {
+	c.enqueue(&wire.ServerFrame{Body: &wire.ServerFrame_Matched{Matched: &wire.Matched{Code: code}}})
+}
+
 // SendState makes state the next one this client receives, replacing any not yet written. A slow client skips
 // states and never builds a queue. The caller must not change state afterward.
 func (c *Conn) SendState(state *wire.RoomState) {

@@ -24,12 +24,14 @@ and `process_resident_memory_bytes`.
 
 ### What's running
 
-| Metric                       | Type  | What it shows                                          |
-|------------------------------|-------|--------------------------------------------------------|
-| `playhold_rooms`             | Gauge | Rooms running, counting finished ones until they close |
-| `playhold_connections`       | Gauge | Open connections                                       |
-| `playhold_players_connected` | Gauge | Players with a connection                              |
-| `playhold_queue_fill`        | Gauge | The share of all rooms' inbound queues in use          |
+| Metric                       | Type    | What it shows                                          |
+|------------------------------|---------|--------------------------------------------------------|
+| `playhold_rooms`             | Gauge   | Rooms running, counting finished ones until they close |
+| `playhold_connections`       | Gauge   | Open connections                                       |
+| `playhold_players_connected` | Gauge   | Players with a connection                              |
+| `playhold_queue_fill`        | Gauge   | The share of all rooms' inbound queues in use          |
+| `playhold_players_waiting`   | Gauge   | Players in the matchmaking queue                       |
+| `playhold_matches_total`     | Counter | Groups the matchmaker formed, each given a new room    |
 
 ### Messages and turns
 
@@ -58,7 +60,8 @@ label values.
 | `playhold_messages_turned_off`           | Gauge     |          | Messages the breaker refuses now                                     |
 | `playhold_stuck_goroutines`              | Gauge     |          | Stuck rooms' goroutines still running long after the watchdog        |
 
-A room's close `reason` is one of `requested`, `shutdown`, `panic`, `init_failed`, `stuck` or `inactive`. See
+A room's close `reason` is one of `requested`, `shutdown`, `panic`, `init_failed`, `stuck`, `inactive` or
+`match_incomplete`. See
 [Keep games running](./keeping-games-running.md) and [When something crashes](./crashes.md).
 
 ### Abuse and load
@@ -67,7 +70,7 @@ A room's close `reason` is one of `requested`, `shutdown`, `panic`, `init_failed
 |------------------------------------|---------|---------|---------------------------------------------------------------------------|
 | `playhold_rate_limited_total`      | Counter | `layer` | Requests refused by a rate limit: `connect`, `guest`, `frame` or `module` |
 | `playhold_overloaded`              | Gauge   |         | 1 while admission control refuses new work                                |
-| `playhold_admission_refused_total` | Counter | `what`  | What admission control refused: `guest`, `room` or `seat`                 |
+| `playhold_admission_refused_total` | Counter | `what`  | What admission control refused: `guest`, `room`, `seat` or `queue`        |
 
 See [Limit abuse and load](./limits.md).
 

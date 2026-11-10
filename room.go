@@ -68,6 +68,8 @@ const (
 	CloseStuck
 	// CloseInactive means no player sent anything to the room for longer than the server's InactiveRoomTimeout.
 	CloseInactive
+	// CloseMatchIncomplete means a player matched to the room didn't join it in time.
+	CloseMatchIncomplete
 )
 
 // String returns a short name for the reason.
@@ -85,6 +87,8 @@ func (r CloseReason) String() string {
 		return "stuck"
 	case CloseInactive:
 		return "inactive"
+	case CloseMatchIncomplete:
+		return "match incomplete"
 	default:
 		return fmt.Sprintf("unknown (%d)", int(r))
 	}
@@ -213,6 +217,10 @@ type Room struct {
 	admit       func() bool // whether a new player may take a seat now; nil always allows
 	inactive    time.Duration
 	inactiveDue time.Time // the room closes then, unless a player sends something first
+
+	// Also owned by the room's goroutine: the matched players whose seats wait for them. While any are left, nobody else
+	// takes a seat. Not saved, so a restart opens the room.
+	reserved []PlayerID
 
 	stuckTimeout time.Duration
 	slowTurn     time.Duration // a turn longer than this is logged; zero logs none
@@ -381,23 +389,10 @@ func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byt
 func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 	return r.submitWait(input{player: player, result: result, run: func(rc *RoomContext) error {
 		r.playerActive()
-		if !slices.Contains(r.seats, player) {
-			if r.draining.Load() {
-				return ErrDraining
+		if !slices.Contains(r.seats, player) { // a player who already has a seat is never refused
+			if err := r.takeSeat(rc, player); err != nil {
+				return err
 			}
-			if r.admit != nil && !r.admit() {
-				return ErrOverloaded // a player who already has a seat is never refused
-			}
-			if limit := r.typ.cfg.MaxPlayers; limit > 0 && len(r.seats) >= limit {
-				return ErrRoomFull
-			}
-			if join := r.typ.cfg.OnJoinAttempt; join != nil {
-				if err := join(rc, &JoinAttempt{Player: player}); err != nil {
-					return err
-				}
-			}
-			r.seats = append(r.seats, player)
-			rc.Emit(PlayerJoined{Player: player})
 		}
 		if sink != nil {
 			r.viewers[player] = sink
@@ -405,6 +400,50 @@ func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 		}
 		return nil
 	}})
+}
+
+// takeSeat gives a new player a seat, if they may have one. While seats are reserved for matched players, only they may;
+// they were promised a seat, so draining and overload don't refuse them, but the room's limit and the game still decide.
+func (r *Room) takeSeat(rc *RoomContext, player PlayerID) error {
+	matched := slices.Contains(r.reserved, player)
+	switch {
+	case len(r.reserved) > 0 && !matched:
+		return ErrRoomFull // the free seats wait for the players matched to the room
+	case !matched && r.draining.Load():
+		return ErrDraining
+	case !matched && r.admit != nil && !r.admit():
+		return ErrOverloaded
+	case r.typ.cfg.MaxPlayers > 0 && len(r.seats) >= r.typ.cfg.MaxPlayers:
+		return ErrRoomFull
+	}
+	if join := r.typ.cfg.OnJoinAttempt; join != nil {
+		if err := join(rc, &JoinAttempt{Player: player}); err != nil {
+			return err
+		}
+	}
+	r.seats = append(r.seats, player)
+	r.reserved = slices.DeleteFunc(r.reserved, func(p PlayerID) bool { return p == player })
+	rc.Emit(PlayerJoined{Player: player})
+	return nil
+}
+
+// reserve keeps the room's free seats for the players matched to it, until they've all joined or reserveFor has passed.
+// Then a room still missing someone closes, so those who came can look for another game. It's queued before anyone is
+// told the room's code, so nobody can take a seat before it.
+func (r *Room) reserve(players []PlayerID, reserveFor time.Duration) {
+	_ = r.submit(input{noViews: true, run: func(_ *RoomContext) error {
+		r.reserved = slices.Clone(players)
+		return nil
+	}})
+	time.AfterFunc(reserveFor, func() {
+		_ = r.submitWait(input{noViews: true, run: func(_ *RoomContext) error {
+			if len(r.reserved) > 0 {
+				r.logger.Info("matched players didn't all join in time, closing the room", "missing", len(r.reserved))
+				r.requestStop(CloseMatchIncomplete)
+			}
+			return nil
+		}})
+	})
 }
 
 // removeViewer stops sending views to the sink and starts the player's grace period, unless the player has since moved

@@ -49,13 +49,17 @@ it uses another address.
 
 ### New responses for clients
 
-New error codes `RATE_LIMITED`, `TURNED_OFF` and `ROOM_NOT_FOUND`, and a new close reason, `INACTIVE`. The SDKs pass them to the game
+New error codes `RATE_LIMITED`, `TURNED_OFF` and `ROOM_NOT_FOUND`, and new close reasons, `INACTIVE` and
+`MATCH_INCOMPLETE`. The SDKs pass them to the game
 like any other; a client built before them sees an unknown code. See [Errors and close reasons](./reference/errors.md).
 
 ### Added
 
 - `SnapshotInterval`, to save busy rooms less often.
 - `RoomConfig.OnJoinAttempt`, for the game to decide who takes a seat, and the SDKs' `createRoom`.
+- Matchmaking, with `ServerConfig.Matchmaking`: a queue, the game's matcher, and a new room for each group, with its
+  seats kept for the players for a while. New frames `Queue`, `LeaveQueue`, `Queued` and `Matched`, and the Go SDK's
+  `Queue`, `Matched` and `LeaveQueue`.
 - TLS: automatic certificates from Let's Encrypt, certificate files, or a trusted proxy that ends TLS, with
   `ListenAndServe`.
 - Layered rate limits, with a module's own limits on its messages.

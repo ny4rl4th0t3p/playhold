@@ -25,6 +25,7 @@ See [Timeouts](../guides/keeping-games-running.md#timeouts) and [Find a game](..
 | Field                 | Default    | What it does                                                                        |
 |-----------------------|------------|-------------------------------------------------------------------------------------|
 | `AllowClientCodes`    | False      | Lets a code no room has create a room; otherwise only the server makes codes        |
+| `Matchmaking`         | Nil, off   | Lets players queue to be matched; see Matchmaking below                             |
 | `MaxRooms`            | 10,000     | The most rooms at once; over it, a new room gets `SERVER_FULL`                      |
 | `EmptyRoomTimeout`    | 5 minutes  | Closes a room nobody has been connected to for this long                            |
 | `InactiveRoomTimeout` | 30 minutes | Closes a room, and deletes its save, once no player has sent anything for this long |
@@ -145,6 +146,17 @@ and can't be off.
 | `SchedP99` | 20 ms   | Goroutines wait this long to run, at the 99th percentile over 5 seconds |
 | `Queue`    | 0.5     | This share of all rooms' inbound queues is in use                       |
 | `Off`      | False   | Turns admission control off                                             |
+
+### Matchmaking
+
+See [Matchmaking](../guides/finding-a-game.md#matchmaking).
+
+| Field        | Default                                          | What it does                                                    |
+|--------------|--------------------------------------------------|-----------------------------------------------------------------|
+| `Matcher`    | Groups of `MaxPlayers`, in the order they queued | Forms groups from the players waiting                           |
+| `Describe`   | Nil, `Info` stays nil                            | Returns what the game knows about a player, when they queue     |
+| `Every`      | 1 s                                              | How often the matcher runs; nothing else starts it              |
+| `ReserveFor` | 30 s                                             | How long a matched group's seats wait for its players           |
 
 ### JournalConfig
 

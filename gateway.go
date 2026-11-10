@@ -71,6 +71,10 @@ func (s *session) frame(frame *wire.ClientFrame) {
 		s.join(seq, body.Join.GetCode())
 	case *wire.ClientFrame_Message:
 		s.message(seq, body.Message)
+	case *wire.ClientFrame_Queue:
+		s.queue(seq, body.Queue.GetProperties())
+	case *wire.ClientFrame_LeaveQueue:
+		s.gateway.lobby.matchmaker.remove(s.player, s.conn)
 	default:
 		s.malformed(seq, "frame has no body")
 	}
@@ -159,6 +163,7 @@ func (s *session) join(seq uint64, code string) {
 		return
 	}
 
+	s.gateway.lobby.matchmaker.remove(s.player, s.conn) // a player who joins a room has found their game
 	room, code, err := s.gateway.lobby.enter(code)
 	switch {
 	case errors.Is(err, ErrRoomNotFound):
@@ -189,6 +194,63 @@ func (s *session) join(seq uint64, code string) {
 	if err := room.seat(s.player, s.conn, result); err != nil {
 		result(err)
 	}
+}
+
+// queue puts the player in the matchmaking queue. Describe runs here, on the connection's goroutine, so a slow game
+// lookup only holds up this client. Queued goes out before the place is taken, so it always comes before Matched.
+func (s *session) queue(seq uint64, properties map[string]string) {
+	mm := s.gateway.lobby.matchmaker
+	switch {
+	case s.player == "":
+		s.malformed(seq, "say hello before queueing")
+		return
+	case mm == nil:
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_REJECTED, "this server doesn't match players")
+		return
+	case !validQueueProperties(properties):
+		s.malformed(seq, "too many queue properties, or one too long")
+		return
+	case s.gateway.lobby.isDraining():
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, ErrDraining.Error())
+		return
+	case !s.gateway.admission.allow():
+		s.gateway.metrics.refused("queue")
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_SERVER_FULL, ErrOverloaded.Error())
+		return
+	}
+	s.mu.Lock()
+	busy := s.room != nil && !s.room.closed()
+	s.mu.Unlock()
+	if busy {
+		s.malformed(seq, "already in a room")
+		return
+	}
+
+	info, err := mm.describe(s.player)
+	if err != nil {
+		s.gateway.logger.Error("describing a player for matchmaking failed", "player", string(s.player), "error", err)
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, "the server can't look this player up right now")
+		return
+	}
+	s.conn.SendQueued(seq)
+	mm.add(&waiter{
+		candidate: Candidate{Player: s.player, Properties: properties, Info: info},
+		since:     time.Now(),
+		conn:      s.conn,
+	})
+}
+
+// validQueueProperties keeps what a client sends with a Queue small: a game's choices, not a place to store data.
+func validQueueProperties(properties map[string]string) bool {
+	if len(properties) > maxQueueProperties {
+		return false
+	}
+	for key, value := range properties {
+		if len(key) > maxQueuePropertyLen || len(value) > maxQueuePropertyLen {
+			return false
+		}
+	}
+	return true
 }
 
 // seated finishes a Join. It runs on the room's goroutine, unless the request never reached the room.
@@ -328,10 +390,11 @@ func (s *session) allowMessage(key handlerKey) bool {
 	return limiter.Allow()
 }
 
-// ended releases what the connection held. The player keeps their seat.
+// ended releases what the connection held: its place in the queue goes, and the player keeps their seat.
 func (s *session) ended() {
 	if s.player != "" {
 		s.gateway.guests.detach(s.player, s.conn)
+		s.gateway.lobby.matchmaker.remove(s.player, s.conn)
 	}
 
 	s.mu.Lock()
@@ -395,6 +458,8 @@ func wireCloseReason(reason CloseReason) wire.CloseReason {
 		return wire.CloseReason_CLOSE_REASON_STUCK
 	case CloseInactive:
 		return wire.CloseReason_CLOSE_REASON_INACTIVE
+	case CloseMatchIncomplete:
+		return wire.CloseReason_CLOSE_REASON_MATCH_INCOMPLETE
 	default:
 		return wire.CloseReason_CLOSE_REASON_UNSPECIFIED
 	}

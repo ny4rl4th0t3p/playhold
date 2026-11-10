@@ -144,6 +144,50 @@ func (c *Client) CreateRoom(ctx context.Context) (string, error) {
 	return c.join(ctx, "")
 }
 
+// Queue asks the server to match this player with others, and waits for it to accept. properties are the player's
+// choices, such as a mode, for the game's matcher. Then wait with Matched, and join the room it returns.
+func (c *Client) Queue(ctx context.Context, properties map[string]string) error {
+	queue := &wire.ClientFrame{Body: &wire.ClientFrame_Queue{Queue: &wire.Queue{Properties: properties}}}
+	if _, err := c.send(ctx, queue); err != nil {
+		return err
+	}
+	for {
+		frame, err := c.read(ctx)
+		if err != nil {
+			return err
+		}
+		switch body := frame.GetBody().(type) {
+		case *wire.ServerFrame_Queued:
+			return nil
+		case *wire.ServerFrame_Error:
+			return toError(body.Error)
+		}
+	}
+}
+
+// Matched waits until the server has matched this player, and returns the code of the room with their seat. Join it
+// soon: the seat is only kept for a while.
+func (c *Client) Matched(ctx context.Context) (string, error) {
+	for {
+		frame, err := c.read(ctx)
+		if err != nil {
+			return "", err
+		}
+		switch body := frame.GetBody().(type) {
+		case *wire.ServerFrame_Matched:
+			return body.Matched.GetCode(), nil
+		case *wire.ServerFrame_Error:
+			return "", toError(body.Error)
+		}
+	}
+}
+
+// LeaveQueue stops waiting for a match. The server doesn't answer it.
+func (c *Client) LeaveQueue(ctx context.Context) error {
+	_, err := c.send(ctx, &wire.ClientFrame{Body: &wire.ClientFrame_LeaveQueue{LeaveQueue: &wire.LeaveQueue{}}})
+	return err
+}
+
 // join sends a Join and waits for the answer, returning the room's code.
 func (c *Client) join(ctx context.Context, code string) (string, error) {
 	if _, err := c.send(ctx, &wire.ClientFrame{Body: &wire.ClientFrame_Join{Join: &wire.Join{Code: code}}}); err != nil {

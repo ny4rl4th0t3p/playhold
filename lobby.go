@@ -50,6 +50,7 @@ type lobby struct {
 	// default is true, so tests that build one directly can pick their codes.
 	clientCodes bool
 	makeCode    func() string   // rand.Text; tests replace it to force a clash
+	matchmaker  *matchmaker     // nil without ServerConfig.Matchmaking
 	savedCodes  map[string]bool // the codes of every room in the store at the restore, which new rooms mustn't take
 
 	mu       sync.Mutex
@@ -88,24 +89,10 @@ func (l *lobby) enter(code string) (*Room, string, error) {
 		if !made && !l.clientCodes {
 			return nil, "", ErrRoomNotFound
 		}
-		if !ok && len(l.rooms) >= l.maxRooms {
-			return nil, "", ErrTooManyRooms
-		}
-		if l.draining {
-			return nil, "", ErrDraining
-		}
-		if l.admit != nil && !l.admit() {
-			return nil, "", ErrOverloaded
-		}
-		entry = &lobbyRoom{}
-		room, err := l.rt.createRoom(l.typ, code, l.writer, l.restarter(code, entry))
-		if err != nil {
+		var err error
+		if entry, err = l.create(code, ok); err != nil {
 			return nil, "", err
 		}
-		room.startSessions(l.sessions())
-		entry.room = room
-		l.rooms[code] = entry
-		go l.watch(code, entry)
 	}
 	entry.conns++
 	if entry.timer != nil {
@@ -113,6 +100,44 @@ func (l *lobby) enter(code string) (*Room, string, error) {
 		entry.timer = nil
 	}
 	return entry.room, code, nil
+}
+
+// match creates a room for a group the matchmaker formed, with its seats kept for them, and returns its code. Nobody is
+// connected to it yet, so it closes after the idle time if they never come, unless the reservation closes it first.
+func (l *lobby) match(players []PlayerID, reserveFor time.Duration) (string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	code := l.newCode()
+	entry, err := l.create(code, false)
+	if err != nil {
+		return "", err
+	}
+	entry.room.reserve(players, reserveFor)
+	l.startIdleTimer(entry)
+	return code, nil
+}
+
+// create starts a room under code, if the server takes another one now. replacing says a closed room still holds the
+// code's entry, so the count of rooms doesn't grow. The caller holds mu.
+func (l *lobby) create(code string, replacing bool) (*lobbyRoom, error) {
+	switch {
+	case !replacing && len(l.rooms) >= l.maxRooms:
+		return nil, ErrTooManyRooms
+	case l.draining:
+		return nil, ErrDraining
+	case l.admit != nil && !l.admit():
+		return nil, ErrOverloaded
+	}
+	entry := &lobbyRoom{}
+	room, err := l.rt.createRoom(l.typ, code, l.writer, l.restarter(code, entry))
+	if err != nil {
+		return nil, err
+	}
+	room.startSessions(l.sessions())
+	entry.room = room
+	l.rooms[code] = entry
+	go l.watch(code, entry)
+	return entry, nil
 }
 
 // newCode returns a code no room has, running or left in the store: 26 random letters and digits, so it can't be

@@ -1,7 +1,7 @@
 # Find a game
 
 Players meet in rooms. A room has a code, and anyone with the code can ask to join it. This page covers how rooms get
-their codes and how a game decides who takes a seat.
+their codes, how a game decides who takes a seat, and how players who don't know each other are matched.
 
 ## Room codes
 
@@ -33,5 +33,57 @@ room's goroutine, so it can read the game's state:
 
 It receives a `JoinAttempt`, which holds the player's ID today, and will gain what playhold learns about players
 later, such as their account. It must decide from what's in memory, since waiting on a database or a service would hold
-up the whole room. A game locks its room by refusing everyone new, such as once its game has started. A player who already has a seat is
-never asked again, so they can always come back to it.
+up the whole room. A game locks its room by refusing everyone new, such as once its game has started. A player who
+already has a seat is never asked again, so they can always come back to it.
+
+## Matchmaking
+
+With `ServerConfig.Matchmaking` set, players can queue to be matched with others. playhold keeps the queue, runs the
+game's matcher, and gives each group it forms a new room. Who plays whom is the game's choice.
+
+1. A client queues, with properties for the player's choices, such as a mode. The server answers `Queued`.
+2. Every `Every`, 1 second by default, the server calls the `Matcher` with everyone waiting, in the order they queued.
+   It returns groups of players.
+3. Each group gets a new room, with a code the server makes, and its free seats kept for the group. Each player's
+   client gets `Matched` with the code, and joins it.
+4. If a player hasn't joined after `ReserveFor`, 30 seconds by default, the room closes as `MATCH_INCOMPLETE`, so those
+   who joined can queue again.
+
+Without its own `Matcher`, the server makes groups of `RoomConfig.MaxPlayers` in the order players queued.
+
+### What the matcher sees
+
+The matcher gets a `Candidate` for each player waiting:
+
+| Field        | What it holds                                                                        |
+|--------------|--------------------------------------------------------------------------------------|
+| `Player`     | The player's ID                                                                      |
+| `Properties` | What the client sent with its Queue, such as a mode                                  |
+| `Info`       | What `Matchmaking.Describe` returned for the player, such as their level or region   |
+| `Waiting`    | How long the player has waited, so a matcher can widen its rules as time goes on     |
+
+A client can send any properties, so use them only for the player's choices, never for what has to be trusted, such
+as a level. That comes from `Describe`: the game's own function, which reads the game's own data. It runs once, when
+the player queues, on their connection's goroutine, outside any room, so it may wait on a database. If it fails, the
+Queue is refused with `UNAVAILABLE`.
+
+The queue holds at most one place per open connection, so never more than `ServerConfig.MaxConns` players. The matcher
+runs over all of them, on a goroutine of its own, one run at a time. It may take longer than `Every`: runs never
+overlap, the next one starts when it's done, and rooms carry on meanwhile, so a slow matcher only makes players wait
+longer. A game whose matcher is expensive sets `Every` to how often it's worth running.
+
+A matcher's groups must hold players who are waiting, each in one group only, and no more than `MaxPlayers` in a
+group. Otherwise the whole result is dropped and logged as a bug in the matcher, and nobody is matched until its next
+run. A panic in the matcher is logged the same way.
+
+### Saving what a game learns
+
+A game that matches by level has to save each player's level somewhere `Describe` can read it. playhold doesn't save
+player data yet, so the game saves it itself, such as from its `Close` hook. That write leaves the room: if the server
+crashed just after it, the room would come back from its last save, before the game ended, while the level stays
+saved. playhold will cover this later, with writes saved together with the room.
+
+### Leaving the queue
+
+A player leaves the queue by joining a room, by sending `LeaveQueue`, or by losing their connection. The queue lives in
+the server's memory, so a restart empties it, and a client has to queue again when it reconnects.

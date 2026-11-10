@@ -12,6 +12,8 @@ message ClientFrame {
     Hello hello = 2;
     Join join = 3;
     ModuleMessage message = 4;
+    Queue queue = 5;
+    LeaveQueue leave_queue = 6;
   }
 }
 
@@ -23,6 +25,8 @@ message ServerFrame {
     Error error = 3;
     RoomClosed closed = 4;
     Joined joined = 5;
+    Queued queued = 6;
+    Matched matched = 7;
   }
 }
 
@@ -53,6 +57,25 @@ message Join {
 message Joined {
   uint64 seq = 1;
   string code = 2;
+}
+
+// Queue asks to be matched with other players. properties are what the player chose, such as a mode, for the game's
+// matcher to read; the server limits how many there are and how long. The answer is Queued, or an Error.
+message Queue {
+  map<string, string> properties = 1;
+}
+
+// LeaveQueue stops waiting for a match. It has no answer.
+message LeaveQueue {}
+
+// Queued accepts a Queue: the player is waiting for a match. Matched follows once the game's matcher has found a group.
+message Queued {
+  uint64 seq = 1;
+}
+
+// Matched says the player has been matched: a new room with this code has a seat for them, kept for a while. Join it.
+message Matched {
+  string code = 1;
 }
 
 // ModuleMessage is a message for one module's handler. IDs are local to the module.
@@ -135,6 +158,9 @@ enum CloseReason {
   CLOSE_REASON_STUCK = 4;
   // CLOSE_REASON_INACTIVE means no player sent anything to the room for too long.
   CLOSE_REASON_INACTIVE = 5;
+  // CLOSE_REASON_MATCH_INCOMPLETE means a player matched to the room didn't join it in time. Those who did can queue
+  // again.
+  CLOSE_REASON_MATCH_INCOMPLETE = 6;
 }
 
 // #endregion close-reasons

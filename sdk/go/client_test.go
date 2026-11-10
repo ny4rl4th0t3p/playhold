@@ -136,6 +136,38 @@ func TestCreateRoomReturnsACodeOthersCanJoin(t *testing.T) {
 	requireCode(t, bob.Join(testContext(t), made), sdk.ErrorRoomFull) // the room has one seat, and alice has it
 }
 
+func TestQueuedPlayersAreMatchedIntoOneRoom(t *testing.T) {
+	typ, err := playhold.NewRoomType(playhold.RoomConfig{Modules: []playhold.Module{counter{}}, MaxPlayers: 2})
+	require.NoError(t, err)
+	server, err := playhold.NewServer(playhold.NewRuntime(playhold.Config{Logger: slog.New(slog.DiscardHandler)}), &playhold.ServerConfig{
+		RoomType:    typ,
+		Matchmaking: &playhold.Matchmaking{Every: 10 * time.Millisecond},
+		MemoryLimit: -1,
+		Logger:      slog.New(slog.DiscardHandler),
+		Development: true,
+	})
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	t.Cleanup(func() {
+		server.Close()
+		httpServer.Close()
+	})
+	url := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+	alice := connect(t, url, sdk.Identity{})
+	bob := connect(t, url, sdk.Identity{})
+
+	require.NoError(t, alice.Queue(testContext(t), map[string]string{"mode": "casual"}))
+	require.NoError(t, bob.Queue(testContext(t), nil))
+	code, err := alice.Matched(testContext(t))
+	require.NoError(t, err)
+	other, err := bob.Matched(testContext(t))
+	require.NoError(t, err)
+
+	assert.Equal(t, code, other)
+	require.NoError(t, alice.Join(testContext(t), code))
+	require.NoError(t, bob.Join(testContext(t), code))
+}
+
 func TestServerRefusesAClient(t *testing.T) {
 	url := startServer(t)
 

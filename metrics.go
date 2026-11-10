@@ -111,6 +111,7 @@ type metrics struct {
 	admissionRefused *prometheus.CounterVec
 	slowTurns        prometheus.Counter
 	incidents        *prometheus.CounterVec
+	matches          prometheus.Counter
 }
 
 func newMetrics(typ *RoomType) *metrics {
@@ -145,7 +146,7 @@ func newMetrics(typ *RoomType) *metrics {
 	closes := m.counterVec("rooms_closed_total",
 		"Rooms that closed, by reason. A room restored after a crash counts here too.", "reason")
 	m.closes = make(map[CloseReason]prometheus.Counter)
-	for reason := CloseRequested; reason <= CloseInactive; reason++ {
+	for reason := CloseRequested; reason <= CloseMatchIncomplete; reason++ {
 		m.closes[reason] = closes.WithLabelValues(strings.ReplaceAll(reason.String(), " ", "_"))
 	}
 	m.closesUnknown = closes.WithLabelValues(unknownLabel)
@@ -162,6 +163,7 @@ func newMetrics(typ *RoomType) *metrics {
 	m.slowTurns = m.counter("slow_turns_total", "Turns that took longer than the time budget, Config.SlowTurn.")
 	m.incidents = m.counterVec("incidents_total",
 		"Turns that hurt the whole server, by kind: crashed with the process, or stuck and still running.", "kind")
+	m.matches = m.counter("matches_total", "Groups the matchmaker formed, each given a new room.")
 	return m
 }
 
@@ -257,7 +259,7 @@ func (m *metrics) limited(layer string) {
 	}
 }
 
-// refused counts what admission control refused: guest, room or seat.
+// refused counts what admission control refused: guest, room, seat or queue.
 func (m *metrics) refused(what string) {
 	if m != nil {
 		m.admissionRefused.WithLabelValues(what).Inc()
@@ -267,6 +269,12 @@ func (m *metrics) refused(what string) {
 func (m *metrics) slowTurn() {
 	if m != nil {
 		m.slowTurns.Inc()
+	}
+}
+
+func (m *metrics) matched() {
+	if m != nil {
+		m.matches.Inc()
 	}
 }
 

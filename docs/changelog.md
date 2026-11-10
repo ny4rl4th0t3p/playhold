@@ -70,6 +70,9 @@ See [Errors and close reasons](./reference/errors.md).
 - `Matchmaking.MinPlayers`, for a matched game to go ahead without the players who never came, and the `MatchReady`
   event, when a matched room's game can start. `Matchmaking.FillFor`, for the default matcher to start a group smaller
   than `MaxPlayers` once its players have waited that long.
+- `playholdtest`, to test a game's room type without a server: players join, send messages and read their views, time
+  moves only when the test moves it, and a room can be restarted from its save or onto a new room type. See
+  [Test a game](./guides/testing.md).
 - TLS: automatic certificates from Let's Encrypt, certificate files, or a trusted proxy that ends TLS, with
   `ListenAndServe`.
 - Layered rate limits, with a module's own limits on its messages.

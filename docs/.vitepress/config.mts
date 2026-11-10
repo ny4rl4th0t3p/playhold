@@ -19,6 +19,7 @@ export default defineConfig({
                     {text: "Keep games running", link: "/guides/keeping-games-running"},
                     {text: "When something crashes", link: "/guides/crashes"},
                     {text: "Find a game", link: "/guides/finding-a-game"},
+                    {text: "Test a game", link: "/guides/testing"},
                     {text: "What playhold keeps about players", link: "/guides/privacy"},
                     {text: "Watch the server", link: "/guides/observability"},
                 ],

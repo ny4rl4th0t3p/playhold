@@ -2,18 +2,13 @@ package cards_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
-	"log/slog"
-	"net/http/httptest"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -22,14 +17,12 @@ import (
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/hands"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/pb"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/rules"
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
-	"github.com/ny4rl4th0t3p/playhold/store"
-	"github.com/ny4rl4th0t3p/playhold/store/memory"
+	"github.com/ny4rl4th0t3p/playhold/playholdtest"
 )
 
+// These tests play the game in a room under test, without a server; server_test.go covers what needs one.
+
 const (
-	testTimeout   = 5 * time.Second
-	testRoom      = "game"
 	maxMoves      = 5000
 	totalCards    = 52
 	reconnectTurn = 5
@@ -38,215 +31,91 @@ const (
 // testSeed is recognizable in raw bytes, so the hidden-card test can look for it.
 var testSeed = [32]byte([]byte("playhold-test-seed-do-not-leak!!"))
 
-func testContext(t *testing.T) context.Context {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	t.Cleanup(cancel)
-	return ctx
+// player is one seat at the table. It checks every state it receives for hidden information.
+type player struct {
+	t       *testing.T
+	p       *playholdtest.Player
+	checked int // how many of the received states have been checked
 }
 
-// snapshot is one player's latest view of the game.
-type snapshot struct {
-	deck  *pb.DeckView
-	turns *pb.TurnsView
-	hand  *pb.HandsView
+func (s *player) id() string { return string(s.p.ID()) }
+
+func (s *player) deck() *pb.DeckView   { return playholdtest.View[pb.DeckView](s.p, "deck") }
+func (s *player) turns() *pb.TurnsView { return playholdtest.View[pb.TurnsView](s.p, "turns") }
+func (s *player) hand() *pb.HandsView  { return playholdtest.View[pb.HandsView](s.p, "hands") }
+
+// checkHidden is the hidden-card test, run after every turn on the states received since the last check. Cards have
+// names long enough to find in raw bytes, so a card can't slip through in any field: a player may only ever receive
+// their own cards and the top card. It compares those states with the latest views, so it has to run after each turn
+// that changes the cards, before the next one: table.send does that for every move.
+func (s *player) checkHidden() {
+	s.t.Helper()
+	received := s.p.Received()
+	for _, data := range received[s.checked:] {
+		assert.False(s.t, bytes.Contains(data, testSeed[:]), "a state contains the room's seed")
+		for _, card := range rules.NewDeck() {
+			if !bytes.Contains(data, []byte(card)) {
+				continue
+			}
+			visible := card == s.deck().GetTop() || slices.Contains(s.hand().GetCards(), card)
+			assert.True(s.t, visible, "a state shows %s to a player who can't see it", card)
+		}
+	}
+	s.checked = len(received)
 }
 
-// seat is a test client. It keeps every raw frame it receives, and checks each one for hidden information.
-type seat struct {
-	t      *testing.T
-	ws     *websocket.Conn
-	id     string
-	secret string
-	seq    uint64
-	latest snapshot
-	frames [][]byte
-}
-
-// game is a two-player game on a real server.
-type game struct {
+// table is a two-player game in a room under test.
+type table struct {
 	t     *testing.T
-	url   string
-	first *seat
-	other *seat
+	room  *playholdtest.Room
+	first *player
+	other *player
 }
 
-func startServer(t *testing.T, seed [32]byte) string {
+func newTable(t *testing.T, options cards.Options, opts playholdtest.Options) *table {
 	t.Helper()
-	url, _ := startServerWith(t, seed, nil)
-	return url
-}
-
-// startServerWith returns the server's URL, and a function that stops it, as a deploy would.
-func startServerWith(t *testing.T, seed [32]byte, records store.Store) (url string, stop func()) {
-	t.Helper()
-	return startConfigured(t, seed, cards.Options{}, &playhold.ServerConfig{Store: records})
-}
-
-// startConfigured is startServerWith with the game's options and the server's config.
-func startConfigured(t *testing.T, seed [32]byte, options cards.Options, cfg *playhold.ServerConfig) (url string, stop func()) {
-	t.Helper()
-	rt := playhold.NewRuntime(playhold.Config{
-		Logger:  slog.New(slog.DiscardHandler),
-		NewSeed: func() [32]byte { return seed },
-	})
 	typ, err := cards.NewRoomTypeWith(options)
 	require.NoError(t, err)
-	cfg.RoomType = typ
-	cfg.MemoryLimit = -1
-	cfg.Development = true      // plain HTTP
-	cfg.AllowClientCodes = true // the tests pick their rooms' codes
-	// These tests play and reconnect as fast as they can, from one address, so the rate limits are off.
-	off := playhold.RateLimit{Off: true}
-	cfg.ConnectRate, cfg.GuestRate, cfg.MessageRate = off, off, off
-	cfg.Admission = playhold.Admission{Off: true}
-	server, err := playhold.NewServer(rt, cfg)
-	require.NoError(t, err)
-	httpServer := httptest.NewServer(server)
-	stop = func() {
-		server.Close()
-		httpServer.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-		defer cancel()
-		assert.NoError(t, rt.Shutdown(ctx))
+	if opts.Seed == ([32]byte{}) {
+		opts.Seed = testSeed
 	}
-	t.Cleanup(stop)
-	return "ws" + strings.TrimPrefix(httpServer.URL, "http"), stop
+	g := &table{t: t, room: playholdtest.NewRoom(t, typ, opts)}
+	g.first = g.join("alice")
+	g.other = g.join("bob") // the game starts
+	g.checkHidden()
+	return g
 }
 
-func startGame(t *testing.T, seed [32]byte) *game {
+func startGame(t *testing.T, seed [32]byte) *table {
 	t.Helper()
-	return startGameOn(t, startServer(t, seed))
+	return newTable(t, cards.Options{}, playholdtest.Options{Seed: seed})
 }
 
-func startGameOn(t *testing.T, url string) *game {
-	t.Helper()
-	first := connect(t, url, "", "")
-	second := connect(t, url, "", "")
-
-	first.join()
-	first.readState() // alone in the room
-	second.join()
-	second.readState() // the game has started
-	first.readState()
-
-	return &game{t: t, url: url, first: first, other: second}
-}
-
-// connect says hello, as a new guest if the ID and secret are empty.
-func connect(t *testing.T, url, id, secret string) *seat {
-	t.Helper()
-	ws, _, err := websocket.Dial(testContext(t), url, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ws.CloseNow() })
-
-	s := &seat{t: t, ws: ws, id: id, secret: secret}
-	s.sendFrame(&wire.ClientFrame{Body: &wire.ClientFrame_Hello{
-		Hello: &wire.Hello{ProtocolVersion: 1, PlayerId: id, Secret: secret, SchemaVersions: cards.ClientSchemaVersions()},
-	}})
-	welcome := s.read().GetWelcome()
-	require.NotNil(t, welcome)
-	s.id = welcome.GetPlayerId()
-	if welcome.GetSecret() != "" {
-		s.secret = welcome.GetSecret()
-	}
-	return s
-}
-
-func (s *seat) sendFrame(frame *wire.ClientFrame) {
-	s.t.Helper()
-	s.seq++
-	frame.Seq = s.seq
-	data, err := proto.Marshal(frame)
-	require.NoError(s.t, err)
-	require.NoError(s.t, s.ws.Write(testContext(s.t), websocket.MessageBinary, data))
-}
-
-func (s *seat) join() {
-	s.t.Helper()
-	s.sendFrame(&wire.ClientFrame{Body: &wire.ClientFrame_Join{Join: &wire.Join{Code: testRoom}}})
-	require.NotNil(s.t, s.read().GetJoined())
-}
-
-func (s *seat) send(id pb.HandsMessage, msg proto.Message) {
-	s.t.Helper()
-	payload, err := proto.Marshal(msg)
-	require.NoError(s.t, err)
-	s.sendFrame(&wire.ClientFrame{Body: &wire.ClientFrame_Message{
-		Message: &wire.ModuleMessage{Module: "hands", Id: uint32(id), Payload: payload}, //nolint:gosec // a small enum
-	}})
-}
-
-func (s *seat) read() *wire.ServerFrame {
-	s.t.Helper()
-	_, data, err := s.ws.Read(testContext(s.t))
-	require.NoError(s.t, err)
-	s.frames = append(s.frames, data)
-
-	frame := &wire.ServerFrame{}
-	require.NoError(s.t, proto.Unmarshal(data, frame))
-	if state := frame.GetState(); state != nil {
-		s.latest = decodeState(s.t, state)
-	}
-	s.checkHidden(data)
-	return frame
-}
-
-func (s *seat) readState() {
-	s.t.Helper()
-	frame := s.read()
-	require.NotNil(s.t, frame.GetState(), "got %v", frame)
-}
-
-// readRefusal reads the error for a refused move, and then the state that follows every turn.
-func (s *seat) readRefusal() *wire.Error {
-	s.t.Helper()
-	got := s.read().GetError()
-	require.NotNil(s.t, got)
-	s.readState()
-	return got
-}
-
-func decodeState(t *testing.T, state *wire.RoomState) snapshot {
-	t.Helper()
-	got := snapshot{deck: &pb.DeckView{}, turns: &pb.TurnsView{}, hand: &pb.HandsView{}}
-	for _, view := range state.GetViews() {
-		var target proto.Message
-		switch view.GetModule() {
-		case "deck":
-			target = got.deck
-		case "turns":
-			target = got.turns
-		case "hands":
-			target = got.hand
-		default:
-			require.FailNow(t, "unknown view", view.GetModule())
-		}
-		require.NoError(t, proto.Unmarshal(view.GetView(), target))
-	}
-	return got
-}
-
-// checkHidden is the hidden-card test. Cards have names long enough to find in raw bytes, so a card can't slip
-// through in any field or any frame: a player may only ever receive their own cards and the top card.
-func (s *seat) checkHidden(data []byte) {
-	s.t.Helper()
-	assert.False(s.t, bytes.Contains(data, testSeed[:]), "a frame contains the room's seed")
-	for _, card := range rules.NewDeck() {
-		if !bytes.Contains(data, []byte(card)) {
-			continue
-		}
-		visible := card == s.latest.deck.GetTop() || slices.Contains(s.latest.hand.GetCards(), card)
-		assert.True(s.t, visible, "a frame shows %s to a player who can't see it", card)
-	}
-}
-
-func (g *game) current() (actor, waiting *seat) {
+func (g *table) join(id playhold.PlayerID) *player {
 	g.t.Helper()
-	switch g.first.latest.turns.GetCurrent() {
-	case g.first.id:
+	return &player{t: g.t, p: g.room.Join(id)}
+}
+
+func (g *table) checkHidden() {
+	g.t.Helper()
+	g.first.checkHidden()
+	g.other.checkHidden()
+}
+
+// send sends a move as the player, and checks the state its turn sent both players, refused or not.
+func (g *table) send(s *player, id pb.HandsMessage, msg proto.Message) error {
+	g.t.Helper()
+	err := s.p.Send("hands", uint32(id), msg) //nolint:gosec // a small enum
+	g.checkHidden()
+	return err
+}
+
+func (g *table) current() (actor, waiting *player) {
+	g.t.Helper()
+	switch g.first.turns().GetCurrent() {
+	case g.first.id():
 		return g.first, g.other
-	case g.other.id:
+	case g.other.id():
 		return g.other, g.first
 	default:
 		require.FailNow(g.t, "nobody's turn")
@@ -254,110 +123,117 @@ func (g *game) current() (actor, waiting *seat) {
 	}
 }
 
-// move makes one valid move, and reads the state both players then receive.
-func (g *game) move() {
+// move makes one valid move.
+func (g *table) move() {
 	g.t.Helper()
-	actor, waiting := g.current()
-	view := actor.latest.hand
+	actor, _ := g.current()
+	view := actor.hand()
+	var err error
 	switch {
 	case len(view.GetPlayable()) > 0:
-		actor.send(pb.HandsMessage_HANDS_MESSAGE_PLAY, &pb.Play{Card: view.GetPlayable()[0], ChosenSuit: "hearts"})
+		err = g.send(actor, pb.HandsMessage_HANDS_MESSAGE_PLAY, &pb.Play{Card: view.GetPlayable()[0], ChosenSuit: "hearts"})
 	case view.GetCanDraw():
-		actor.send(pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{})
+		err = g.send(actor, pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{})
 	default:
 		require.True(g.t, view.GetCanPass(), "no move is possible")
-		actor.send(pb.HandsMessage_HANDS_MESSAGE_PASS, &pb.Pass{})
+		err = g.send(actor, pb.HandsMessage_HANDS_MESSAGE_PASS, &pb.Pass{})
 	}
-	actor.readState()
-	waiting.readState()
+	require.NoError(g.t, err)
 	g.checkConsistent()
 }
 
 // checkConsistent proves the views can't be right by accident, or pass the hidden-card test by showing nothing.
-func (g *game) checkConsistent() {
+func (g *table) checkConsistent() {
 	g.t.Helper()
-	first, other := g.first.latest, g.other.latest
+	first, other := g.first, g.other
 
-	for _, card := range first.hand.GetCards() {
-		assert.NotContains(g.t, other.hand.GetCards(), card, "both players hold a card")
+	for _, card := range first.hand().GetCards() {
+		assert.NotContains(g.t, other.hand().GetCards(), card, "both players hold a card")
 	}
-	assert.Len(g.t, other.hand.GetCards(), int(first.hand.GetOthers()[0].GetCount()))
-	assert.Len(g.t, first.hand.GetCards(), int(other.hand.GetOthers()[0].GetCount()))
-	assert.Equal(g.t, first.deck.GetTop(), other.deck.GetTop())
-	assert.Equal(g.t, first.turns.GetCurrent(), other.turns.GetCurrent())
+	assert.Len(g.t, other.hand().GetCards(), int(first.hand().GetOthers()[0].GetCount()))
+	assert.Len(g.t, first.hand().GetCards(), int(other.hand().GetOthers()[0].GetCount()))
+	assert.Equal(g.t, first.deck().GetTop(), other.deck().GetTop())
+	assert.Equal(g.t, first.turns().GetCurrent(), other.turns().GetCurrent())
 
-	held := len(first.hand.GetCards()) + len(other.hand.GetCards())
-	assert.LessOrEqual(g.t, held+int(first.deck.GetDrawCount())+1, totalCards)
+	held := len(first.hand().GetCards()) + len(other.hand().GetCards())
+	assert.LessOrEqual(g.t, held+int(first.deck().GetDrawCount())+1, totalCards)
 }
 
-func (g *game) reconnect(s *seat) *seat {
+// reconnect drops the player's connection and brings them back.
+func (g *table) reconnect(s *player) *player {
 	g.t.Helper()
-	require.NoError(g.t, s.ws.CloseNow())
-	back := connect(g.t, g.url, s.id, s.secret)
-	assert.Equal(g.t, s.id, back.id)
-	back.join()
-	back.readState()
-
-	waiting := g.first
+	s.p.Disconnect()
+	back := g.join(s.p.ID())
 	if s == g.first {
 		g.first = back
-		waiting = g.other
 	} else {
 		g.other = back
 	}
-	waiting.readState() // the turn that seated the returning player
+	g.checkHidden()
 	return back
 }
 
-func TestGameStartsWithBothPlayersDealtIn(t *testing.T) {
-	g := startGame(t, testSeed)
+// rejoin brings both players back after a restart, and checks that the game is where it was.
+func (g *table) rejoin(before *pb.HandsView, current string) {
+	g.t.Helper()
+	g.first, g.other = g.join("alice"), g.join("bob")
+	g.checkHidden()
+	assert.Equal(g.t, before.GetCards(), g.first.hand().GetCards())
+	assert.Equal(g.t, current, g.first.turns().GetCurrent())
+}
 
-	for _, s := range []*seat{g.first, g.other} {
-		assert.Len(t, s.latest.hand.GetCards(), rules.HandSize)
-		assert.True(t, s.latest.turns.GetStarted())
-		assert.NotEmpty(t, s.latest.deck.GetTop())
-		assert.False(t, rules.IsWild(s.latest.deck.GetTop()), "an eight can't start the game")
-	}
-	assert.Equal(t, g.first.id, g.first.latest.turns.GetCurrent(), "whoever arrived first goes first")
-	assert.Equal(t, uint32(totalCards-2*rules.HandSize-1), g.first.latest.deck.GetDrawCount())
-	g.checkConsistent()
+func TestGameStartsWithBothPlayersDealtIn(t *testing.T) {
+	playholdtest.Run(t, func(t *testing.T) {
+		g := startGame(t, testSeed)
+
+		for _, s := range []*player{g.first, g.other} {
+			assert.Len(t, s.hand().GetCards(), rules.HandSize)
+			assert.True(t, s.turns().GetStarted())
+			assert.NotEmpty(t, s.deck().GetTop())
+			assert.False(t, rules.IsWild(s.deck().GetTop()), "an eight can't start the game")
+		}
+		assert.Equal(t, g.first.id(), g.first.turns().GetCurrent(), "whoever arrived first goes first")
+		assert.Equal(t, uint32(totalCards-2*rules.HandSize-1), g.first.deck().GetDrawCount())
+		g.checkConsistent()
+	})
 }
 
 func TestWholeGameWithAReconnectShowsNobodyAnyHiddenCards(t *testing.T) {
-	g := startGame(t, testSeed)
+	playholdtest.Run(t, func(t *testing.T) {
+		g := startGame(t, testSeed)
 
-	for move := range maxMoves {
-		if g.first.latest.turns.GetWinner() != "" {
-			break
+		for move := range maxMoves {
+			if g.first.turns().GetWinner() != "" {
+				break
+			}
+			if move == reconnectTurn {
+				cardsBefore, currentBefore := g.first.hand().GetCards(), g.first.turns().GetCurrent()
+				back := g.reconnect(g.first)
+				assert.Equal(t, cardsBefore, back.hand().GetCards(), "the seat and the cards are kept")
+				assert.Equal(t, currentBefore, back.turns().GetCurrent())
+			}
+			g.move()
 		}
-		if move == reconnectTurn {
-			before := g.first.latest
-			back := g.reconnect(g.first)
-			assert.Equal(t, before.hand.GetCards(), back.latest.hand.GetCards(), "the seat and the cards are kept")
-			assert.Equal(t, before.turns.GetCurrent(), back.latest.turns.GetCurrent())
+
+		winner := g.first.turns().GetWinner()
+		require.NotEmpty(t, winner, "the game didn't finish")
+		assert.Equal(t, winner, g.other.turns().GetWinner())
+
+		winnerSeat, loserSeat := g.first, g.other
+		if winner == g.other.id() {
+			winnerSeat, loserSeat = g.other, g.first
 		}
-		g.move()
-	}
+		assert.Empty(t, winnerSeat.hand().GetCards())
+		assert.NotEmpty(t, loserSeat.hand().GetCards())
+		assert.Empty(t, g.first.turns().GetCurrent(), "nobody moves after the game ends")
 
-	winner := g.first.latest.turns.GetWinner()
-	require.NotEmpty(t, winner, "the game didn't finish")
-	assert.Equal(t, winner, g.other.latest.turns.GetWinner())
+		// Both players did receive the game, so the test can't pass by nothing being sent.
+		assert.Greater(t, len(g.first.p.Received()), 1)
+		assert.Greater(t, len(g.other.p.Received()), 1)
 
-	winnerSeat, loserSeat := g.first, g.other
-	if winner == g.other.id {
-		winnerSeat, loserSeat = g.other, g.first
-	}
-	assert.Empty(t, winnerSeat.latest.hand.GetCards())
-	assert.NotEmpty(t, loserSeat.latest.hand.GetCards())
-	assert.Empty(t, g.first.latest.turns.GetCurrent(), "nobody moves after the game ends")
-
-	// Both players did receive the game, so the test can't pass by nothing being sent.
-	assert.Greater(t, len(g.first.frames), 1)
-	assert.Greater(t, len(g.other.frames), 1)
-
-	// Nobody can move once it's over.
-	loserSeat.send(pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{})
-	assert.Equal(t, hands.ErrNotYourTurn.Error(), loserSeat.readRefusal().GetMessage())
+		// Nobody can move once it's over.
+		require.ErrorIs(t, g.send(loserSeat, pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{}), hands.ErrNotYourTurn)
+	})
 }
 
 func TestRefusedMoves(t *testing.T) {
@@ -366,195 +242,155 @@ func TestRefusedMoves(t *testing.T) {
 		// outOfTurn sends the move from the player who is waiting, instead of the one whose turn it is.
 		outOfTurn bool
 		id        pb.HandsMessage
-		msg       func(waiting *seat) proto.Message
+		msg       func(waiting *player) proto.Message
 		want      error
 	}{
 		{
 			name:      "playing out of turn",
 			outOfTurn: true,
 			id:        pb.HandsMessage_HANDS_MESSAGE_PLAY,
-			msg:       func(waiting *seat) proto.Message { return &pb.Play{Card: waiting.latest.hand.GetCards()[0]} },
+			msg:       func(waiting *player) proto.Message { return &pb.Play{Card: waiting.hand().GetCards()[0]} },
 			want:      hands.ErrNotYourTurn,
 		},
 		{
 			name:      "drawing out of turn",
 			outOfTurn: true,
 			id:        pb.HandsMessage_HANDS_MESSAGE_DRAW,
-			msg:       func(_ *seat) proto.Message { return &pb.Draw{} },
+			msg:       func(_ *player) proto.Message { return &pb.Draw{} },
 			want:      hands.ErrNotYourTurn,
 		},
 		{
 			name: "playing the other player's card",
 			id:   pb.HandsMessage_HANDS_MESSAGE_PLAY,
-			msg:  func(waiting *seat) proto.Message { return &pb.Play{Card: waiting.latest.hand.GetCards()[0]} },
+			msg:  func(waiting *player) proto.Message { return &pb.Play{Card: waiting.hand().GetCards()[0]} },
 			want: hands.ErrNotInHand,
 		},
 		{
 			name: "playing a made-up card",
 			id:   pb.HandsMessage_HANDS_MESSAGE_PLAY,
-			msg:  func(_ *seat) proto.Message { return &pb.Play{Card: "joker"} },
+			msg:  func(_ *player) proto.Message { return &pb.Play{Card: "joker"} },
 			want: hands.ErrNotInHand,
 		},
 		{
 			name: "passing without drawing",
 			id:   pb.HandsMessage_HANDS_MESSAGE_PASS,
-			msg:  func(_ *seat) proto.Message { return &pb.Pass{} },
+			msg:  func(_ *player) proto.Message { return &pb.Pass{} },
 			want: hands.ErrMustDraw,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := startGame(t, testSeed)
-			actor, waiting := g.current()
-			sender, receiver := actor, waiting
-			if tt.outOfTurn {
-				sender, receiver = waiting, actor
-			}
-			before := actor.latest.hand.GetCards()
+			playholdtest.Run(t, func(t *testing.T) {
+				g := startGame(t, testSeed)
+				actor, waiting := g.current()
+				sender := actor
+				if tt.outOfTurn {
+					sender = waiting
+				}
+				before := actor.hand().GetCards()
 
-			sender.send(tt.id, tt.msg(waiting))
+				require.ErrorIs(t, g.send(sender, tt.id, tt.msg(waiting)), tt.want)
 
-			assert.Equal(t, tt.want.Error(), sender.readRefusal().GetMessage())
-			receiver.readState()
-			assert.Equal(t, before, actor.latest.hand.GetCards(), "a refused move changes nothing")
-			assert.Equal(t, actor.id, actor.latest.turns.GetCurrent(), "a refused move keeps the turn")
+				assert.Equal(t, before, actor.hand().GetCards(), "a refused move changes nothing")
+				assert.Equal(t, actor.id(), actor.turns().GetCurrent(), "a refused move keeps the turn")
+			})
 		})
 	}
 }
 
 func TestDrawingTwiceInATurnIsRefused(t *testing.T) {
-	g := startGame(t, testSeed)
-	actor, waiting := g.current()
+	playholdtest.Run(t, func(t *testing.T) {
+		g := startGame(t, testSeed)
+		actor, waiting := g.current()
 
-	actor.send(pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{})
-	actor.readState()
-	waiting.readState()
-	assert.Len(t, actor.latest.hand.GetCards(), rules.HandSize+1)
-	assert.False(t, actor.latest.hand.GetCanDraw())
-	assert.True(t, actor.latest.hand.GetCanPass())
+		require.NoError(t, g.send(actor, pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{}))
+		assert.Len(t, actor.hand().GetCards(), rules.HandSize+1)
+		assert.False(t, actor.hand().GetCanDraw())
+		assert.True(t, actor.hand().GetCanPass())
 
-	actor.send(pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{})
-	assert.Equal(t, hands.ErrAlreadyDrew.Error(), actor.readRefusal().GetMessage())
-	waiting.readState()
+		require.ErrorIs(t, g.send(actor, pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{}), hands.ErrAlreadyDrew)
 
-	actor.send(pb.HandsMessage_HANDS_MESSAGE_PASS, &pb.Pass{})
-	actor.readState()
-	waiting.readState()
-	assert.Equal(t, waiting.id, actor.latest.turns.GetCurrent())
+		require.NoError(t, g.send(actor, pb.HandsMessage_HANDS_MESSAGE_PASS, &pb.Pass{}))
+		assert.Equal(t, waiting.id(), actor.turns().GetCurrent())
+	})
 }
 
 func TestCardsThatDoNotMatchAreRefused(t *testing.T) {
-	g := startGame(t, testSeed)
-	actor, waiting := g.current()
+	playholdtest.Run(t, func(t *testing.T) {
+		g := startGame(t, testSeed)
+		actor, _ := g.current()
 
-	var unplayable string
-	for _, card := range actor.latest.hand.GetCards() {
-		if !slices.Contains(actor.latest.hand.GetPlayable(), card) {
-			unplayable = card
-			break
+		var unplayable string
+		for _, card := range actor.hand().GetCards() {
+			if !slices.Contains(actor.hand().GetPlayable(), card) {
+				unplayable = card
+				break
+			}
 		}
-	}
-	require.NotEmpty(t, unplayable, "this seed should deal a card that doesn't match")
+		require.NotEmpty(t, unplayable, "this seed should deal a card that doesn't match")
 
-	actor.send(pb.HandsMessage_HANDS_MESSAGE_PLAY, &pb.Play{Card: unplayable})
-
-	assert.Equal(t, hands.ErrNotPlayable.Error(), actor.readRefusal().GetMessage())
-	waiting.readState()
+		require.ErrorIs(t, g.send(actor, pb.HandsMessage_HANDS_MESSAGE_PLAY, &pb.Play{Card: unplayable}), hands.ErrNotPlayable)
+	})
 }
 
 func TestEightsNeedAValidSuitAndSetIt(t *testing.T) {
-	// Look for a seed that deals the first player an eight.
-	for seed := range byte(100) {
-		g := startGame(t, [32]byte{seed})
-		actor, waiting := g.current()
-		at := slices.IndexFunc(actor.latest.hand.GetCards(), rules.IsWild)
-		if at < 0 {
-			continue
-		}
-		eight := actor.latest.hand.GetCards()[at]
-		chosen := "spades"
-		if rules.Suit(eight) == chosen {
-			chosen = "clubs"
-		}
+	playholdtest.Run(t, func(t *testing.T) {
+		// Look for a seed that deals the first player an eight. The modules keep their state to themselves, so a test
+		// from outside them can't deal one.
+		for seed := range byte(100) {
+			g := startGame(t, [32]byte{1, seed})
+			actor, waiting := g.current()
+			at := slices.IndexFunc(actor.hand().GetCards(), rules.IsWild)
+			if at < 0 {
+				continue
+			}
+			eight := actor.hand().GetCards()[at]
+			chosen := "spades"
+			if rules.Suit(eight) == chosen {
+				chosen = "clubs"
+			}
 
-		for _, bad := range []string{"", "stars"} {
-			actor.send(pb.HandsMessage_HANDS_MESSAGE_PLAY, &pb.Play{Card: eight, ChosenSuit: bad})
-			assert.Equal(t, hands.ErrChooseSuit.Error(), actor.readRefusal().GetMessage())
-			waiting.readState()
+			for _, bad := range []string{"", "stars"} {
+				err := g.send(actor, pb.HandsMessage_HANDS_MESSAGE_PLAY, &pb.Play{Card: eight, ChosenSuit: bad})
+				require.ErrorIs(t, err, hands.ErrChooseSuit)
+			}
+
+			require.NoError(t, g.send(actor, pb.HandsMessage_HANDS_MESSAGE_PLAY, &pb.Play{Card: eight, ChosenSuit: chosen}))
+
+			assert.Equal(t, eight, waiting.deck().GetTop())
+			assert.Equal(t, chosen, waiting.deck().GetActiveSuit(), "the chosen suit replaces the eight's own")
+			return
 		}
-
-		actor.send(pb.HandsMessage_HANDS_MESSAGE_PLAY, &pb.Play{Card: eight, ChosenSuit: chosen})
-		actor.readState()
-		waiting.readState()
-
-		assert.Equal(t, eight, waiting.latest.deck.GetTop())
-		assert.Equal(t, chosen, waiting.latest.deck.GetActiveSuit(), "the chosen suit replaces the eight's own")
-		return
-	}
-	require.FailNow(t, "no seed dealt an eight")
+		require.FailNow(t, "no seed dealt an eight")
+	})
 }
 
 func TestSameSeedDealsTheSameGame(t *testing.T) {
-	first := startGame(t, testSeed)
-	second := startGame(t, testSeed)
-	different := startGame(t, [32]byte{1})
+	playholdtest.Run(t, func(t *testing.T) {
+		first := startGame(t, testSeed)
+		second := startGame(t, testSeed)
+		different := startGame(t, [32]byte{1})
 
-	assert.Equal(t, first.first.latest.hand.GetCards(), second.first.latest.hand.GetCards())
-	assert.Equal(t, first.other.latest.hand.GetCards(), second.other.latest.hand.GetCards())
-	assert.Equal(t, first.first.latest.deck.GetTop(), second.first.latest.deck.GetTop())
-	assert.NotEqual(t, first.first.latest.hand.GetCards(), different.first.latest.hand.GetCards())
+		assert.Equal(t, first.first.hand().GetCards(), second.first.hand().GetCards())
+		assert.Equal(t, first.other.hand().GetCards(), second.other.hand().GetCards())
+		assert.Equal(t, first.first.deck().GetTop(), second.first.deck().GetTop())
+		assert.NotEqual(t, first.first.hand().GetCards(), different.first.hand().GetCards())
+	})
 }
 
-func TestGameIsSavedWithEverythingItNeeds(t *testing.T) {
-	records := memory.New()
-	url, _ := startServerWith(t, testSeed, records)
-	g := startGameOn(t, url)
-	for range reconnectTurn {
-		g.move()
-	}
-
-	var saved []string
-	var modules []*wire.ModuleSnapshot
-	require.Eventually(t, func() bool {
-		rooms, err := records.LoadRooms(testContext(t))
-		if err != nil || len(rooms) != 1 {
-			return false
-		}
-		snapshot := &wire.RoomSnapshot{}
-		if proto.Unmarshal(rooms[0].Data, snapshot) != nil {
-			return false
-		}
-		state := &pb.HandsState{}
-		for _, module := range snapshot.GetModules() {
-			if module.GetModule() == "hands" && proto.Unmarshal(module.GetState(), state) != nil {
-				return false
-			}
-		}
-		saved, modules = state.GetHands()[g.first.id].GetCards(), snapshot.GetModules()
-		return slices.Equal(saved, g.first.latest.hand.GetCards())
-	}, testTimeout, 10*time.Millisecond, "the saved hand never caught up with the game")
-
-	names := make([]string, 0, len(modules))
-	for _, module := range modules {
-		names = append(names, module.GetModule())
-		assert.Equal(t, uint32(1), module.GetVersion())
-	}
-	assert.Equal(t, []string{"deck", "turns", "hands"}, names)
-}
-
-// transcript plays a whole game, recording what each seat sees. It leaves out player IDs, which differ between runs.
-func transcript(t *testing.T, g *game, afterMove func(move int)) []string {
+// transcript plays a whole game, recording what each player sees.
+func transcript(t *testing.T, g *table, afterMove func(move int)) []string {
 	t.Helper()
 	lines := make([]string, 0, maxMoves)
 	record := func() {
-		first, second := g.first.latest, g.other.latest
+		first, second := g.first, g.other
 		lines = append(lines, fmt.Sprintf("top=%s suit=%s draw=%d first=%v second=%v",
-			first.deck.GetTop(), first.deck.GetActiveSuit(), first.deck.GetDrawCount(),
-			first.hand.GetCards(), second.hand.GetCards()))
+			first.deck().GetTop(), first.deck().GetActiveSuit(), first.deck().GetDrawCount(),
+			first.hand().GetCards(), second.hand().GetCards()))
 	}
 	record()
 	for move := range maxMoves {
-		if g.first.latest.turns.GetWinner() != "" {
+		if g.first.turns().GetWinner() != "" {
 			return lines
 		}
 		g.move()
@@ -567,215 +403,159 @@ func transcript(t *testing.T, g *game, afterMove func(move int)) []string {
 	return nil
 }
 
-func TestGameRestartedPartwayMatchesAnUninterruptedOneCardForCard(t *testing.T) {
-	want := transcript(t, startGame(t, testSeed), nil)
-	require.Greater(t, len(want), reconnectTurn, "the game has to last past the restart")
-
-	assert.Equal(t, want, transcriptRestartedOn(t, cards.Options{}, memory.New()))
-}
-
-func TestDeployThatChangesTheSnapshotFormatMatchesCardForCard(t *testing.T) {
-	want := transcript(t, startGame(t, testSeed), nil)
-	records := memory.New()
-
-	assert.Equal(t, want, transcriptRestartedOn(t, cards.Options{TurnsSnapshotVersion: 2}, records))
-}
-
-func TestSnapshotFormatTwoSurvivesARestartOfItsOwn(t *testing.T) {
-	version2 := cards.Options{TurnsSnapshotVersion: 2}
-	want := transcript(t, startGame(t, testSeed), nil)
-	records := memory.New()
-	url, stop := startConfigured(t, testSeed, version2, &playhold.ServerConfig{Store: records})
-	g := startGameOn(t, url)
-
-	got := transcript(t, g, func(move int) {
-		if move == reconnectTurn {
-			stop()
-			restartGame(t, g, version2, records)
-		}
-	})
-
-	assert.Equal(t, want, got)
-}
-
-// transcriptRestartedOn plays a game at the first snapshot format, moving partway to a new server with these options.
-func transcriptRestartedOn(t *testing.T, options cards.Options, records store.Store) []string {
+// transcriptRestartedAs plays a game from these options, restarting it partway onto a room type with those.
+func transcriptRestartedAs(t *testing.T, from, to cards.Options) []string {
 	t.Helper()
-	url, stop := startServerWith(t, testSeed, records)
-	g := startGameOn(t, url)
+	g := newTable(t, from, playholdtest.Options{})
+	typ, err := cards.NewRoomTypeWith(to)
+	require.NoError(t, err)
 
 	return transcript(t, g, func(move int) {
 		if move == reconnectTurn {
-			stop()
-			restartGame(t, g, options, records)
+			before, current := g.first.hand(), g.first.turns().GetCurrent()
+			g.room.RestartAs(typ)
+			g.rejoin(before, current)
 		}
 	})
 }
 
-// restartGame moves both players to a new server with the store. It doesn't have the seed, so everything has to come
-// from the snapshot.
-func restartGame(t *testing.T, g *game, options cards.Options, records store.Store) {
-	t.Helper()
-	before := g.first.latest
-	newURL, _ := startConfigured(t, [32]byte{}, options, &playhold.ServerConfig{Store: records})
-	first := connect(t, newURL, g.first.id, g.first.secret)
-	other := connect(t, newURL, g.other.id, g.other.secret)
-	first.join()
-	first.readState()
-	other.join()
-	other.readState()
-	first.readState()
-	g.url, g.first, g.other = newURL, first, other
+func TestGameRestartedPartwayMatchesAnUninterruptedOneCardForCard(t *testing.T) {
+	playholdtest.Run(t, func(t *testing.T) {
+		want := transcript(t, startGame(t, testSeed), nil)
+		require.Greater(t, len(want), reconnectTurn, "the game has to last past the restart")
 
-	assert.Equal(t, before.hand.GetCards(), first.latest.hand.GetCards())
-	assert.Equal(t, before.turns.GetCurrent(), first.latest.turns.GetCurrent())
+		assert.Equal(t, want, transcriptRestartedAs(t, cards.Options{}, cards.Options{}))
+	})
+}
+
+func TestDeployThatChangesTheSnapshotFormatMatchesCardForCard(t *testing.T) {
+	playholdtest.Run(t, func(t *testing.T) {
+		want := transcript(t, startGame(t, testSeed), nil)
+
+		assert.Equal(t, want, transcriptRestartedAs(t, cards.Options{}, cards.Options{TurnsSnapshotVersion: 2}))
+	})
+}
+
+func TestSnapshotFormatTwoSurvivesARestartOfItsOwn(t *testing.T) {
+	playholdtest.Run(t, func(t *testing.T) {
+		version2 := cards.Options{TurnsSnapshotVersion: 2}
+		want := transcript(t, startGame(t, testSeed), nil)
+
+		assert.Equal(t, want, transcriptRestartedAs(t, version2, version2))
+	})
 }
 
 func TestRestoredGameShowsNobodyAnyHiddenCards(t *testing.T) {
-	records := memory.New()
-	url, stop := startServerWith(t, testSeed, records)
-	g := startGameOn(t, url)
-	g.move()
-	stop()
+	playholdtest.Run(t, func(t *testing.T) {
+		g := startGame(t, testSeed)
+		g.move()
 
-	newURL, _ := startServerWith(t, [32]byte{}, records)
-	first := connect(t, newURL, g.first.id, g.first.secret)
-	first.join()
+		g.room.Restart()
+		first := g.join("alice")
 
-	// connect and join read through read, which runs the hidden-card check on every frame.
-	first.readState()
-	assert.Len(t, first.latest.hand.GetOthers(), 1)
-	assert.NotEmpty(t, first.latest.hand.GetCards())
-}
-
-// startTimedGame is a game with these times.
-func startTimedGame(t *testing.T, options cards.Options) *game {
-	t.Helper()
-	url, _ := startConfigured(t, testSeed, options, &playhold.ServerConfig{})
-	return startGameOn(t, url)
+		first.checkHidden()
+		assert.Len(t, first.hand().GetOthers(), 1)
+		assert.NotEmpty(t, first.hand().GetCards())
+	})
 }
 
 func TestPlayerWhoRunsOutOfTimeDrawsAndPasses(t *testing.T) {
-	g := startTimedGame(t, cards.Options{TurnTime: 100 * time.Millisecond})
-	actor, waiting := g.current()
-	require.Len(t, actor.latest.hand.GetCards(), rules.HandSize)
+	playholdtest.Run(t, func(t *testing.T) {
+		g := newTable(t, cards.Options{TurnTime: time.Minute}, playholdtest.Options{})
+		actor, waiting := g.current()
+		require.Len(t, actor.hand().GetCards(), rules.HandSize)
 
-	actor.readState()
-	waiting.readState()
+		g.room.Advance(time.Minute)
+		g.checkHidden()
 
-	assert.Len(t, actor.latest.hand.GetCards(), rules.HandSize+1, "they drew")
-	assert.Equal(t, waiting.id, actor.latest.turns.GetCurrent(), "and passed")
-	g.checkConsistent()
+		assert.Len(t, actor.hand().GetCards(), rules.HandSize+1, "they drew")
+		assert.Equal(t, waiting.id(), actor.turns().GetCurrent(), "and passed")
+		g.checkConsistent()
 
-	// The next player's time starts in turn.
-	actor.readState()
-	waiting.readState()
+		// The next player's time starts in turn.
+		g.room.Advance(time.Minute)
+		g.checkHidden()
 
-	assert.Len(t, waiting.latest.hand.GetCards(), rules.HandSize+1)
-	assert.Equal(t, actor.id, actor.latest.turns.GetCurrent())
+		assert.Len(t, waiting.hand().GetCards(), rules.HandSize+1)
+		assert.Equal(t, actor.id(), actor.turns().GetCurrent())
+	})
 }
 
 func TestPlayerWhoAlreadyDrewOnlyPassesWhenTimeRunsOut(t *testing.T) {
-	g := startTimedGame(t, cards.Options{TurnTime: 300 * time.Millisecond})
-	actor, waiting := g.current()
+	playholdtest.Run(t, func(t *testing.T) {
+		g := newTable(t, cards.Options{TurnTime: time.Minute}, playholdtest.Options{})
+		actor, waiting := g.current()
 
-	actor.send(pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{})
-	actor.readState()
-	waiting.readState()
-	require.Len(t, actor.latest.hand.GetCards(), rules.HandSize+1)
+		require.NoError(t, g.send(actor, pb.HandsMessage_HANDS_MESSAGE_DRAW, &pb.Draw{}))
+		require.Len(t, actor.hand().GetCards(), rules.HandSize+1)
 
-	actor.readState()
-	waiting.readState()
+		g.room.Advance(time.Minute)
+		g.checkHidden()
 
-	assert.Len(t, actor.latest.hand.GetCards(), rules.HandSize+1, "no second card")
-	assert.Equal(t, waiting.id, actor.latest.turns.GetCurrent())
+		assert.Len(t, actor.hand().GetCards(), rules.HandSize+1, "no second card")
+		assert.Equal(t, waiting.id(), actor.turns().GetCurrent())
+	})
 }
 
 func TestViewShowsTheTimeLeftInTheTurn(t *testing.T) {
-	turnTime := time.Hour
-	g := startTimedGame(t, cards.Options{TurnTime: turnTime})
+	playholdtest.Run(t, func(t *testing.T) {
+		turnTime := time.Hour
+		g := newTable(t, cards.Options{TurnTime: turnTime}, playholdtest.Options{})
 
-	turns := g.first.latest.turns
-	assert.Equal(t, turnTime.Milliseconds(), turns.GetTurnMillisTotal())
-	assert.Positive(t, turns.GetTurnMillisLeft())
-	assert.LessOrEqual(t, turns.GetTurnMillisLeft(), turnTime.Milliseconds())
+		turns := g.first.turns()
+		assert.Equal(t, turnTime.Milliseconds(), turns.GetTurnMillisTotal())
+		assert.Equal(t, turnTime.Milliseconds(), turns.GetTurnMillisLeft(), "no time has passed since the turn began")
+	})
 }
 
 func TestFinishedGameClosesItsRoomAfterAWhile(t *testing.T) {
-	g := startTimedGame(t, cards.Options{FinishedRoomTime: 50 * time.Millisecond})
-	for g.first.latest.turns.GetWinner() == "" {
-		g.move()
-	}
-
-	// The turn that closes the room is a turn like any other, so its view comes first, and RoomClosed comes last.
-	for _, s := range []*seat{g.first, g.other} {
-		frame := s.read()
-		for frame.GetClosed() == nil {
-			require.NotNil(t, frame.GetState(), "got %v", frame)
-			frame = s.read()
+	playholdtest.Run(t, func(t *testing.T) {
+		g := newTable(t, cards.Options{FinishedRoomTime: time.Minute}, playholdtest.Options{})
+		for g.first.turns().GetWinner() == "" {
+			g.move()
 		}
-		assert.Equal(t, wire.CloseReason_CLOSE_REASON_REQUESTED, frame.GetClosed().GetReason())
-	}
+
+		g.room.Advance(time.Minute - time.Second)
+		_, closed := g.room.Closed()
+		require.False(t, closed)
+
+		g.room.Advance(time.Second)
+		reason, closed := g.room.Closed()
+		require.True(t, closed)
+		assert.Equal(t, playhold.CloseRequested, reason)
+	})
 }
 
 func TestOtherPlayerSeesSomeoneGoAndComeBack(t *testing.T) {
-	url, _ := startConfigured(t, testSeed, cards.Options{}, &playhold.ServerConfig{DisconnectGrace: playhold.Timeout{After: 50 * time.Millisecond}})
-	g := startGameOn(t, url)
-	assert.Empty(t, g.first.latest.turns.GetAway())
+	playholdtest.Run(t, func(t *testing.T) {
+		grace := playholdtest.Options{DisconnectGrace: playhold.Timeout{After: time.Second}}
+		g := newTable(t, cards.Options{}, grace)
+		assert.Empty(t, g.first.turns().GetAway())
 
-	require.NoError(t, g.other.ws.CloseNow())
-	g.first.readState()
-	assert.Equal(t, []string{g.other.id}, g.first.latest.turns.GetAway())
+		g.other.p.Disconnect()
+		g.room.Advance(time.Second)
+		assert.Equal(t, []string{g.other.id()}, g.first.turns().GetAway())
 
-	back := connect(t, url, g.other.id, g.other.secret)
-	back.join()
-	back.readState()
-	g.first.readState()
-	assert.Empty(t, g.first.latest.turns.GetAway())
-	assert.Empty(t, back.latest.turns.GetAway())
+		back := g.join("bob")
+		assert.Empty(t, g.first.turns().GetAway())
+		assert.Empty(t, back.turns().GetAway())
+	})
 }
 
 func TestPlayerWhoWasAwayIsStillAwayAfterARestart(t *testing.T) {
-	records := memory.New()
-	url, stop := startConfigured(t, testSeed, cards.Options{}, &playhold.ServerConfig{
-		Store:           records,
-		DisconnectGrace: playhold.Timeout{After: 50 * time.Millisecond},
+	playholdtest.Run(t, func(t *testing.T) {
+		grace := playholdtest.Options{DisconnectGrace: playhold.Timeout{After: time.Second}}
+		g := newTable(t, cards.Options{}, grace)
+		g.other.p.Disconnect()
+		g.room.Advance(time.Second)
+		require.Equal(t, []string{g.other.id()}, g.first.turns().GetAway())
+
+		g.room.Restart()
+		first := g.join("alice")
+		assert.Equal(t, []string{g.other.id()}, first.turns().GetAway())
+
+		back := g.join("bob")
+		assert.Empty(t, first.turns().GetAway())
+		assert.Empty(t, back.turns().GetAway())
 	})
-	g := startGameOn(t, url)
-	require.NoError(t, g.other.ws.CloseNow())
-	g.first.readState()
-	require.Equal(t, []string{g.other.id}, g.first.latest.turns.GetAway())
-	stop()
-
-	newURL, _ := startServerWith(t, [32]byte{}, records)
-	first := connect(t, newURL, g.first.id, g.first.secret)
-	first.join()
-	first.readState()
-	assert.Equal(t, []string{g.other.id}, first.latest.turns.GetAway())
-
-	back := connect(t, newURL, g.other.id, g.other.secret)
-	back.join()
-	back.readState()
-	first.readState()
-	assert.Empty(t, first.latest.turns.GetAway())
-}
-
-func TestPageFromBeforeSchemasIsToldToUpdate(t *testing.T) {
-	ws, _, err := websocket.Dial(testContext(t), startServer(t, testSeed), nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ws.CloseNow() })
-	s := &seat{t: t, ws: ws}
-
-	s.sendFrame(&wire.ClientFrame{Body: &wire.ClientFrame_Hello{Hello: &wire.Hello{ProtocolVersion: 1}}})
-
-	assert.Equal(t, wire.ErrorCode_ERROR_CODE_UPDATE_REQUIRED, s.read().GetError().GetCode())
-}
-
-func TestThirdPlayerIsRefused(t *testing.T) {
-	g := startGame(t, testSeed)
-
-	third := connect(t, g.url, "", "")
-	third.sendFrame(&wire.ClientFrame{Body: &wire.ClientFrame_Join{Join: &wire.Join{Code: testRoom}}})
-
-	assert.Equal(t, wire.ErrorCode_ERROR_CODE_ROOM_FULL, third.read().GetError().GetCode())
 }

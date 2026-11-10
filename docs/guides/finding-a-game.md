@@ -46,10 +46,13 @@ game's matcher, and gives each group it forms a new room. Who plays whom is the 
    It returns groups of players.
 3. Each group gets a new room, with a code the server makes, and its free seats kept for the group. Each player's
    client gets `Matched` with the code, and joins it.
-4. If a player hasn't joined after `ReserveFor`, 30 seconds by default, the room closes as `MATCH_INCOMPLETE`, so those
-   who joined can queue again.
+4. Once every player has joined, the room's modules get a `MatchReady` event, and the room is like any other from then
+   on. If a player hasn't joined after `ReserveFor`, 30 seconds by default, the room closes as `MATCH_INCOMPLETE`, so
+   those who joined can queue again, unless `MinPlayers` have joined.
 
-Without its own `Matcher`, the server makes groups of `RoomConfig.MaxPlayers` in the order players queued.
+Without its own `Matcher`, the server makes groups of `RoomConfig.MaxPlayers` in the order players queued. Players
+left over wait for more, however long that takes, unless `FillFor` is set: see
+[Starting without everyone](#starting-without-everyone).
 
 ### What the matcher sees
 
@@ -72,9 +75,31 @@ runs over all of them, on a goroutine of its own, one run at a time. It may take
 overlap, the next one starts when it's done, and rooms carry on meanwhile, so a slow matcher only makes players wait
 longer. A game whose matcher is expensive sets `Every` to how often it's worth running.
 
-A matcher's groups must hold players who are waiting, each in one group only, and no more than `MaxPlayers` in a
-group. Otherwise the whole result is dropped and logged as a bug in the matcher, and nobody is matched until its next
+A matcher's groups must hold players who are waiting, each in one group only, at least `MinPlayers` and no more than
+`MaxPlayers` in a group. An empty group is skipped. Otherwise the whole result is dropped and logged as a bug in the matcher, and nobody is matched until its next
 run. A panic in the matcher is logged the same way.
+
+### Starting without everyone
+
+`Matchmaking.MinPlayers` lets a match go ahead when some players never come. When `ReserveFor` ends with at least
+`MinPlayers` of the group in the room, the room carries on, the missing players' seats are freed, and `MatchReady` goes
+out with the players who joined and how many are missing. Zero, the default, needs the whole group. It must be no more
+than `MaxPlayers`; `NewServer` refuses a config where it is.
+
+`MatchReady` goes out once per matched room. A room made by code never gets it, and neither does one restored after a
+restart before it went out, so a game that waits for it also needs a rule of its own, such as a timer.
+
+`Matchmaking.FillFor` makes the default matcher start smaller groups. After the full groups, the players left over
+become a group of their own once there are at least `MinPlayers` of them and the first of them to queue has waited
+`FillFor`. Zero, the default, makes full groups only. It needs `MinPlayers`, and a game with its own `Matcher` decides
+with `Candidate.Waiting` instead, so `NewServer` refuses `FillFor` without `MinPlayers` or with a `Matcher`.
+
+A game for up to 4 players that starts with 2:
+
+- `RoomConfig.MaxPlayers` is 4, `Matchmaking.MinPlayers` is 2, and `Matchmaking.FillFor` is how long 2 or 3 players
+  wait for a fourth, such as 20 seconds;
+- it starts its game on `MatchReady`;
+- its `OnJoinAttempt` returns `ErrRoomFull` once the game has started, so the freed seats stay empty.
 
 ### Saving what a game learns
 

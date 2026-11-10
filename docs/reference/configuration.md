@@ -165,6 +165,8 @@ See [Matchmaking](../guides/finding-a-game.md#matchmaking).
 | `Describe`   | Nil, `Info` stays nil                            | Returns what the game knows about a player, when they queue |
 | `Every`      | 1 s                                              | How often the matcher runs; nothing else starts it          |
 | `ReserveFor` | 30 s                                             | How long a matched group's seats wait for its players       |
+| `MinPlayers` | 0, the whole group                               | How many of a group may start without the rest              |
+| `FillFor`    | 0, full groups only                              | How long the default matcher waits to fill a group          |
 
 ### JournalConfig
 

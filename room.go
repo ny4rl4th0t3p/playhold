@@ -218,9 +218,12 @@ type Room struct {
 	inactive    time.Duration
 	inactiveDue time.Time // the room closes then, unless a player sends something first
 
-	// Also owned by the room's goroutine: the matched players whose seats wait for them. While any are left, nobody else
-	// takes a seat. Not saved, so a restart opens the room.
-	reserved []PlayerID
+	// Also owned by the room's goroutine: the matched players whose seats wait for them, while any are left nobody else
+	// takes a seat; those of them who have joined; and how many must have joined for the game to go ahead without the
+	// rest, zero meaning all of them. Not saved, so a restart opens the room.
+	reserved    []PlayerID
+	matchJoined []PlayerID
+	minPlayers  int
 
 	stuckTimeout time.Duration
 	slowTurn     time.Duration // a turn longer than this is logged; zero logs none
@@ -422,28 +425,51 @@ func (r *Room) takeSeat(rc *RoomContext, player PlayerID) error {
 		}
 	}
 	r.seats = append(r.seats, player)
-	r.reserved = slices.DeleteFunc(r.reserved, func(p PlayerID) bool { return p == player })
 	rc.Emit(PlayerJoined{Player: player})
+	if matched {
+		r.reserved = slices.DeleteFunc(r.reserved, func(p PlayerID) bool { return p == player })
+		r.matchJoined = append(r.matchJoined, player)
+		if len(r.reserved) == 0 {
+			r.matchReady(rc) // the whole group is here
+		}
+	}
 	return nil
 }
 
 // reserve keeps the room's free seats for the players matched to it, until they've all joined or reserveFor has passed.
-// Then a room still missing someone closes, so those who came can look for another game. It's queued before anyone is
-// told the room's code, so nobody can take a seat before it.
-func (r *Room) reserve(players []PlayerID, reserveFor time.Duration) {
+// Then, if at least minPlayers of them have joined, the game goes ahead and the missing players' seats are freed;
+// otherwise the room closes, so those who came can look for another game. Zero minPlayers means all of them. It's queued
+// before anyone is told the room's code, so nobody can take a seat before it.
+func (r *Room) reserve(players []PlayerID, reserveFor time.Duration, minPlayers int) {
 	_ = r.submit(input{noViews: true, run: func(_ *RoomContext) error {
-		r.reserved = slices.Clone(players)
+		r.reserved, r.matchJoined, r.minPlayers = slices.Clone(players), nil, minPlayers
 		return nil
 	}})
 	time.AfterFunc(reserveFor, func() {
-		_ = r.submitWait(input{noViews: true, run: func(_ *RoomContext) error {
-			if len(r.reserved) > 0 {
-				r.logger.Info("matched players didn't all join in time, closing the room", "missing", len(r.reserved))
+		// Not noViews: the game may start its match on MatchReady.
+		_ = r.submitWait(input{run: func(rc *RoomContext) error {
+			switch {
+			case len(r.reserved) == 0:
+				// The whole group joined in time, and MatchReady has gone out.
+			case r.minPlayers == 0 || len(r.matchJoined) < r.minPlayers:
+				r.logger.Info("matched players didn't all join in time, closing the room",
+					"joined", len(r.matchJoined), "missing", len(r.reserved))
 				r.requestStop(CloseMatchIncomplete)
+			default:
+				r.logger.Info("matched players didn't all join in time; the game goes ahead without them",
+					"joined", len(r.matchJoined), "missing", len(r.reserved))
+				r.matchReady(rc)
 			}
 			return nil
 		}})
 	})
+}
+
+// matchReady tells the room's modules its matched game can start, frees any seats still waiting, and ends the match: the
+// room is like any other from then on.
+func (r *Room) matchReady(rc *RoomContext) {
+	rc.Emit(MatchReady{Players: slices.Clone(r.matchJoined), Missing: len(r.reserved)})
+	r.reserved, r.matchJoined = nil, nil
 }
 
 // removeViewer stops sending views to the sink and starts the player's grace period, unless the player has since moved

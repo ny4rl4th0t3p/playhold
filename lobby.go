@@ -104,7 +104,7 @@ func (l *lobby) enter(code string) (*Room, string, error) {
 
 // match creates a room for a group the matchmaker formed, with its seats kept for them, and returns its code. Nobody is
 // connected to it yet, so it closes after the idle time if they never come, unless the reservation closes it first.
-func (l *lobby) match(players []PlayerID, reserveFor time.Duration) (string, error) {
+func (l *lobby) match(players []PlayerID, reserveFor time.Duration, minPlayers int) (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	code := l.newCode()
@@ -112,7 +112,7 @@ func (l *lobby) match(players []PlayerID, reserveFor time.Duration) (string, err
 	if err != nil {
 		return "", err
 	}
-	entry.room.reserve(players, reserveFor)
+	entry.room.reserve(players, reserveFor, minPlayers)
 	l.startIdleTimer(entry)
 	return code, nil
 }

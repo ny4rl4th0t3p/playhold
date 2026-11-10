@@ -59,7 +59,7 @@ func matchedCode(t *testing.T, ws *websocket.Conn) string {
 }
 
 func TestTwoPlayersAreMatchedIntoOneRoomWhoseSeatsWaitForThem(t *testing.T) {
-	server, url := startMatchServer(t, RoomConfig{MaxPlayers: 3}, &Matchmaking{Matcher: groupsInOrder(2)})
+	server, url := startMatchServer(t, RoomConfig{MaxPlayers: 3}, &Matchmaking{Matcher: groupsInOrder(2, 0, 0)})
 	alice := queued(t, url)
 	bob := queued(t, url)
 
@@ -214,20 +214,23 @@ func TestABadMatcherMatchesNobody(t *testing.T) {
 func TestCheckGroups(t *testing.T) {
 	waiting := []Candidate{{Player: "a"}, {Player: "b"}, {Player: "c"}}
 	tests := []struct {
-		name    string
-		groups  [][]PlayerID
-		wantErr bool
+		name       string
+		groups     [][]PlayerID
+		minPlayers int
+		wantErr    bool
 	}{
 		{name: "groups of waiting players", groups: [][]PlayerID{{"a", "b"}, {"c"}}},
 		{name: "nobody", groups: nil},
+		{name: "an empty group, skipped", groups: [][]PlayerID{{}, {"a", "b"}}, minPlayers: 2},
 		{name: "a player who isn't waiting", groups: [][]PlayerID{{"a", "z"}}, wantErr: true},
 		{name: "a player in two groups", groups: [][]PlayerID{{"a"}, {"a", "b"}}, wantErr: true},
 		{name: "a player twice in one group", groups: [][]PlayerID{{"a", "a"}}, wantErr: true},
 		{name: "more than the room's seats", groups: [][]PlayerID{{"a", "b", "c"}}, wantErr: true},
+		{name: "fewer than MinPlayers", groups: [][]PlayerID{{"a", "b"}, {"c"}}, minPlayers: 2, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := checkGroups(tt.groups, waiting, 2)
+			err := checkGroups(tt.groups, waiting, tt.minPlayers, 2)
 
 			if tt.wantErr {
 				require.ErrorIs(t, err, errBadGroups)
@@ -241,9 +244,41 @@ func TestCheckGroups(t *testing.T) {
 func TestTheDefaultMatcherFillsGroupsInOrder(t *testing.T) {
 	waiting := []Candidate{{Player: "a"}, {Player: "b"}, {Player: "c"}, {Player: "d"}, {Player: "e"}}
 
-	groups := groupsInOrder(2)(waiting)
+	groups := groupsInOrder(2, 0, 0)(waiting)
 
 	assert.Equal(t, [][]PlayerID{{"a", "b"}, {"c", "d"}}, groups, "e waits for someone")
+}
+
+func TestTheDefaultMatcherStartsASmallerGroupAfterFillFor(t *testing.T) {
+	const fillFor = 20 * time.Second
+	waited := func(players string, first time.Duration) []Candidate {
+		var waiting []Candidate
+		for i, player := range players {
+			// Those who queued first have waited longest.
+			waiting = append(waiting, Candidate{Player: PlayerID(player), Waiting: first - time.Duration(i)*time.Second})
+		}
+		return waiting
+	}
+	tests := []struct {
+		name    string
+		waiting []Candidate
+		want    [][]PlayerID
+	}{
+		{name: "not long enough", waiting: waited("abc", fillFor-time.Second)},
+		{name: "long enough", waiting: waited("abc", fillFor), want: [][]PlayerID{{"a", "b", "c"}}},
+		{name: "too few, however long", waiting: waited("a", time.Hour)},
+		{name: "a full group first, then the rest", waiting: waited("abcdef", time.Hour),
+			want: [][]PlayerID{{"a", "b", "c", "d"}, {"e", "f"}}},
+		{name: "the rest's own wait counts", waiting: waited("abcdef", fillFor+time.Second),
+			want: [][]PlayerID{{"a", "b", "c", "d"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groups := groupsInOrder(4, 2, fillFor)(tt.waiting)
+
+			assert.Equal(t, tt.want, groups)
+		})
+	}
 }
 
 func TestTheDefaultMatcherNeedsAGroupSize(t *testing.T) {
@@ -255,4 +290,40 @@ func TestTheDefaultMatcherNeedsAGroupSize(t *testing.T) {
 	})
 
 	require.ErrorContains(t, err, "MaxPlayers")
+}
+
+func TestMatchmakingSettingsMustWork(t *testing.T) {
+	matcher := groupsInOrder(2, 0, 0)
+	tests := []struct {
+		name       string
+		maxPlayers int
+		matching   Matchmaking
+		wantErr    string
+	}{
+		{name: "MinPlayers negative", maxPlayers: 4, matching: Matchmaking{MinPlayers: -1}, wantErr: "negative"},
+		{name: "MinPlayers over MaxPlayers", maxPlayers: 4, matching: Matchmaking{MinPlayers: 5},
+			wantErr: "over RoomConfig.MaxPlayers"},
+		{name: "MinPlayers up to MaxPlayers", maxPlayers: 4, matching: Matchmaking{MinPlayers: 4}},
+		{name: "MinPlayers with no MaxPlayers and a Matcher", matching: Matchmaking{MinPlayers: 5, Matcher: matcher}},
+		{name: "FillFor negative", maxPlayers: 4, matching: Matchmaking{MinPlayers: 2, FillFor: -time.Second},
+			wantErr: "negative"},
+		{name: "FillFor with a Matcher", maxPlayers: 4,
+			matching: Matchmaking{MinPlayers: 2, FillFor: time.Second, Matcher: matcher}, wantErr: "default matcher"},
+		{name: "FillFor without MinPlayers", maxPlayers: 4, matching: Matchmaking{FillFor: time.Second},
+			wantErr: "needs MinPlayers"},
+		{name: "FillFor with MinPlayers", maxPlayers: 4, matching: Matchmaking{MinPlayers: 2, FillFor: time.Second}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &ServerConfig{RoomType: newTestRoomType(t, RoomConfig{MaxPlayers: tt.maxPlayers}), Matchmaking: &tt.matching}
+
+			err := checkConfig(cfg)
+
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }

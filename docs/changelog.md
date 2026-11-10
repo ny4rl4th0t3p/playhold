@@ -67,6 +67,9 @@ See [Errors and close reasons](./reference/errors.md).
   seats kept for the players for a while. New frames `Queue`, `LeaveQueue`, `Queued` and `Matched`, and the Go SDK's
   `Queue`, `Matched` and `LeaveQueue`. The TypeScript SDK's `queue` and `leaveQueue`, with a `queued` status, which
   join the matched room by themselves and queue again after a lost connection or `MATCH_INCOMPLETE`.
+- `Matchmaking.MinPlayers`, for a matched game to go ahead without the players who never came, and the `MatchReady`
+  event, when a matched room's game can start. `Matchmaking.FillFor`, for the default matcher to start a group smaller
+  than `MaxPlayers` once its players have waited that long.
 - TLS: automatic certificates from Let's Encrypt, certificate files, or a trusted proxy that ends TLS, with
   `ListenAndServe`.
 - Layered rate limits, with a module's own limits on its messages.

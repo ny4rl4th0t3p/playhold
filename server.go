@@ -447,12 +447,32 @@ func (t Timeout) duration() time.Duration {
 
 // checkConfig refuses a config the server can't run with.
 func checkConfig(cfg *ServerConfig) error {
-	switch {
-	case cfg.RoomType == nil:
+	if cfg.RoomType == nil {
 		return errors.New("playhold: server config has no room type")
-	case cfg.Matchmaking != nil && cfg.Matchmaking.Matcher == nil && cfg.RoomType.cfg.MaxPlayers <= 0:
+	}
+	if cfg.Matchmaking != nil {
+		return checkMatchmaking(cfg.Matchmaking, cfg.RoomType.cfg.MaxPlayers)
+	}
+	return nil
+}
+
+// checkMatchmaking refuses matchmaking settings that can't work, or that would do nothing.
+func checkMatchmaking(m *Matchmaking, maxPlayers int) error {
+	switch {
+	case m.Matcher == nil && maxPlayers <= 0:
 		return errors.New("playhold: the default matcher makes groups of RoomConfig.MaxPlayers, which isn't set; " +
 			"set it, or a Matcher")
+	case m.MinPlayers < 0:
+		return errors.New("playhold: Matchmaking.MinPlayers is negative")
+	case maxPlayers > 0 && m.MinPlayers > maxPlayers:
+		return errors.New("playhold: Matchmaking.MinPlayers is over RoomConfig.MaxPlayers, so no group could start")
+	case m.FillFor < 0:
+		return errors.New("playhold: Matchmaking.FillFor is negative")
+	case m.FillFor > 0 && m.Matcher != nil:
+		return errors.New("playhold: Matchmaking.FillFor is for the default matcher; a Matcher of the game's own " +
+			"decides when to start with Candidate.Waiting")
+	case m.FillFor > 0 && m.MinPlayers == 0:
+		return errors.New("playhold: Matchmaking.FillFor needs MinPlayers, the smallest group it may start")
 	}
 	return nil
 }

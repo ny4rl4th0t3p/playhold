@@ -19,7 +19,7 @@ const msgBlock uint32 = 9
 // stuckRoom enters a room on the server and sends it a message its blocker module doesn't return from until released.
 func stuckRoom(t *testing.T, server *Server, code string) {
 	t.Helper()
-	room, err := server.lobby.enter(code)
+	room, _, err := server.lobby.enter(code)
 	require.NoError(t, err)
 	require.NoError(t, room.dispatch("", "blocker", msgBlock, mustMarshal(t, &addMsg{}), nil))
 }
@@ -63,6 +63,7 @@ func TestRestartOnlyWhenAStuckGoroutineKeepsRunningWhileTheServerIsOverloaded(t 
 					MemoryLimit:      -1,
 					Logger:           slog.New(slog.NewTextHandler(logs, nil)),
 					Development:      true,
+					AllowClientCodes: true,
 					RestartWhenStuck: tt.restart,
 					Admission:        Admission{Off: tt.admissionOff},
 				})
@@ -118,6 +119,7 @@ func TestNothingIsWatchedBeforeTheGrace(t *testing.T) {
 			MemoryLimit:      -1,
 			Logger:           slog.New(slog.DiscardHandler),
 			Development:      true,
+			AllowClientCodes: true,
 			RestartWhenStuck: true,
 		})
 		require.NoError(t, err)

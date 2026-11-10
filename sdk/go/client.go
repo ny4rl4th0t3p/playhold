@@ -41,6 +41,7 @@ const (
 	ErrorUpdateRequired      = wire.ErrorCode_ERROR_CODE_UPDATE_REQUIRED
 	ErrorRateLimited         = wire.ErrorCode_ERROR_CODE_RATE_LIMITED
 	ErrorTurnedOff           = wire.ErrorCode_ERROR_CODE_TURNED_OFF
+	ErrorRoomNotFound        = wire.ErrorCode_ERROR_CODE_ROOM_NOT_FOUND
 )
 
 // Error is a problem the server reported. Seq is the number of the frame it's about.
@@ -129,25 +130,37 @@ func (c *Client) hello(ctx context.Context, versions map[string]uint32) error {
 // Identity returns who this client is, which is what to keep for connecting again.
 func (c *Client) Identity() Identity { return c.identity }
 
-// Join enters the room with this code, creating it if the code is new, and waits for the answer. It returns an *Error
-// if the room refuses this player. Asked to try again, with ErrorUnavailable or ErrorRateLimited, wait, connect again
-// and repeat.
+// Join enters the room with this code, and waits for the answer. It returns an *Error if the room refuses this player,
+// or with ErrorRoomNotFound if no room has the code and the server doesn't create rooms from codes clients choose. Asked
+// to try again, with ErrorUnavailable or ErrorRateLimited, wait, connect again and repeat.
 func (c *Client) Join(ctx context.Context, code string) error {
+	_, err := c.join(ctx, code)
+	return err
+}
+
+// CreateRoom creates a room, with a code the server makes, joins it, and returns the code, for other players to join
+// with. Errors are as for Join.
+func (c *Client) CreateRoom(ctx context.Context) (string, error) {
+	return c.join(ctx, "")
+}
+
+// join sends a Join and waits for the answer, returning the room's code.
+func (c *Client) join(ctx context.Context, code string) (string, error) {
 	if _, err := c.send(ctx, &wire.ClientFrame{Body: &wire.ClientFrame_Join{Join: &wire.Join{Code: code}}}); err != nil {
-		return err
+		return "", err
 	}
 	for {
 		frame, err := c.read(ctx)
 		if err != nil {
-			return err
+			return "", err
 		}
 		switch body := frame.GetBody().(type) {
 		case *wire.ServerFrame_Joined:
-			return nil
+			return body.Joined.GetCode(), nil
 		case *wire.ServerFrame_Error:
-			return toError(body.Error)
+			return "", toError(body.Error)
 		case *wire.ServerFrame_Closed:
-			return closedError(body.Closed)
+			return "", closedError(body.Closed)
 		}
 	}
 }

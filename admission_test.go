@@ -150,10 +150,11 @@ func TestOverloadedServerRefusesNewGuestsRoomsAndSeatsButNotPlayersComingBack(t 
 	readProcess = fake
 	t.Cleanup(func() { readProcess = saved })
 	server, err := NewServer(newTestRuntime(t), &ServerConfig{
-		RoomType:    newTestRoomType(t, RoomConfig{}),
-		MemoryLimit: -1,
-		Logger:      slog.New(slog.DiscardHandler),
-		Development: true,
+		RoomType:         newTestRoomType(t, RoomConfig{}),
+		MemoryLimit:      -1,
+		Logger:           slog.New(slog.DiscardHandler),
+		Development:      true,
+		AllowClientCodes: true,
 	})
 	require.NoError(t, err)
 	url := startServerFor(t, server)

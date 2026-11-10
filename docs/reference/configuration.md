@@ -13,18 +13,19 @@ See [Keep games running](../guides/keeping-games-running.md).
 
 | Field                | Default               | What it does                                                           |
 |----------------------|-----------------------|------------------------------------------------------------------------|
-| `RoomType`           | Required              | The kind of room that joining a new code creates                       |
+| `RoomType`           | Required              | The kind of room the server creates                                    |
 | `Store`              | Nil                   | What survives a restart. Nil keeps guests in memory and saves no rooms |
 | `SnapshotInterval`   | 0, after every change | The least time between two saves of a room                             |
 | `TimersAfterRestart` | `TimersPause`         | What pending timers do when the server comes back                      |
 
 ### Rooms
 
-See [Timeouts](../guides/keeping-games-running.md#timeouts).
+See [Timeouts](../guides/keeping-games-running.md#timeouts) and [Find a game](../guides/finding-a-game.md).
 
 | Field                 | Default    | What it does                                                                        |
 |-----------------------|------------|-------------------------------------------------------------------------------------|
-| `MaxRooms`            | 10,000     | The most rooms at once; over it, a new code gets `SERVER_FULL`                      |
+| `AllowClientCodes`    | False      | Lets a code no room has create a room; otherwise only the server makes codes        |
+| `MaxRooms`            | 10,000     | The most rooms at once; over it, a new room gets `SERVER_FULL`                      |
 | `EmptyRoomTimeout`    | 5 minutes  | Closes a room nobody has been connected to for this long                            |
 | `InactiveRoomTimeout` | 30 minutes | Closes a room, and deletes its save, once no player has sent anything for this long |
 | `DisconnectGrace`     | 1 minute   | How long a seated player has to come back before the game gets `PlayerDisconnected` |
@@ -70,11 +71,11 @@ See [Restart when stuck](../guides/keeping-games-running.md#restart-when-stuck) 
 
 See [Watch the server](../guides/observability.md).
 
-| Field            | Default             | What it does                                  |
-|------------------|---------------------|-----------------------------------------------|
-| `Logger`         | The runtime's       | Where server logs go                          |
-| `HidePlayerIDs`  | False               | Leaves players' IDs out of logs and traces    |
-| `TracerProvider` | Nil, traces nothing | The OpenTelemetry tracer provider for traces  |
+| Field            | Default             | What it does                                 |
+|------------------|---------------------|----------------------------------------------|
+| `Logger`         | The runtime's       | Where server logs go                         |
+| `HidePlayerIDs`  | False               | Leaves players' IDs out of logs and traces   |
+| `TracerProvider` | Nil, traces nothing | The OpenTelemetry tracer provider for traces |
 
 ## ListenConfig
 
@@ -114,11 +115,12 @@ What `NewRuntime` takes. See [Slow and stuck turns](../guides/keeping-games-runn
 What `NewRoomType` takes. The modules and the `Init` and `Close` hooks are the game itself, covered with building a
 game.
 
-| Field        | Default  | What it does                                                      |
-|--------------|----------|-------------------------------------------------------------------|
-| `Name`       | None     | Names the room type in logs and in saved rooms                    |
-| `QueueSize`  | 32       | Inputs a room's queue holds; over it, a message gets `QUEUE_FULL` |
-| `MaxPlayers` | No limit | Seats per room; over it, joining gets `ROOM_FULL`                 |
+| Field           | Default           | What it does                                                                                                         |
+|-----------------|-------------------|----------------------------------------------------------------------------------------------------------------------|
+| `Name`          | None              | Names the room type in logs and in saved rooms                                                                       |
+| `QueueSize`     | 32                | Inputs a room's queue holds; over it, a message gets `QUEUE_FULL`                                                    |
+| `MaxPlayers`    | No limit          | Seats per room; over it, joining gets `ROOM_FULL`                                                                    |
+| `OnJoinAttempt` | Nil, seats anyone | Decides whether a new player takes a free seat; see [Who takes a seat](../guides/finding-a-game.md#who-takes-a-seat) |
 
 A server only restores saved rooms of its own room type's `Name`, so renaming a room type leaves its saved rooms
 unrestored. They stay in the store, and the server logs each one it skips.

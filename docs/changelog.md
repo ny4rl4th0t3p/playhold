@@ -36,6 +36,12 @@ it uses another address.
 - Give each server its own `ListenConfig.Metrics.Addr`, or turn the metrics off with `Metrics.Off`. See
   [Watch the server](./guides/observability.md).
 
+**The server makes rooms' codes.** A `Join` with a code no room has used to create the room; now it's refused with
+`ROOM_NOT_FOUND`, and a `Join` with an empty code creates a room with a code the server makes.
+
+- In a client, create rooms with the SDKs' `createRoom`, and share the code it reports.
+- A game that picks its own codes sets `ServerConfig.AllowClientCodes`. See [Find a game](./guides/finding-a-game.md).
+
 **`store.Store` has three new methods**, `SaveIncident`, `LoadIncidents` and `DeleteIncidents`, for the breaker.
 
 - A store implemented outside playhold must add them. The memory and PostgreSQL stores have them; the PostgreSQL store
@@ -43,12 +49,13 @@ it uses another address.
 
 ### New responses for clients
 
-New error codes `RATE_LIMITED` and `TURNED_OFF`, and a new close reason, `INACTIVE`. The SDKs pass them to the game
+New error codes `RATE_LIMITED`, `TURNED_OFF` and `ROOM_NOT_FOUND`, and a new close reason, `INACTIVE`. The SDKs pass them to the game
 like any other; a client built before them sees an unknown code. See [Errors and close reasons](./reference/errors.md).
 
 ### Added
 
 - `SnapshotInterval`, to save busy rooms less often.
+- `RoomConfig.OnJoinAttempt`, for the game to decide who takes a seat, and the SDKs' `createRoom`.
 - TLS: automatic certificates from Let's Encrypt, certificate files, or a trusted proxy that ends TLS, with
   `ListenAndServe`.
 - Layered rate limits, with a module's own limits on its messages.

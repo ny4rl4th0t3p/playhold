@@ -49,7 +49,7 @@ func main() {
 type flags struct {
 	addr, web, databaseURL, debugAddr, metricsAddr, traces string
 
-	dev, restartWhenStuck bool
+	dev, restartWhenStuck, allowClientCodes bool
 
 	tlsDomains, tlsCache, tlsEmail, tlsDirectory, tlsCert, tlsKey string
 
@@ -87,6 +87,8 @@ func defineFlags(fs *flag.FlagSet) *flags {
 		"comma-separated address ranges of the proxies in front of this server, such as 10.0.0.0/8")
 	fs.StringVar(&f.web, "web", "", "folder with the built browser page, to serve it from this server")
 	fs.StringVar(&f.origins, "origins", "", "comma-separated web origins allowed to connect, besides this server's own")
+	fs.BoolVar(&f.allowClientCodes, "allow-client-codes", false,
+		"let a client create a room with a code it chooses, as the load bot does; without it, the server makes every code")
 	fs.IntVar(&f.maxPerIP, "max-conns-per-ip", 0, "most connections from one IP address; 0 uses the default")
 	fs.StringVar(&f.connectRate, "connect-rate", "",
 		"new connections per IP address, as EVERY/BURST such as 200ms/20, or off; empty uses the default")
@@ -177,6 +179,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		CrashJournal:        playhold.JournalConfig{Path: f.crashJournal, Entries: f.crashJournalEntries},
 		OriginPatterns:      splitList(f.origins),
 		TrustedProxies:      trusted,
+		AllowClientCodes:    f.allowClientCodes,
 		Development:         f.dev,
 		TracerProvider:      tracer,
 	}

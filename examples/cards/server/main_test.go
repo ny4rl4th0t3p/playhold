@@ -121,6 +121,7 @@ func TestConfigFromFlags(t *testing.T) {
 		{name: "a crash journal", args: []string{"-crash-journal", "/var/lib/cards/journal", "-crash-journal-entries", "100000"}},
 		{name: "admission anything else", args: []string{"-admission", "on"}, wantErr: "-admission"},
 		{name: "metrics elsewhere", args: []string{"-metrics-addr", ":9464"}},
+		{name: "codes clients choose", args: []string{"-allow-client-codes"}},
 		{name: "metrics off", args: []string{"-metrics-addr", "off"}},
 		{name: "traces measured", args: []string{"-traces", "measure"}},
 		{name: "traces anything else", args: []string{"-traces", "otlp"}, wantErr: "-traces"},

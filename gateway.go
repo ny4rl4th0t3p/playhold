@@ -146,7 +146,7 @@ func (s *session) join(seq uint64, code string) {
 	case s.player == "":
 		s.malformed(seq, "say hello before joining")
 		return
-	case !validRoomCode(code):
+	case code != "" && !validRoomCode(code): // an empty code asks for a new room
 		s.malformed(seq, "invalid room code")
 		return
 	}
@@ -159,8 +159,11 @@ func (s *session) join(seq uint64, code string) {
 		return
 	}
 
-	room, err := s.gateway.lobby.enter(code)
+	room, code, err := s.gateway.lobby.enter(code)
 	switch {
+	case errors.Is(err, ErrRoomNotFound):
+		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_ROOM_NOT_FOUND, err.Error())
+		return
 	case errors.Is(err, ErrTooManyRooms):
 		s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_SERVER_FULL, "the server has no space for more games")
 		return
@@ -369,6 +372,8 @@ func wireErrorCode(err error) wire.ErrorCode {
 		return wire.ErrorCode_ERROR_CODE_ROOM_CLOSED
 	case errors.Is(err, ErrRoomFull):
 		return wire.ErrorCode_ERROR_CODE_ROOM_FULL
+	case errors.Is(err, ErrRoomNotFound):
+		return wire.ErrorCode_ERROR_CODE_ROOM_NOT_FOUND
 	case errors.Is(err, ErrDraining):
 		return wire.ErrorCode_ERROR_CODE_UNAVAILABLE
 	case errors.Is(err, ErrOverloaded):

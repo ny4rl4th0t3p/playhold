@@ -51,14 +51,15 @@ func TestHidingPlayerIDsLeavesThemOutOfLogsAndTraces(t *testing.T) {
 		_ = rt.Shutdown(ctx)
 	})
 	cfg := &ServerConfig{
-		RoomType:       newTestRoomType(t, RoomConfig{Name: "match", Modules: []Module{viewOfSaved, savedModule}}),
-		Store:          memory.New(),
-		HidePlayerIDs:  true,
-		TracerProvider: provider,
-		Logger:         logger,
-		MemoryLimit:    -1,
-		Development:    true,
-		Admission:      Admission{Off: true},
+		RoomType:         newTestRoomType(t, RoomConfig{Name: "match", Modules: []Module{viewOfSaved, savedModule}}),
+		Store:            memory.New(),
+		HidePlayerIDs:    true,
+		TracerProvider:   provider,
+		Logger:           logger,
+		MemoryLimit:      -1,
+		Development:      true,
+		AllowClientCodes: true,
+		Admission:        Admission{Off: true},
 	}
 	server, err := NewServer(rt, cfg)
 	require.NoError(t, err)

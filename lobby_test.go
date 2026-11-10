@@ -26,7 +26,7 @@ func TestLobbyRefusesNewRoomsOverTheCapButStillJoinsExistingOnes(t *testing.T) {
 		first := enterRoom(t, l, "one")
 		enterRoom(t, l, "two")
 
-		_, err := l.enter("three")
+		_, _, err := l.enter("three")
 		require.ErrorIs(t, err, ErrTooManyRooms)
 
 		assert.Same(t, first, enterRoom(t, l, "one"))
@@ -41,8 +41,9 @@ func TestLobbyRefusesNewRoomsOverTheCapButStillJoinsExistingOnes(t *testing.T) {
 
 func enterRoom(t *testing.T, l *lobby, code string) *Room {
 	t.Helper()
-	room, err := l.enter(code)
+	room, got, err := l.enter(code)
 	require.NoError(t, err)
+	require.Equal(t, code, got)
 	return room
 }
 
@@ -142,8 +143,51 @@ func TestLobbyReportsARoomThatFailsToStart(t *testing.T) {
 		errInit := errors.New("bad config")
 		l := newTestLobby(t, RoomConfig{Init: func(_ *RoomContext) error { return errInit }})
 
-		_, err := l.enter("abc")
+		_, _, err := l.enter("abc")
 
 		require.ErrorIs(t, err, errInit)
+	})
+}
+
+func TestANewCodeNeverTakesOneInUse(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := newTestLobby(t, RoomConfig{})
+		running := enterRoom(t, l, "RUNNING")
+		l.savedCodes = map[string]bool{"SAVED": true} // a room the restore left in the store
+		codes := []string{"RUNNING", "SAVED", "FRESH"}
+		l.makeCode = func() string {
+			code := codes[0]
+			codes = codes[1:]
+			return code
+		}
+
+		room, code, err := l.enter("")
+
+		require.NoError(t, err)
+		assert.Equal(t, "FRESH", code)
+		assert.NotSame(t, running, room)
+	})
+}
+
+func TestLobbyMakesCodesAndCanRefuseThoseClientsChoose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := newTestLobby(t, RoomConfig{})
+		l.clientCodes = false
+
+		room, code, err := l.enter("")
+		require.NoError(t, err)
+		assert.Len(t, code, 26)
+		assert.True(t, validRoomCode(code), "safe to put in a link")
+		_, other, err := l.enter("")
+		require.NoError(t, err)
+		assert.NotEqual(t, code, other, "every empty code is a new room")
+
+		joined, again, err := l.enter(code)
+		require.NoError(t, err)
+		assert.Same(t, room, joined, "joining by the code works")
+		assert.Equal(t, code, again)
+
+		_, _, err = l.enter("my-room")
+		require.ErrorIs(t, err, ErrRoomNotFound)
 	})
 }

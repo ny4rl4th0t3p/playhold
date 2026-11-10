@@ -26,6 +26,7 @@ func startObservedServer(t *testing.T, cfg *ServerConfig) (server *Server, url s
 	cfg.MemoryLimit = -1
 	cfg.Logger = slog.New(slog.DiscardHandler)
 	cfg.Development = true
+	cfg.AllowClientCodes = true
 	cfg.Admission.Off = true
 	server, err := NewServer(newTestRuntime(t), cfg)
 	require.NoError(t, err)

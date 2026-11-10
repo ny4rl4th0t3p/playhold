@@ -69,10 +69,11 @@ func startServer(t *testing.T) string {
 	typ, err := playhold.NewRoomType(playhold.RoomConfig{Modules: []playhold.Module{counter{}}, MaxPlayers: 1})
 	require.NoError(t, err)
 	server, err := playhold.NewServer(playhold.NewRuntime(playhold.Config{Logger: slog.New(slog.DiscardHandler)}), &playhold.ServerConfig{
-		RoomType:    typ,
-		MemoryLimit: -1,
-		Logger:      slog.New(slog.DiscardHandler),
-		Development: true,
+		RoomType:         typ,
+		MemoryLimit:      -1,
+		Logger:           slog.New(slog.DiscardHandler),
+		Development:      true,
+		AllowClientCodes: true,
 	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
@@ -121,6 +122,18 @@ func TestNewGuestGetsAnIdentityAndCanComeBack(t *testing.T) {
 	assert.NotEmpty(t, first.Secret)
 
 	assert.Equal(t, first, connect(t, url, first).Identity(), "the secret isn't sent again, but it's kept")
+}
+
+func TestCreateRoomReturnsACodeOthersCanJoin(t *testing.T) {
+	url := startServer(t)
+	alice := connect(t, url, sdk.Identity{})
+
+	made, err := alice.CreateRoom(testContext(t))
+
+	require.NoError(t, err)
+	assert.Len(t, made, 26)
+	bob := connect(t, url, sdk.Identity{})
+	requireCode(t, bob.Join(testContext(t), made), sdk.ErrorRoomFull) // the room has one seat, and alice has it
 }
 
 func TestServerRefusesAClient(t *testing.T) {

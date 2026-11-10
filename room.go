@@ -391,6 +391,11 @@ func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 			if limit := r.typ.cfg.MaxPlayers; limit > 0 && len(r.seats) >= limit {
 				return ErrRoomFull
 			}
+			if join := r.typ.cfg.OnJoinAttempt; join != nil {
+				if err := join(rc, &JoinAttempt{Player: player}); err != nil {
+					return err
+				}
+			}
 			r.seats = append(r.seats, player)
 			rc.Emit(PlayerJoined{Player: player})
 		}

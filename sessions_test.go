@@ -457,12 +457,13 @@ func TestReconnectStormLosesNoRoom(t *testing.T) {
 			Store:         records,
 			MaxConnsPerIP: 2 * players,
 			// Every player connects from 127.0.0.1, so the limits per address are off.
-			ConnectRate: RateLimit{Off: true},
-			GuestRate:   RateLimit{Off: true},
-			Admission:   Admission{Off: true}, // its tiny queues would read as overload
-			MemoryLimit: -1,
-			Logger:      slog.New(slog.DiscardHandler),
-			Development: true,
+			ConnectRate:      RateLimit{Off: true},
+			GuestRate:        RateLimit{Off: true},
+			Admission:        Admission{Off: true}, // its tiny queues would read as overload
+			MemoryLimit:      -1,
+			Logger:           slog.New(slog.DiscardHandler),
+			Development:      true,
+			AllowClientCodes: true,
 		})
 		require.NoError(t, err)
 		httpServer := httptest.NewServer(server)

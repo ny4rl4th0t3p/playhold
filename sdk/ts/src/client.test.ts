@@ -217,6 +217,24 @@ describe("joining", () => {
     expect(client.status).toBe("joined");
   });
 
+  it("creates a room with the server's code, reports it, and comes back to it after reconnecting", () => {
+    const onJoined = vi.fn();
+    const { client, latest, online } = setup({ onJoined });
+    const socket = online();
+
+    client.createRoom();
+    expect(socket.last().body).toMatchObject({ case: "join", value: { code: "" } });
+    socket.receive({ case: "joined", value: { seq: socket.last().seq, code: "MADEBYTHESERVER" } });
+    expect(client.status).toBe("joined");
+    expect(onJoined).toHaveBeenCalledWith("MADEBYTHESERVER");
+
+    latest().drop();
+    vi.advanceTimersByTime(100);
+    latest().onopen?.();
+    latest().welcome();
+    expect(latest().last().body).toMatchObject({ case: "join", value: { code: "MADEBYTHESERVER" } });
+  });
+
   it("refuses a second room, but allows repeating the same code", () => {
     const { client, inRoom } = setup();
     const socket = inRoom("room");

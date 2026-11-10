@@ -13,6 +13,8 @@ services:
     # connections and guests per address are off by default.
     command:
       - -dev
+      # The load bot picks its rooms' codes. The page asks the server for one, as a game on the internet should.
+      - -allow-client-codes
       - -restart-when-stuck
       - -max-conns-per-ip
       - "4096"

@@ -132,6 +132,12 @@ linters:
           - lll
           - goconst
           - gocyclo
+      # A RoomConfig is passed by value on purpose: NewRoomType runs once per room type, at startup, and keeping a copy
+      # is what stops a caller changing a room type after it's built. The test helpers that take one do the same.
+      - linters:
+          - gocritic
+        text: "hugeParam"
+        source: '\w+ (playhold\.)?RoomConfig\b'
 
 formatters:
   enable:

@@ -18,6 +18,7 @@ export default defineConfig({
                     {text: "Limit abuse and load", link: "/guides/limits"},
                     {text: "Keep games running", link: "/guides/keeping-games-running"},
                     {text: "When something crashes", link: "/guides/crashes"},
+                    {text: "Find a game", link: "/guides/finding-a-game"},
                     {text: "Watch the server", link: "/guides/observability"},
                 ],
             },

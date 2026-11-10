@@ -94,7 +94,8 @@ func startConfigured(t *testing.T, seed [32]byte, options cards.Options, cfg *pl
 	require.NoError(t, err)
 	cfg.RoomType = typ
 	cfg.MemoryLimit = -1
-	cfg.Development = true // plain HTTP
+	cfg.Development = true      // plain HTTP
+	cfg.AllowClientCodes = true // the tests pick their rooms' codes
 	// These tests play and reconnect as fast as they can, from one address, so the rate limits are off.
 	off := playhold.RateLimit{Off: true}
 	cfg.ConnectRate, cfg.GuestRate, cfg.MessageRate = off, off, off

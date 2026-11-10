@@ -33,7 +33,7 @@ const (
 
 // ServerConfig configures a Server. Zero values use the defaults.
 type ServerConfig struct {
-	// RoomType is the kind of room that joining a new code creates. It is required.
+	// RoomType is the kind of room the server creates. It is required.
 	RoomType *RoomType
 	// Store keeps what has to survive a restart, and every module with state then needs a Snapshot. Nil keeps guests in
 	// memory and doesn't save rooms, so a restart forgets both.
@@ -74,6 +74,11 @@ type ServerConfig struct {
 	// as systemd or a container restart policy, starts the process again; otherwise the server stays down. Without it,
 	// the server logs an error every minute while that lasts. It needs admission control on.
 	RestartWhenStuck bool
+	// AllowClientCodes lets a Join with a code no room has create a room with that code, as a game that picks its own codes
+	// needs. Without it, the default, only a Join with an empty code creates a room, with a long random code the server
+	// makes, so nobody can guess another room's code or claim a name; a code no room has is refused with ROOM_NOT_FOUND.
+	// Joining an existing room by its code works either way.
+	AllowClientCodes bool
 	// MaxRooms is the most rooms the server runs at once, counting finished ones until they close. Over it, joining a
 	// new code gets an error, and existing rooms carry on. The default is 10,000.
 	MaxRooms int
@@ -367,6 +372,7 @@ func newServerLobby(
 	l.inactive = inactive.duration()
 	l.admit = admit.allow
 	l.breaker, l.metrics = incidents, m
+	l.clientCodes = cfg.AllowClientCodes
 	return l
 }
 

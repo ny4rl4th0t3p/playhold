@@ -24,12 +24,13 @@ func startSavingServer(t *testing.T, records store.Store, rooms RoomConfig, rtCf
 	t.Helper()
 	rooms.Modules = append(rooms.Modules, viewOfSaved, savedModule)
 	server, err := NewServer(newConfiguredRuntime(t, rtCfg), &ServerConfig{
-		RoomType:    newTestRoomType(t, rooms),
-		Store:       records,
-		MemoryLimit: -1,
-		Logger:      slog.New(slog.DiscardHandler),
-		Development: true,
-		Admission:   Admission{Off: true},
+		RoomType:         newTestRoomType(t, rooms),
+		Store:            records,
+		MemoryLimit:      -1,
+		Logger:           slog.New(slog.DiscardHandler),
+		Development:      true,
+		AllowClientCodes: true,
+		Admission:        Admission{Off: true},
 	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)

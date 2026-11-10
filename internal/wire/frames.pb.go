@@ -58,6 +58,9 @@ const (
 	// ERROR_CODE_TURNED_OFF means the server has turned this message off for a while, because it kept crashing the server
 	// or hanging rooms. The message was not handled. Other messages still work.
 	ErrorCode_ERROR_CODE_TURNED_OFF ErrorCode = 14
+	// ERROR_CODE_ROOM_NOT_FOUND means no room has this code, and the server doesn't create rooms from codes clients choose.
+	// A Join with an empty code creates a room instead.
+	ErrorCode_ERROR_CODE_ROOM_NOT_FOUND ErrorCode = 15
 )
 
 // Enum value maps for ErrorCode.
@@ -78,6 +81,7 @@ var (
 		12: "ERROR_CODE_UPDATE_REQUIRED",
 		13: "ERROR_CODE_RATE_LIMITED",
 		14: "ERROR_CODE_TURNED_OFF",
+		15: "ERROR_CODE_ROOM_NOT_FOUND",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED":          0,
@@ -95,6 +99,7 @@ var (
 		"ERROR_CODE_UPDATE_REQUIRED":      12,
 		"ERROR_CODE_RATE_LIMITED":         13,
 		"ERROR_CODE_TURNED_OFF":           14,
+		"ERROR_CODE_ROOM_NOT_FOUND":       15,
 	}
 )
 
@@ -548,7 +553,8 @@ func (x *Welcome) GetSecret() string {
 	return ""
 }
 
-// Join asks to enter the room with this code, creating it if the code is new.
+// Join asks to enter the room with this code. An empty code creates a room, with a code the server makes. A code no room
+// has creates one only on a server that allows codes clients choose; otherwise it's refused with ROOM_NOT_FOUND.
 type Join struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
@@ -593,7 +599,8 @@ func (x *Join) GetCode() string {
 	return ""
 }
 
-// Joined accepts a Join. Module messages can be sent from now on.
+// Joined accepts a Join. Module messages can be sent from now on. code is the room's, which the server made if the Join
+// had none.
 type Joined struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Seq           uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
@@ -961,7 +968,7 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\amessage\x18\x03 \x01(\tR\amessage\">\n" +
 	"\n" +
 	"RoomClosed\x120\n" +
-	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xbf\x03\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x18.playhold.v1.CloseReasonR\x06reason*\xde\x03\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aERROR_CODE_MALFORMED_FRAME\x10\x01\x12\x1e\n" +
@@ -978,7 +985,8 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x16ERROR_CODE_SERVER_FULL\x10\v\x12\x1e\n" +
 	"\x1aERROR_CODE_UPDATE_REQUIRED\x10\f\x12\x1b\n" +
 	"\x17ERROR_CODE_RATE_LIMITED\x10\r\x12\x19\n" +
-	"\x15ERROR_CODE_TURNED_OFF\x10\x0e*\xad\x01\n" +
+	"\x15ERROR_CODE_TURNED_OFF\x10\x0e\x12\x1d\n" +
+	"\x19ERROR_CODE_ROOM_NOT_FOUND\x10\x0f*\xad\x01\n" +
 	"\vCloseReason\x12\x1c\n" +
 	"\x18CLOSE_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLOSE_REASON_REQUESTED\x10\x01\x12\x19\n" +

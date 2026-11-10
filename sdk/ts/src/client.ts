@@ -48,6 +48,8 @@ export interface ClientHandlers {
   onError?(error: { seq: number; code: ErrorCode; message: string }): void;
   /** Called when the player's room has closed. The client stays connected and can join another room. */
   onRoomClosed?(reason: CloseReason): void;
+  /** Called each time the client enters its room, with the room's code: for `createRoom`, the one the server made. */
+  onJoined?(code: string): void;
 }
 
 export interface ClientOptions extends ClientHandlers {
@@ -110,7 +112,10 @@ export class PlayholdClient {
     this.open();
   }
 
-  /** Enters the room with this code, creating it if the code is new, now or as soon as the client is connected. */
+  /**
+   * Enters the room with this code, now or as soon as the client is connected. A code no room has creates one only on
+   * a server that allows codes clients choose; otherwise it's refused with `ROOM_NOT_FOUND`.
+   */
   join(code: string): void {
     if (this.code === code) {
       return;
@@ -122,6 +127,14 @@ export class PlayholdClient {
     if (this.currentStatus === "connected") {
       this.sendJoin();
     }
+  }
+
+  /**
+   * Creates a room, with a code the server makes, and enters it, now or as soon as the client is connected. The code
+   * arrives in `onJoined`, to share with the other players.
+   */
+  createRoom(): void {
+    this.join(""); // an empty code asks the server for a new room
   }
 
   /**
@@ -207,7 +220,9 @@ export class PlayholdClient {
         break;
       case "joined":
         this.joinSeq = undefined;
+        this.code = body.value.code; // the server's, for a room it made, so a reconnect comes back to this room
         this.setStatus("joined");
+        this.options.onJoined?.(body.value.code);
         break;
       case "state":
         this.options.onState?.(body.value.views);

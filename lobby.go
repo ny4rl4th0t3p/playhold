@@ -3,6 +3,7 @@ package playhold
 import (
 	"cmp"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"slices"
@@ -23,12 +24,16 @@ const (
 // ErrTooManyRooms means the server won't create another room. Rooms that already exist can still be joined.
 var ErrTooManyRooms = errors.New("playhold: too many rooms")
 
+// ErrRoomNotFound means no room has the code, and the server doesn't create rooms from codes clients choose.
+var ErrRoomNotFound = errors.New("playhold: no room has this code")
+
 // ErrDraining means the server is about to stop, and isn't taking new rooms or players. Players who already have a seat
 // can still come back to it.
 var ErrDraining = errors.New("playhold: the server is about to restart")
 
-// lobby maps room codes to rooms. It creates a room when a code is first used, up to a limit, since anyone can ask for
-// one with a new code. It closes a room once nobody has been connected to it for the idle time, which frees its code.
+// lobby maps room codes to rooms. It creates a room, up to a limit, when asked with no code, making one, or when a code is
+// first used, if it takes codes clients choose. It closes a room once nobody has been connected to it for the idle time,
+// which frees its code.
 type lobby struct {
 	rt       *Runtime
 	typ      *RoomType
@@ -41,6 +46,11 @@ type lobby struct {
 	admit    func() bool   // whether new rooms and new players are taken now; nil always allows
 	breaker  *breaker      // says which saved rooms keep crashing the server; nil restores them all
 	metrics  *metrics      // nil counts nothing
+	// clientCodes lets an unknown code create a room. A server sets it from ServerConfig.AllowClientCodes; the lobby's own
+	// default is true, so tests that build one directly can pick their codes.
+	clientCodes bool
+	makeCode    func() string   // rand.Text; tests replace it to force a clash
+	savedCodes  map[string]bool // the codes of every room in the store at the restore, which new rooms mustn't take
 
 	mu       sync.Mutex
 	rooms    map[string]*lobbyRoom
@@ -56,30 +66,41 @@ type lobbyRoom struct {
 }
 
 func newLobby(rt *Runtime, typ *RoomType, idle time.Duration, maxRooms int, writer *snapshotWriter) *lobby {
-	return &lobby{rt: rt, typ: typ, idle: idle, maxRooms: maxRooms, writer: writer, rooms: make(map[string]*lobbyRoom)}
+	return &lobby{
+		rt: rt, typ: typ, idle: idle, maxRooms: maxRooms, writer: writer, clientCodes: true, makeCode: rand.Text,
+		rooms: make(map[string]*lobbyRoom),
+	}
 }
 
-// enter counts a new connection to the room with this code, creating the room if needed. Each successful call
-// needs a matching leave. Creating a room holds the lobby's lock, so Init hooks should be quick.
-func (l *lobby) enter(code string) (*Room, error) {
+// enter counts a new connection to the room with this code, and returns the room and its code. An empty code creates a
+// room with a code the lobby makes; a code no room has creates one only if the lobby takes codes clients choose. Each
+// successful call needs a matching leave. Creating a room holds the lobby's lock, so Init hooks should be quick.
+func (l *lobby) enter(code string) (*Room, string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	entry, ok := l.rooms[code]
-	if !ok && len(l.rooms) >= l.maxRooms {
-		return nil, ErrTooManyRooms
+	made := code == ""
+	if made {
+		code = l.newCode()
 	}
+	entry, ok := l.rooms[code]
 	if !ok || entry.room.closed() {
+		if !made && !l.clientCodes {
+			return nil, "", ErrRoomNotFound
+		}
+		if !ok && len(l.rooms) >= l.maxRooms {
+			return nil, "", ErrTooManyRooms
+		}
 		if l.draining {
-			return nil, ErrDraining
+			return nil, "", ErrDraining
 		}
 		if l.admit != nil && !l.admit() {
-			return nil, ErrOverloaded
+			return nil, "", ErrOverloaded
 		}
 		entry = &lobbyRoom{}
 		room, err := l.rt.createRoom(l.typ, code, l.writer, l.restarter(code, entry))
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		room.startSessions(l.sessions())
 		entry.room = room
@@ -91,7 +112,17 @@ func (l *lobby) enter(code string) (*Room, error) {
 		entry.timer.Stop()
 		entry.timer = nil
 	}
-	return entry.room, nil
+	return entry.room, code, nil
+}
+
+// newCode returns a code no room has, running or left in the store: 26 random letters and digits, so it can't be
+// guessed, and a clash is practically impossible but checked anyway. The caller holds mu.
+func (l *lobby) newCode() string {
+	for {
+		if code := l.makeCode(); l.rooms[code] == nil && !l.savedCodes[code] {
+			return code
+		}
+	}
 }
 
 func (l *lobby) sessions() roomSessions {
@@ -246,6 +277,11 @@ func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// A room left in the store keeps its code, so a new room mustn't get it: the next start would forget one of the two.
+	l.savedCodes = make(map[string]bool, len(rooms))
+	for i := range rooms {
+		l.savedCodes[rooms[i].Code] = true
+	}
 	for i := range rooms {
 		record := &rooms[i]
 		if _, taken := l.rooms[record.Code]; taken {

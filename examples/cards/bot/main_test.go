@@ -34,14 +34,15 @@ func TestBotPlaysWholeGamesAgainstARealServer(t *testing.T) {
 	typ, err := cards.NewRoomType()
 	require.NoError(t, err)
 	server, err := playhold.NewServer(rt, &playhold.ServerConfig{
-		RoomType:      typ,
-		MemoryLimit:   -1,
-		MaxConnsPerIP: 1024,
-		Development:   true,
-		ConnectRate:   noLimit,
-		GuestRate:     noLimit,
-		MessageRate:   noLimit,
-		Admission:     playhold.Admission{Off: true},
+		RoomType:         typ,
+		MemoryLimit:      -1,
+		MaxConnsPerIP:    1024,
+		Development:      true,
+		AllowClientCodes: true, // the bot picks its rooms' codes
+		ConnectRate:      noLimit,
+		GuestRate:        noLimit,
+		MessageRate:      noLimit,
+		Admission:        playhold.Admission{Off: true},
 	})
 	require.NoError(t, err)
 	httpServer := httptest.NewServer(server)
@@ -188,15 +189,16 @@ func gameServer(t *testing.T, addr string, records store.Store, options cards.Op
 	typ, err := cards.NewRoomTypeWith(options)
 	require.NoError(t, err)
 	server, err := playhold.NewServer(rt, &playhold.ServerConfig{
-		RoomType:    typ,
-		Store:       records,
-		MemoryLimit: -1,
-		Logger:      slog.New(slog.DiscardHandler),
-		Development: true,
-		ConnectRate: noLimit,
-		GuestRate:   noLimit,
-		MessageRate: noLimit,
-		Admission:   playhold.Admission{Off: true},
+		RoomType:         typ,
+		Store:            records,
+		MemoryLimit:      -1,
+		Logger:           slog.New(slog.DiscardHandler),
+		Development:      true,
+		AllowClientCodes: true, // the bot picks its rooms' codes
+		ConnectRate:      noLimit,
+		GuestRate:        noLimit,
+		MessageRate:      noLimit,
+		Admission:        playhold.Admission{Off: true},
 	})
 	require.NoError(t, err)
 	var listen net.ListenConfig

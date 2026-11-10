@@ -275,8 +275,21 @@ type RoomConfig struct {
 	// Init runs once before the room starts, after module state is created. An error or panic stops the
 	// room from being created.
 	Init func(rc *RoomContext) error
+	// OnJoinAttempt decides whether a player may take a free seat, on the room's goroutine, so it can read the game's
+	// state: a game refuses new players once it has started, for example, which locks the room. An error refuses the
+	// seat and is the player's answer: ErrRoomFull answers that the room is full, and any other error that the join was
+	// rejected. A player who already has a seat is never asked again, so they can always come back. Nil lets anyone take
+	// a free seat, up to MaxPlayers, which is checked first. It must decide from what's in memory: waiting on a database
+	// or a service would hold up the whole room.
+	OnJoinAttempt func(rc *RoomContext, attempt *JoinAttempt) error
 	// Close runs once on the room's goroutine after its last turn, unless Init failed.
 	Close func(rc *RoomContext, reason CloseReason)
+}
+
+// JoinAttempt is a player asking for a free seat. It gains fields as playhold learns more about players, such as their
+// account's claims, so a game's OnJoinAttempt keeps compiling.
+type JoinAttempt struct {
+	Player PlayerID
 }
 
 // RoomType is a validated room configuration, ready to create rooms from. Build room types at startup, so
@@ -485,5 +498,8 @@ func NewRoomType(cfg RoomConfig) (*RoomType, error) {
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
+	// The modules have registered their state, handlers, views and events, which is all rooms use from here on. The list
+	// itself is dropped: it shares its array with the caller's slice, so keeping it could only let a later change leak in.
+	typ.cfg.Modules = nil
 	return typ, nil
 }

@@ -144,6 +144,7 @@ func TestARoomThatKeepsCrashingTheServerIsNotRestored(t *testing.T) {
 		secondLobby, _ := restoreLobby(t, records, RoomConfig{}, Config{})
 		secondLobby.breaker = testBreaker(t, records, "build", nil)
 		require.NoError(t, secondLobby.restoreAll(t.Context(), records))
+		assert.True(t, secondLobby.savedCodes[testCode], "a room left in the store keeps its code from new rooms")
 
 		assert.NotEqual(t, first.ID(), enterRoom(t, secondLobby, testCode).ID(), "the code gets a new room")
 		rooms, err := records.LoadRooms(t.Context())

@@ -486,3 +486,14 @@ func TestEventsEmittedByLifecycleHooksAreDelivered(t *testing.T) {
 		assert.Equal(t, []string{"init event", "close event"}, got)
 	})
 }
+
+func TestABuiltRoomTypeKeepsNoneOfTheCallersModuleList(t *testing.T) {
+	modules := []Module{counterModule{}}
+	typ := newTestRoomType(t, RoomConfig{Modules: modules})
+
+	modules[0] = nil // the caller's slice, which a copy of the config would share
+
+	assert.Nil(t, typ.cfg.Modules)
+	_, registered := typ.handlers[handlerKey{module: counterModule{}.Name(), id: msgAdd}]
+	assert.True(t, registered, "what the module registered stays")
+}

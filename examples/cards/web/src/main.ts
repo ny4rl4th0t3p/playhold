@@ -111,32 +111,42 @@ const client = new PlayholdClient({
             reason === CloseReason.REQUESTED ? "The room closed." : "The room closed because of a server problem.";
         showLobby();
     },
+    onJoined: (code) => showRoom(code),
 });
 
-function join(code: string): void {
+/** Shows an empty game while the server answers. */
+function openGame(): void {
     ui.message.textContent = "";
-    ui.room.textContent = code;
     ui.lobby.hidden = true;
     ui.game.hidden = false;
     game = {};
     render();
+}
 
+/** Shows the room's code, and puts it in the page's address, for the other player to follow. */
+function showRoom(code: string): void {
+    ui.room.textContent = code;
     const url = new URL(location.href);
     url.searchParams.set("room", code);
     history.replaceState(null, "", url);
+}
 
+function join(code: string): void {
+    openGame();
+    showRoom(code);
     client.join(code);
+}
+
+/** Asks the server for a new room. Its code arrives in onJoined. */
+function createRoom(): void {
+    openGame();
+    ui.room.textContent = "…";
+    client.createRoom();
 }
 
 function showLobby(): void {
     ui.lobby.hidden = false;
     ui.game.hidden = true;
-}
-
-function newCode(): string {
-    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no look-alikes such as 0 and O
-    const bytes = crypto.getRandomValues(new Uint8Array(6));
-    return Array.from(bytes, (byte) => letters[byte % letters.length]).join("");
 }
 
 function play(card: string, chosenSuit = ""): void {
@@ -209,7 +219,7 @@ function render(): void {
     ui.pass.disabled = !hands?.canPass;
 }
 
-ui.newGame.addEventListener("click", () => join(newCode()));
+ui.newGame.addEventListener("click", createRoom);
 ui.joinForm.addEventListener("submit", (event) => {
     event.preventDefault();
     join(ui.code.value.trim());

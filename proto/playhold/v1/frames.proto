@@ -42,12 +42,14 @@ message Welcome {
   string secret = 2;
 }
 
-// Join asks to enter the room with this code, creating it if the code is new.
+// Join asks to enter the room with this code. An empty code creates a room, with a code the server makes. A code no room
+// has creates one only on a server that allows codes clients choose; otherwise it's refused with ROOM_NOT_FOUND.
 message Join {
   string code = 1;
 }
 
-// Joined accepts a Join. Module messages can be sent from now on.
+// Joined accepts a Join. Module messages can be sent from now on. code is the room's, which the server made if the Join
+// had none.
 message Joined {
   uint64 seq = 1;
   string code = 2;
@@ -108,6 +110,9 @@ enum ErrorCode {
   // ERROR_CODE_TURNED_OFF means the server has turned this message off for a while, because it kept crashing the server
   // or hanging rooms. The message was not handled. Other messages still work.
   ERROR_CODE_TURNED_OFF = 14;
+  // ERROR_CODE_ROOM_NOT_FOUND means no room has this code, and the server doesn't create rooms from codes clients choose.
+  // A Join with an empty code creates a room instead.
+  ERROR_CODE_ROOM_NOT_FOUND = 15;
 }
 
 // #endregion error-codes

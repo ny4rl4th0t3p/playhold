@@ -32,13 +32,22 @@ export interface SocketLike {
  * - `disconnected`: not connected, and retrying unless `connect` hasn't been called yet.
  * - `connecting`: opening a connection and saying hello.
  * - `connected`: the server knows this player, who isn't in a room.
+ * - `queued`: waiting to be matched with other players. Once matched, the client joins the room by itself.
  * - `joined`: in a room, and messages can be sent.
  * - `replaced`: this player connected somewhere newer, such as another tab. It stays stopped until `connect`.
  * - `closed`: stopped by `close`.
  * - `updateRequired`: this client is too old for the server, and has stopped. The player needs a newer one, such as by
  *   reloading the page.
  */
-export type ClientStatus = "disconnected" | "connecting" | "connected" | "joined" | "replaced" | "closed" | "updateRequired";
+export type ClientStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "queued"
+  | "joined"
+  | "replaced"
+  | "closed"
+  | "updateRequired";
 
 export interface ClientHandlers {
   onStatus?(status: ClientStatus): void;
@@ -84,6 +93,11 @@ export class PlayholdClient {
   private lastSeq = 0;
   private code: string | undefined;
   private joinSeq: number | undefined;
+  /** What to queue with, while the player wants a match: kept across reconnects, which drop the server's queue. */
+  private queueProperties: Record<string, string> | undefined;
+  private queueSeq: number | undefined;
+  /** What the player queued with for the room they were matched to, to queue again if the match falls through. */
+  private matchedProperties: Record<string, string> | undefined;
   private currentStatus: ClientStatus = "disconnected";
   private currentPlayerId: string | undefined;
 
@@ -123,9 +137,39 @@ export class PlayholdClient {
     if (this.code !== undefined) {
       throw new Error("already in a room");
     }
+    this.queueProperties = undefined; // joining a room leaves the queue, on the server too
     this.code = code;
-    if (this.currentStatus === "connected") {
+    if (this.currentStatus === "connected" || this.currentStatus === "queued") {
       this.sendJoin();
+    }
+  }
+
+  /**
+   * Asks to be matched with other players, now or as soon as the client is connected. `properties` are the player's
+   * choices, such as a mode, for the game's matcher. Once matched, the client joins the room by itself, and
+   * `onJoined` reports its code. It queues again by itself after a lost connection, and if the room closes because a
+   * matched player never came.
+   */
+  queue(properties: Record<string, string> = {}): void {
+    if (this.code !== undefined) {
+      throw new Error("already in a room");
+    }
+    this.queueProperties = properties;
+    if (this.currentStatus === "connected" || this.currentStatus === "queued") {
+      this.sendQueue();
+    }
+  }
+
+  /** Stops waiting for a match. */
+  leaveQueue(): void {
+    if (this.queueProperties === undefined) {
+      return;
+    }
+    this.queueProperties = undefined;
+    this.queueSeq = undefined;
+    if (this.currentStatus === "queued" || this.currentStatus === "connected") {
+      this.sendFrame({ case: "leaveQueue", value: {} });
+      this.setStatus("connected");
     }
   }
 
@@ -231,10 +275,39 @@ export class PlayholdClient {
         this.failed(body.value);
         break;
       case "closed":
-        this.code = undefined;
-        this.setStatus("connected");
-        this.options.onRoomClosed?.(body.value.reason);
+        this.roomClosed(body.value.reason);
         break;
+      case "queued":
+        if (Number(body.value.seq) === this.queueSeq && this.queueProperties !== undefined) {
+          this.queueSeq = undefined;
+          this.setStatus("queued");
+        }
+        break;
+      case "matched":
+        this.matched(body.value.code);
+        break;
+    }
+  }
+
+  /** Joins the room the server matched this player to, keeping what they queued with in case the match falls through. */
+  private matched(code: string): void {
+    if (this.queueProperties === undefined || this.code !== undefined) {
+      return; // the player stopped waiting meanwhile
+    }
+    this.matchedProperties = this.queueProperties;
+    this.queueProperties = undefined;
+    this.code = code;
+    this.sendJoin();
+  }
+
+  private roomClosed(reason: CloseReason): void {
+    this.code = undefined;
+    const requeue = reason === CloseReason.MATCH_INCOMPLETE ? this.matchedProperties : undefined;
+    this.matchedProperties = undefined;
+    this.setStatus("connected");
+    this.options.onRoomClosed?.(reason);
+    if (requeue !== undefined && this.code === undefined && this.queueProperties === undefined) {
+      this.queue(requeue); // a matched player never came, so keep looking, unless the game chose something else
     }
   }
 
@@ -247,6 +320,8 @@ export class PlayholdClient {
     this.setStatus("connected");
     if (this.code !== undefined) {
       this.sendJoin();
+    } else if (this.queueProperties !== undefined) {
+      this.sendQueue(); // the server forgot this player's place when the connection dropped
     }
   }
 
@@ -260,15 +335,21 @@ export class PlayholdClient {
       this.stop("updateRequired");
     } else if (
       error.code === ErrorCode.UNAVAILABLE ||
-      (error.code === ErrorCode.RATE_LIMITED && (this.currentPlayerId === undefined || seq === this.joinSeq))
+      (error.code === ErrorCode.RATE_LIMITED &&
+        (this.currentPlayerId === undefined || seq === this.joinSeq || seq === this.queueSeq))
     ) {
-      // The server couldn't check this player, or asked it to slow down before it got into its room. Closing leads to
-      // the usual reconnect, with its growing delay, and keeps the room's code to try again.
+      // The server couldn't check this player, or asked it to slow down before it got into its room or the queue.
+      // Closing leads to the usual reconnect, with its growing delay, and keeps the room's code, or the place it wants
+      // in the queue, to try again.
       this.socket?.close();
     } else if (seq === this.joinSeq) {
       // Forget the code, so a reconnect doesn't keep trying a room that refused this player.
       this.code = undefined;
       this.joinSeq = undefined;
+    } else if (seq === this.queueSeq) {
+      // The server refused the queue, so stop asking.
+      this.queueProperties = undefined;
+      this.queueSeq = undefined;
     }
     this.options.onError?.({ seq, code: error.code, message: error.message });
   }
@@ -288,6 +369,10 @@ export class PlayholdClient {
 
   private sendJoin(): void {
     this.joinSeq = this.sendFrame({ case: "join", value: { code: this.code ?? "" } });
+  }
+
+  private sendQueue(): void {
+    this.queueSeq = this.sendFrame({ case: "queue", value: { properties: this.queueProperties ?? {} } });
   }
 
   private sendFrame(body: NonNullable<MessageInitShape<typeof ClientFrameSchema>["body"]>): number {

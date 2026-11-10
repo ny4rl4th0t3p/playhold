@@ -180,6 +180,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		OriginPatterns:      splitList(f.origins),
 		TrustedProxies:      trusted,
 		AllowClientCodes:    f.allowClientCodes,
+		Matchmaking:         &playhold.Matchmaking{}, // the default matcher pairs players, the game's two seats, in turn
 		Development:         f.dev,
 		TracerProvider:      tracer,
 	}

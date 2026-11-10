@@ -299,6 +299,115 @@ describe("joining", () => {
   });
 });
 
+describe("matchmaking", () => {
+  /** Queues with these choices, and has the server accept. */
+  const queued = (socket: FakeSocket, client: PlayholdClient, properties: Record<string, string> = {}): void => {
+    client.queue(properties);
+    socket.receive({ case: "queued", value: { seq: socket.last().seq } });
+  };
+
+  it("queues with the player's choices, and is queued once the server accepts", () => {
+    const { client, online } = setup();
+    const socket = online();
+
+    client.queue({ mode: "ranked" });
+    expect(socket.last().body).toMatchObject({ case: "queue", value: { properties: { mode: "ranked" } } });
+    expect(client.status).toBe("connected");
+
+    socket.receive({ case: "queued", value: { seq: socket.last().seq } });
+    expect(client.status).toBe("queued");
+  });
+
+  it("joins the room it's matched to by itself, and reports its code", () => {
+    const onJoined = vi.fn();
+    const { client, online } = setup({ onJoined });
+    const socket = online();
+    queued(socket, client);
+
+    socket.receive({ case: "matched", value: { code: "MATCHED" } });
+    expect(socket.last().body).toMatchObject({ case: "join", value: { code: "MATCHED" } });
+
+    socket.receive({ case: "joined", value: { seq: socket.last().seq, code: "MATCHED" } });
+    expect(client.status).toBe("joined");
+    expect(onJoined).toHaveBeenCalledWith("MATCHED");
+  });
+
+  it("queues again with the same choices when a matched player never came", () => {
+    const onRoomClosed = vi.fn();
+    const { client, online } = setup({ onRoomClosed });
+    const socket = online();
+    queued(socket, client, { mode: "casual" });
+    socket.receive({ case: "matched", value: { code: "MATCHED" } });
+    socket.receive({ case: "joined", value: { seq: socket.last().seq, code: "MATCHED" } });
+
+    socket.receive({ case: "closed", value: { reason: CloseReason.MATCH_INCOMPLETE } });
+
+    expect(onRoomClosed).toHaveBeenCalledWith(CloseReason.MATCH_INCOMPLETE);
+    expect(socket.last().body).toMatchObject({ case: "queue", value: { properties: { mode: "casual" } } });
+  });
+
+  it("doesn't queue again when a matched room closes for another reason", () => {
+    const { client, online } = setup();
+    const socket = online();
+    queued(socket, client);
+    socket.receive({ case: "matched", value: { code: "MATCHED" } });
+    socket.receive({ case: "joined", value: { seq: socket.last().seq, code: "MATCHED" } });
+    const sent = socket.sent.length;
+
+    socket.receive({ case: "closed", value: { reason: CloseReason.REQUESTED } });
+
+    expect(socket.sent).toHaveLength(sent);
+    expect(client.status).toBe("connected");
+  });
+
+  it("queues again after a lost connection, since the server forgot its place", () => {
+    const { client, latest, online } = setup();
+    queued(online(), client, { mode: "casual" });
+
+    latest().drop();
+    vi.advanceTimersByTime(100);
+    latest().onopen?.();
+    latest().welcome();
+
+    expect(latest().last().body).toMatchObject({ case: "queue", value: { properties: { mode: "casual" } } });
+  });
+
+  it("stops asking when the server refuses the queue", () => {
+    const { client, latest, online } = setup();
+    const socket = online();
+    client.queue();
+    socket.receive({
+      case: "error",
+      value: { seq: socket.last().seq, code: ErrorCode.REJECTED, message: "this server doesn't match players" },
+    });
+
+    latest().drop();
+    vi.advanceTimersByTime(100);
+    latest().onopen?.();
+    latest().welcome();
+
+    expect(latest().last().body).toMatchObject({ case: "hello" });
+  });
+
+  it("leaves the queue", () => {
+    const { client, online } = setup();
+    const socket = online();
+    queued(socket, client);
+
+    client.leaveQueue();
+
+    expect(socket.last().body).toMatchObject({ case: "leaveQueue" });
+    expect(client.status).toBe("connected");
+  });
+
+  it("refuses to queue from a room", () => {
+    const { client, inRoom } = setup();
+    inRoom();
+
+    expect(() => client.queue()).toThrow("already in a room");
+  });
+});
+
 describe("messages and views", () => {
   it("doesn't send before joining, and doesn't queue", () => {
     const { client, online } = setup();

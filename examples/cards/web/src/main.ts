@@ -21,6 +21,7 @@ const statusText: Record<ClientStatus, string> = {
     disconnected: "Connection lost. Reconnecting…",
     connecting: "Connecting…",
     connected: "",
+    queued: "Looking for another player…",
     joined: "",
     replaced: "You opened this game somewhere else, so it stopped here.",
     closed: "Disconnected.",
@@ -42,6 +43,8 @@ const ui = {
     reload: element<HTMLButtonElement>("reload"),
     lobby: element("lobby"),
     newGame: element<HTMLButtonElement>("new-game"),
+    findGame: element<HTMLButtonElement>("find-game"),
+    stopLooking: element<HTMLButtonElement>("stop-looking"),
     joinForm: element<HTMLFormElement>("join-form"),
     code: element<HTMLInputElement>("code"),
     game: element("game"),
@@ -83,6 +86,10 @@ const client = new PlayholdClient({
         ui.status.textContent = statusText[status];
         ui.reclaim.hidden = status !== "replaced";
         ui.reload.hidden = status !== "updateRequired";
+        // While looking for a game, the only thing to do is stop looking.
+        ui.stopLooking.hidden = status !== "queued";
+        ui.newGame.disabled = status === "queued";
+        ui.findGame.disabled = status === "queued";
         if (status !== "joined") {
             timerFrozen = true; // the server's count may be paused, so don't guess: the next state unfreezes it
         }
@@ -220,6 +227,11 @@ function render(): void {
 }
 
 ui.newGame.addEventListener("click", createRoom);
+ui.findGame.addEventListener("click", () => {
+    ui.message.textContent = "";
+    client.queue(); // once matched, the client joins the room, and onJoined shows its code
+});
+ui.stopLooking.addEventListener("click", () => client.leaveQueue());
 ui.joinForm.addEventListener("submit", (event) => {
     event.preventDefault();
     join(ui.code.value.trim());

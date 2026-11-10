@@ -87,3 +87,13 @@ saved. playhold will cover this later, with writes saved together with the room.
 
 A player leaves the queue by joining a room, by sending `LeaveQueue`, or by losing their connection. The queue lives in
 the server's memory, so a restart empties it, and a client has to queue again when it reconnects.
+
+### In the SDKs
+
+The TypeScript client's `queue(properties)` asks for a match, and its status becomes `queued` once the server
+accepts. When it's matched, it joins the room by itself, and `onJoined` reports the code. It queues again by itself,
+with the same properties, after a lost connection and when its room closes as `MATCH_INCOMPLETE`. `leaveQueue` stops
+looking.
+
+The Go client's `Queue` asks for a match, `Matched` waits for one and returns the code, and the caller joins it with
+`Join`. It does nothing by itself, so after a lost connection or `MATCH_INCOMPLETE`, the caller queues again.

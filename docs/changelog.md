@@ -59,7 +59,8 @@ like any other; a client built before them sees an unknown code. See [Errors and
 - `RoomConfig.OnJoinAttempt`, for the game to decide who takes a seat, and the SDKs' `createRoom`.
 - Matchmaking, with `ServerConfig.Matchmaking`: a queue, the game's matcher, and a new room for each group, with its
   seats kept for the players for a while. New frames `Queue`, `LeaveQueue`, `Queued` and `Matched`, and the Go SDK's
-  `Queue`, `Matched` and `LeaveQueue`.
+  `Queue`, `Matched` and `LeaveQueue`. The TypeScript SDK's `queue` and `leaveQueue`, with a `queued` status, which
+  join the matched room by themselves and queue again after a lost connection or `MATCH_INCOMPLETE`.
 - TLS: automatic certificates from Let's Encrypt, certificate files, or a trusted proxy that ends TLS, with
   `ListenAndServe`.
 - Layered rate limits, with a module's own limits on its messages.

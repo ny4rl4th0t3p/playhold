@@ -42,16 +42,22 @@ it uses another address.
 - In a client, create rooms with the SDKs' `createRoom`, and share the code it reports.
 - A game that picks its own codes sets `ServerConfig.AllowClientCodes`. See [Find a game](./guides/finding-a-game.md).
 
-**`store.Store` has three new methods**, `SaveIncident`, `LoadIncidents` and `DeleteIncidents`, for the breaker.
+**Guests expire.** A guest who hasn't connected for 90 days is deleted, and coming back, starts again as a new guest.
+
+- Change the period with `GuestExpiry`, or keep every guest with `GuestExpiry: playhold.Timeout{Off: true}`. See
+  [What playhold keeps about players](./guides/privacy.md).
+
+**`store.Store` has five new methods**: `SaveIncident`, `LoadIncidents` and `DeleteIncidents` for the breaker, and
+`TouchGuest` and `DeleteGuestsUnseenSince` for guest expiry. `SaveGuest` also records that the guest was seen.
 
 - A store implemented outside playhold must add them. The memory and PostgreSQL stores have them; the PostgreSQL store
-  adds an `incidents` table when it starts.
+  adds an `incidents` table and a `last_seen` column on `guests` when it starts.
 
 ### New responses for clients
 
 New error codes `RATE_LIMITED`, `TURNED_OFF` and `ROOM_NOT_FOUND`, and new close reasons, `INACTIVE` and
-`MATCH_INCOMPLETE`. The SDKs pass them to the game
-like any other; a client built before them sees an unknown code. See [Errors and close reasons](./reference/errors.md).
+`MATCH_INCOMPLETE`. The SDKs pass them to the game like any other; a client built before them sees an unknown code.
+See [Errors and close reasons](./reference/errors.md).
 
 ### Added
 
@@ -73,6 +79,7 @@ like any other; a client built before them sees an unknown code. See [Errors and
 - Prometheus metrics, on a listener of their own at `127.0.0.1:9464` by default.
 - OpenTelemetry traces of turns, store calls and the restore, with `ServerConfig.TracerProvider`.
 - Logs name the player on a connection once it has said Hello, and the turn a stuck or panicking room was running.
+- Guest expiry, and a page on what playhold keeps about players, where and for how long.
   `ServerConfig.HidePlayerIDs` leaves player IDs out of logs and traces.
 - This documentation site.
 - The sample: profiles of the server during a `t12.sh` run.

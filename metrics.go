@@ -112,6 +112,7 @@ type metrics struct {
 	slowTurns        prometheus.Counter
 	incidents        *prometheus.CounterVec
 	matches          prometheus.Counter
+	guestsDeleted    prometheus.Counter
 }
 
 func newMetrics(typ *RoomType) *metrics {
@@ -164,6 +165,7 @@ func newMetrics(typ *RoomType) *metrics {
 	m.incidents = m.counterVec("incidents_total",
 		"Turns that hurt the whole server, by kind: crashed with the process, or stuck and still running.", "kind")
 	m.matches = m.counter("matches_total", "Groups the matchmaker formed, each given a new room.")
+	m.guestsDeleted = m.counter("guests_expired_total", "Guests deleted for not being seen for longer than GuestExpiry.")
 	return m
 }
 
@@ -269,6 +271,12 @@ func (m *metrics) refused(what string) {
 func (m *metrics) slowTurn() {
 	if m != nil {
 		m.slowTurns.Inc()
+	}
+}
+
+func (m *metrics) guestsExpired(n int) {
+	if m != nil {
+		m.guestsDeleted.Add(float64(n))
 	}
 }
 

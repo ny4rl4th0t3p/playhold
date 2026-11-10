@@ -43,10 +43,14 @@ type Store interface {
 	// Ping reports whether the store can be reached.
 	Ping(ctx context.Context) error
 
-	// SaveGuest records a guest's secret hash, replacing any earlier one.
+	// SaveGuest records a guest's secret hash, replacing any earlier one, and that the guest was seen now.
 	SaveGuest(ctx context.Context, player string, secretHash []byte) error
 	// GuestSecretHash returns a guest's secret hash, or ErrNotFound.
 	GuestSecretHash(ctx context.Context, player string) ([]byte, error)
+	// TouchGuest records that a guest was seen at the given time. An unknown guest is fine, and changes nothing.
+	TouchGuest(ctx context.Context, player string, at time.Time) error
+	// DeleteGuestsUnseenSince deletes the guests last seen before the given time, and returns how many it deleted.
+	DeleteGuestsUnseenSince(ctx context.Context, before time.Time) (int, error)
 
 	// WriteRooms saves these rooms, replacing their earlier records, and deletes the others, all or nothing.
 	WriteRooms(ctx context.Context, saves []RoomRecord, deletes []string) error

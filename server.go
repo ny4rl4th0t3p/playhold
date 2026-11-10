@@ -26,6 +26,9 @@ const (
 	defaultMaxRooms         = 10_000
 	defaultDisconnectGrace  = time.Minute
 	defaultInactiveRoom     = 30 * time.Minute
+	defaultGuestExpiry      = 90 * 24 * time.Hour
+	guestExpiryEvery        = time.Hour
+	guestExpiryTimeout      = time.Minute // deleting many guests at once can take a while
 	restoreTimeout          = time.Minute
 	closeTimeout            = 10 * time.Second
 	readyTimeout            = 2 * time.Second
@@ -126,6 +129,11 @@ type ServerConfig struct {
 	MemoryLimit int64
 	// Logger receives server logs. Nil uses the runtime's logger.
 	Logger *slog.Logger
+	// GuestExpiry deletes a guest once they haven't been seen for this long: a returning guest is seen each time their
+	// Hello is accepted, and a new one when they're created. The server checks every hour. A guest who comes back after
+	// expiring is told their identity is unknown, and the SDKs start them again as a new guest. The default is 90 days.
+	// Off keeps every guest, and the server logs a warning.
+	GuestExpiry Timeout
 	// HidePlayerIDs leaves players' IDs out of the server's logs and traces, for a game that would rather not record them.
 	// A log line about a player's connection or turn then can't be traced back to that player. The crash journal, when on,
 	// still records each turn's player, since reproducing a crash is what it's for. The server logs it at startup.
@@ -221,6 +229,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	rt.watchStuck(func(room *Room) { go stuck.follow(background, room) })
 	go stuck.run(background)
 	go g.lobby.matchmaker.run(background) // returns at once without matchmaking
+	startGuestExpiry(background, cfg.GuestExpiry, g.guests, m, logger)
 	server := &Server{
 		writer:         writer,
 		rt:             rt,
@@ -250,6 +259,37 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	}
 	server.watchGauges(g.guests)
 	return server, nil
+}
+
+// startGuestExpiry deletes guests unseen for longer than the expiry, at once and then every hour, until ctx ends, unless
+// it's off.
+func startGuestExpiry(ctx context.Context, cfg Timeout, g *guests, m *metrics, logger *slog.Logger) {
+	expiry := cfg.orDefault(defaultGuestExpiry)
+	if expiry.Off {
+		logger.Warn("guests never expire; set GuestExpiry, or delete old ones yourself, to keep no more than you need")
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(guestExpiryEvery)
+		defer ticker.Stop()
+		for {
+			expireCtx, cancel := context.WithTimeout(ctx, guestExpiryTimeout)
+			deleted, err := g.expire(expireCtx, expiry.After)
+			cancel()
+			switch {
+			case err != nil && ctx.Err() == nil:
+				logger.Error("deleting guests unseen for too long failed; trying again in an hour", "error", err)
+			case deleted > 0:
+				logger.Info("deleted guests unseen for too long", "guests", deleted, "unseen_for", expiry.After)
+				m.guestsExpired(deleted)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 }
 
 // newRateLimits reads the rate limit layers, with a warning for each one turned off. It returns what the transport asks

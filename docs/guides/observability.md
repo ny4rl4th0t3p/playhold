@@ -24,14 +24,15 @@ and `process_resident_memory_bytes`.
 
 ### What's running
 
-| Metric                       | Type    | What it shows                                          |
-|------------------------------|---------|--------------------------------------------------------|
-| `playhold_rooms`             | Gauge   | Rooms running, counting finished ones until they close |
-| `playhold_connections`       | Gauge   | Open connections                                       |
-| `playhold_players_connected` | Gauge   | Players with a connection                              |
-| `playhold_queue_fill`        | Gauge   | The share of all rooms' inbound queues in use          |
-| `playhold_players_waiting`   | Gauge   | Players in the matchmaking queue                       |
-| `playhold_matches_total`     | Counter | Groups the matchmaker formed, each given a new room    |
+| Metric                          | Type    | What it shows                                             |
+|---------------------------------|---------|-----------------------------------------------------------|
+| `playhold_rooms`                | Gauge   | Rooms running, counting finished ones until they close    |
+| `playhold_connections`          | Gauge   | Open connections                                          |
+| `playhold_players_connected`    | Gauge   | Players with a connection                                 |
+| `playhold_queue_fill`           | Gauge   | The share of all rooms' inbound queues in use             |
+| `playhold_players_waiting`      | Gauge   | Players in the matchmaking queue                          |
+| `playhold_matches_total`        | Counter | Groups the matchmaker formed, each given a new room       |
+| `playhold_guests_expired_total` | Counter | Guests deleted for being unseen longer than `GuestExpiry` |
 
 ### Messages and turns
 

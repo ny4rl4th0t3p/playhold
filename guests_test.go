@@ -35,6 +35,12 @@ func (downStore) LoadRooms(_ context.Context) ([]store.RoomRecord, error) {
 	return nil, nil
 }
 
+func (downStore) TouchGuest(_ context.Context, _ string, _ time.Time) error { return errStoreDown }
+
+func (downStore) DeleteGuestsUnseenSince(_ context.Context, _ time.Time) (int, error) {
+	return 0, errStoreDown
+}
+
 func (downStore) SaveIncident(_ context.Context, _ *store.Incident) error { return errStoreDown }
 
 func (downStore) LoadIncidents(_ context.Context) ([]store.Incident, error) { return nil, nil }

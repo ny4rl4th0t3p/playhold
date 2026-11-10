@@ -129,6 +129,12 @@ func (s *session) hello(seq uint64, hello *wire.Hello) {
 			s.conn.SendError(seq, wire.ErrorCode_ERROR_CODE_UNAUTHORIZED, "unknown player or wrong secret")
 			return
 		}
+		if err == nil {
+			// Seen now, so they don't expire. Not worth turning the player away over: they'd only expire a little early.
+			if touchErr := guests.touch(ctx, player); touchErr != nil {
+				s.gateway.logger.Warn("recording when a guest was seen failed", "player", string(player), "error", touchErr)
+			}
+		}
 	}
 	if err != nil {
 		s.gateway.logger.Error("guest store failed", "error", err)

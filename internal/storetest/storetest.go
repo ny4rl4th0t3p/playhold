@@ -26,6 +26,8 @@ func Run(t *testing.T, newStore func(t *testing.T) store.Store) {
 		{name: "saving again replaces", test: savingAgainReplaces},
 		{name: "guests are separate", test: guestsAreSeparate},
 		{name: "changing a returned hash changes nothing", test: returnedHashIsACopy},
+		{name: "guests unseen for a while are deleted", test: unseenGuestsAreDeleted},
+		{name: "touching an unknown guest changes nothing", test: touchingAnUnknownGuest},
 		{name: "no rooms", test: noRooms},
 		{name: "saved rooms", test: savedRooms},
 		{name: "saving a room again replaces it", test: savingARoomAgainReplaces},
@@ -183,6 +185,32 @@ func deletingIncidents(t *testing.T, s store.Store) {
 	got, err := s.LoadIncidents(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []store.Incident{kept}, got, "the one at the cutoff is kept")
+}
+
+func unseenGuestsAreDeleted(t *testing.T, s store.Store) {
+	for _, player := range []string{"alice", "bob", "carol"} {
+		require.NoError(t, s.SaveGuest(t.Context(), player, []byte("hash"))) // seen now
+	}
+	require.NoError(t, s.TouchGuest(t.Context(), "alice", early)) // last seen long ago
+	require.NoError(t, s.TouchGuest(t.Context(), "carol", middle))
+
+	deleted, err := s.DeleteGuestsUnseenSince(t.Context(), middle)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, deleted)
+	_, err = s.GuestSecretHash(t.Context(), "alice")
+	require.ErrorIs(t, err, store.ErrNotFound)
+	for _, kept := range []string{"bob", "carol"} {
+		_, err := s.GuestSecretHash(t.Context(), kept)
+		require.NoError(t, err, "%s was seen at or after the cutoff", kept)
+	}
+}
+
+func touchingAnUnknownGuest(t *testing.T, s store.Store) {
+	require.NoError(t, s.TouchGuest(t.Context(), "nobody", early))
+
+	_, err := s.GuestSecretHash(t.Context(), "nobody")
+	require.ErrorIs(t, err, store.ErrNotFound, "touching doesn't create a guest")
 }
 
 func unknownGuest(t *testing.T, s store.Store) {

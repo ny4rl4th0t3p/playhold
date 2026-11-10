@@ -13,16 +13,21 @@ import (
 // Store keeps everything in memory.
 type Store struct {
 	mu        sync.Mutex
-	guests    map[string][]byte
+	guests    map[string]guest
 	rooms     map[string]store.RoomRecord
 	incidents []store.Incident
+}
+
+type guest struct {
+	secretHash []byte
+	lastSeen   time.Time
 }
 
 var _ store.Store = (*Store)(nil)
 
 // New returns an empty Store.
 func New() *Store {
-	return &Store{guests: make(map[string][]byte), rooms: make(map[string]store.RoomRecord)}
+	return &Store{guests: make(map[string]guest), rooms: make(map[string]store.RoomRecord)}
 }
 
 // Ping implements store.Store.
@@ -86,7 +91,7 @@ func (s *Store) DeleteIncidents(_ context.Context, keepBuild string, before time
 func (s *Store) SaveGuest(_ context.Context, player string, secretHash []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.guests[player] = slices.Clone(secretHash)
+	s.guests[player] = guest{secretHash: slices.Clone(secretHash), lastSeen: time.Now()}
 	return nil
 }
 
@@ -94,9 +99,34 @@ func (s *Store) SaveGuest(_ context.Context, player string, secretHash []byte) e
 func (s *Store) GuestSecretHash(_ context.Context, player string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	hash, ok := s.guests[player]
+	g, ok := s.guests[player]
 	if !ok {
 		return nil, store.ErrNotFound
 	}
-	return slices.Clone(hash), nil
+	return slices.Clone(g.secretHash), nil
+}
+
+// TouchGuest implements store.Store.
+func (s *Store) TouchGuest(_ context.Context, player string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if g, ok := s.guests[player]; ok {
+		g.lastSeen = at
+		s.guests[player] = g
+	}
+	return nil
+}
+
+// DeleteGuestsUnseenSince implements store.Store.
+func (s *Store) DeleteGuestsUnseenSince(_ context.Context, before time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	deleted := 0
+	for player, g := range s.guests {
+		if g.lastSeen.Before(before) {
+			delete(s.guests, player)
+			deleted++
+		}
+	}
+	return deleted, nil
 }

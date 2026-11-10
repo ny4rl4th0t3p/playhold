@@ -63,8 +63,8 @@ func (s *Store) Ping(ctx context.Context) error {
 // SaveGuest implements store.Store.
 func (s *Store) SaveGuest(ctx context.Context, player string, secretHash []byte) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO guests (player_id, secret_hash) VALUES ($1, $2)
-		ON CONFLICT (player_id) DO UPDATE SET secret_hash = excluded.secret_hash`,
+		INSERT INTO guests (player_id, secret_hash, last_seen) VALUES ($1, $2, now())
+		ON CONFLICT (player_id) DO UPDATE SET secret_hash = excluded.secret_hash, last_seen = excluded.last_seen`,
 		player, secretHash)
 	if err != nil {
 		return fmt.Errorf("postgres: saving guest: %w", err)
@@ -83,6 +83,23 @@ func (s *Store) GuestSecretHash(ctx context.Context, player string) ([]byte, err
 		return nil, fmt.Errorf("postgres: reading guest: %w", err)
 	}
 	return hash, nil
+}
+
+// TouchGuest implements store.Store.
+func (s *Store) TouchGuest(ctx context.Context, player string, at time.Time) error {
+	if _, err := s.pool.Exec(ctx, `UPDATE guests SET last_seen = $2 WHERE player_id = $1`, player, at); err != nil {
+		return fmt.Errorf("postgres: touching guest: %w", err)
+	}
+	return nil
+}
+
+// DeleteGuestsUnseenSince implements store.Store.
+func (s *Store) DeleteGuestsUnseenSince(ctx context.Context, before time.Time) (int, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM guests WHERE last_seen < $1`, before)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: deleting unseen guests: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // WriteRooms implements store.Store.

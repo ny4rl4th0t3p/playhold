@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
 	"github.com/ny4rl4th0t3p/playhold/store"
@@ -44,6 +45,16 @@ func (g *guests) verify(ctx context.Context, player PlayerID, secret string) (bo
 		return false, err
 	}
 	return subtle.ConstantTimeCompare(hashSecret(secret), want) == 1, nil
+}
+
+// touch records that a returning guest was just seen, so they don't expire while they keep playing.
+func (g *guests) touch(ctx context.Context, player PlayerID) error {
+	return g.records.TouchGuest(ctx, string(player), time.Now())
+}
+
+// expire deletes the guests unseen for longer than after, and returns how many.
+func (g *guests) expire(ctx context.Context, after time.Duration) (int, error) {
+	return g.records.DeleteGuestsUnseenSince(ctx, time.Now().Add(-after))
 }
 
 func hashSecret(secret string) []byte {

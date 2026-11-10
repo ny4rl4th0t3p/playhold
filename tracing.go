@@ -119,6 +119,19 @@ func (s tracedStore) GuestSecretHash(ctx context.Context, player string) ([]byte
 	return hash, endStoreSpan(span, err)
 }
 
+// TouchGuest implements store.Store.
+func (s tracedStore) TouchGuest(ctx context.Context, player string, at time.Time) error {
+	ctx, span := s.start(ctx, "TouchGuest")
+	return endStoreSpan(span, s.Store.TouchGuest(ctx, player, at))
+}
+
+// DeleteGuestsUnseenSince implements store.Store.
+func (s tracedStore) DeleteGuestsUnseenSince(ctx context.Context, before time.Time) (int, error) {
+	ctx, span := s.start(ctx, "DeleteGuestsUnseenSince")
+	deleted, err := s.Store.DeleteGuestsUnseenSince(ctx, before)
+	return deleted, endStoreSpan(span, err)
+}
+
 // WriteRooms implements store.Store.
 func (s tracedStore) WriteRooms(ctx context.Context, saves []store.RoomRecord, deletes []string) error {
 	ctx, span := s.start(ctx, "WriteRooms", attrRooms.Int(len(saves)), attrDeletes.Int(len(deletes)))

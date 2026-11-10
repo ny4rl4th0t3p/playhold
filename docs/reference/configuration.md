@@ -31,6 +31,14 @@ See [Timeouts](../guides/keeping-games-running.md#timeouts) and [Find a game](..
 | `InactiveRoomTimeout` | 30 minutes | Closes a room, and deletes its save, once no player has sent anything for this long |
 | `DisconnectGrace`     | 1 minute   | How long a seated player has to come back before the game gets `PlayerDisconnected` |
 
+### Players
+
+See [What playhold keeps about players](../guides/privacy.md).
+
+| Field         | Default | What it does                                                                |
+|---------------|---------|-----------------------------------------------------------------------------|
+| `GuestExpiry` | 90 days | Deletes a guest unseen for this long, checked hourly; `Off` keeps every one |
+
 ### Security
 
 See [Run in production](../guides/production.md).
@@ -151,12 +159,12 @@ and can't be off.
 
 See [Matchmaking](../guides/finding-a-game.md#matchmaking).
 
-| Field        | Default                                          | What it does                                                    |
-|--------------|--------------------------------------------------|-----------------------------------------------------------------|
-| `Matcher`    | Groups of `MaxPlayers`, in the order they queued | Forms groups from the players waiting                           |
-| `Describe`   | Nil, `Info` stays nil                            | Returns what the game knows about a player, when they queue     |
-| `Every`      | 1 s                                              | How often the matcher runs; nothing else starts it              |
-| `ReserveFor` | 30 s                                             | How long a matched group's seats wait for its players           |
+| Field        | Default                                          | What it does                                                |
+|--------------|--------------------------------------------------|-------------------------------------------------------------|
+| `Matcher`    | Groups of `MaxPlayers`, in the order they queued | Forms groups from the players waiting                       |
+| `Describe`   | Nil, `Info` stays nil                            | Returns what the game knows about a player, when they queue |
+| `Every`      | 1 s                                              | How often the matcher runs; nothing else starts it          |
+| `ReserveFor` | 30 s                                             | How long a matched group's seats wait for its players       |
 
 ### JournalConfig
 

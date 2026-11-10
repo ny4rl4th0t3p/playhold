@@ -27,8 +27,7 @@ Any other error, such as `REJECTED`, `RATE_LIMITED` in a room, or `TURNED_OFF`, 
 wasn't handled, and the game decides what to tell the player.
 
 The Go SDK returns a server's error as an `*Error`, with its code, from `Join`, `Queue`, `Matched` or `Next`, and a
-closed room as
-`ErrRoomClosed`. What to do next is left to the caller.
+closed room as `ErrRoomClosed`. What to do next is left to the caller.
 
 ## Close reasons
 

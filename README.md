@@ -21,7 +21,8 @@ that, each release adds support for another kind of game.
 - **Matches that survive deploys:** rooms are saved and restored, a new version can migrate their saved state, players
   reconnect by themselves, and a client too old for the server is told to update.
 - **Reproducible games:** a room's random numbers and clock can be set, so the same moves give the same game, and
-  `playholdvet` flags game code that would break that, such as reading the real clock.
+  `playholdvet` flags game code that would break that, such as reading the real clock. A recorded game replays turn by
+  turn in a test, which says where it stops matching.
 - **A server that protects itself:** safe settings by default, rate limits, no new games while it's overloaded, rooms
   stuck in a turn cut off, and a message that keeps crashing it turned off for a while, with a crash journal to find
   out why.
@@ -36,8 +37,8 @@ that, each release adds support for another kind of game.
 - [x] Go SDK for bots and load tests
 - [x] Persistence and safe deploys
 - [x] Security and abuse protection (bans come with accounts)
-- [ ] Matchmaking, private rooms and bots
-- [ ] Match replay and test tools
+- [x] Matchmaking and private rooms (invites by name come with accounts)
+- [x] Match replay and test tools
 
 **More kinds of games**
 
@@ -59,6 +60,7 @@ that, each release adds support for another kind of game.
 - Root: the Go server library, imported as `github.com/ny4rl4th0t3p/playhold`
 - `sdk/`: libraries a game's client uses to talk to the server, one folder per language
 - `store/`: what a server keeps across restarts, with memory and PostgreSQL versions
+- `playholdtest/`: runs a game's rooms in Go tests, without a server
 - `proto/`: the wire format they share
 - `examples/cards/`: a sample game, Crazy Eights, with a browser page
 

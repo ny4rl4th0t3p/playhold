@@ -54,7 +54,14 @@ Finished recordings stay until one of two limits deletes them; recordings in pro
   every hour and as soon as the recordings pass the limit. A negative `MaxSize` means no limit, and the server logs a
   warning.
 
-Each cleanup that deletes something logs how long it took, the files it looked at, and what it deleted.
+A cleanup works through the files 500 at a time, with a 10 ms pause after each batch, and keeps in memory only the
+recordings it may delete, so rooms on a small server barely notice it, even over a full folder: recording the sample
+card game with cleanups every 25 seconds, the moves' latency stayed as it was with none. See
+[Measurements](../measurements.md). Each cleanup that deletes something logs how long it took, the files it looked at,
+and what it deleted.
+
+`MaxSize` counts the recordings' bytes. On disk, each file takes whole blocks, so small recordings take more space
+than that: recording the sample card game, about 88 MiB of disk for 60 MB of recordings.
 
 ## A recording is whole, or gone
 

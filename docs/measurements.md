@@ -31,7 +31,11 @@ The same load, with every game recorded:
 | 99% of the moves answered within | About 7 ms, from about 3.5 ms | About 10 ms, from about 9 ms  |
 | Recordings written               | About 23 MB a minute          | About 23 MB a minute          |
 
-That's about 6 KB for each game. At this load, the default retention of 30 days would keep about 1 TB of recordings.
+That's about 6 KB for each game. At this load, the default retention of 30 days would keep about 1 TB of recordings;
+the default `MaxSize` keeps them to 10 GiB.
+
+With `MaxSize` lowered to 64 MiB, so that a cleanup ran about every 25 seconds over about 15,000 files, each cleanup
+took about half a second, and the moves' latency stayed as it was with no cleanup at all.
 
 To run the same measurement, see `t12.sh` in the
 [sample game](https://github.com/ny4rl4th0t3p/playhold/tree/main/examples/cards#measure-what-saving-costs), with

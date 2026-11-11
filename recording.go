@@ -1,12 +1,14 @@
 package playhold
 
 import (
+	"container/heap"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -447,7 +449,7 @@ func (w *recordingWriter) startCleanup(ctx context.Context, roomType string, kee
 			"set RecordingConfig.MaxSize")
 	}
 	go func() {
-		finished, err := finishLeftovers(w.dir, roomType, keep, w.started)
+		finished, err := finishLeftovers(w.dir, roomType, keep, w.started, writerPace)
 		switch {
 		case err != nil:
 			w.logger.Error("finishing the recordings the last process left failed", "error", err)
@@ -477,8 +479,11 @@ func (w *recordingWriter) cleanOnce(retention Timeout) {
 	if !retention.Off {
 		before = time.Now().Add(-retention.After)
 	}
+	w.mu.Lock()
+	count := w.size
+	w.mu.Unlock()
 	started := time.Now()
-	result, err := cleanRecordings(w.dir, before, w.maxSize)
+	result, err := cleanRecordings(w.dir, before, w.maxSize, count, writerPace)
 	if err != nil {
 		w.logger.Error("deleting recordings failed; trying again within an hour", "error", err)
 	}
@@ -486,23 +491,29 @@ func (w *recordingWriter) cleanOnce(retention Timeout) {
 		w.logger.Info("deleted recordings", "took", time.Since(started), "files_looked_at", result.files,
 			"recordings", result.deleted, "bytes", result.freed, "bytes_left", result.size)
 	}
-	w.cleaned(result.size)
+	w.cleaned(result)
 }
 
-// cleaned takes a cleanup pass's count of what's left. If that's still over maxSize, only recordings in progress are
-// left, and no room is recorded until a pass finds them under it again.
-func (w *recordingWriter) cleaned(size int64) {
+// cleaned takes a cleanup pass's count of what's left. If that's still over maxSize with finished recordings left, the
+// pass started from a count that was too low, such as the first one after a start, so another pass, with this count,
+// frees the rest. If only recordings in progress are left, no room is recorded until a pass finds them under it again.
+func (w *recordingWriter) cleaned(result cleanupResult) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.size = size
+	w.size = result.size
+	over := w.maxSize >= 0 && result.size > w.maxSize
+	if over && result.finishedLeft > 0 {
+		w.signalCleanup()
+		return
+	}
 	wasFull := w.full
-	w.full = w.maxSize >= 0 && size > w.maxSize
+	w.full = over
 	switch {
 	case w.full && !wasFull:
 		w.logger.Warn("the recordings in progress alone are over RecordingConfig.MaxSize, so they're abandoned, and no "+
-			"room is recorded until the recordings fit again", "bytes", size, "max_size", w.maxSize)
+			"room is recorded until the recordings fit again", "bytes", result.size, "max_size", w.maxSize)
 	case wasFull && !w.full:
-		w.logger.Info("the recordings fit in RecordingConfig.MaxSize again; new rooms are recorded", "bytes", size)
+		w.logger.Info("the recordings fit in RecordingConfig.MaxSize again; new rooms are recorded", "bytes", result.size)
 	}
 }
 
@@ -531,12 +542,30 @@ func kindOfRecordingFile(name string) recordingFileKind {
 	return notARecording
 }
 
+// A cleanup pass works in batches, with a pause after each, so it never holds the server's CPU for long: a pass over a
+// full folder can take a minute, but rooms barely notice it.
+const (
+	recordingCleanupBatch = 500                   // files read, or deleted, between two pauses
+	recordingCleanupPause = 10 * time.Millisecond // about twice the work of a batch, measured on a small server
+)
+
+// cleanupPace is how a cleanup pass paces itself: the writer's is recordingCleanupBatch and recordingCleanupPause, and
+// tests pass smaller batches.
+type cleanupPace struct {
+	batch int
+	pause time.Duration
+}
+
+// writerPace is the pace of a server's cleanup passes.
+var writerPace = cleanupPace{batch: recordingCleanupBatch, pause: recordingCleanupPause}
+
 // cleanupResult is what a cleanup pass found and did.
 type cleanupResult struct {
-	size    int64 // bytes of recordings left, finished and in progress
-	files   int   // recording files and markers looked at
-	deleted int
-	freed   int64
+	size         int64 // bytes of recordings left, finished and in progress
+	files        int   // recording files and markers looked at
+	deleted      int
+	freed        int64
+	finishedLeft int // finished recordings still there
 }
 
 // finishedRecording is a finished recording a cleanup pass may delete.
@@ -544,125 +573,192 @@ type finishedRecording struct {
 	path    string
 	size    int64
 	written time.Time
-	problem bool
+}
+
+// oldestRecordings keeps, of the finished recordings offered, the oldest that add up to need bytes, so a pass holds only
+// what it may delete, not a whole folder. It's a heap with the newest kept first, dropped as soon as the others cover
+// need.
+type oldestRecordings struct {
+	files []finishedRecording
+	bytes int64
+	need  int64
+}
+
+func (h *oldestRecordings) Len() int           { return len(h.files) }
+func (h *oldestRecordings) Less(i, j int) bool { return h.files[i].written.After(h.files[j].written) }
+func (h *oldestRecordings) Swap(i, j int)      { h.files[i], h.files[j] = h.files[j], h.files[i] }
+func (h *oldestRecordings) Push(x any) {
+	f, _ := x.(finishedRecording) // only offer pushes, always one
+	h.files = append(h.files, f)
+}
+
+func (h *oldestRecordings) Pop() any {
+	last := h.files[len(h.files)-1]
+	h.files = h.files[:len(h.files)-1]
+	return last
+}
+
+// offer keeps the recording if it's among the oldest that cover need.
+func (h *oldestRecordings) offer(f finishedRecording) {
+	if h.need <= 0 {
+		return
+	}
+	heap.Push(h, f)
+	h.bytes += f.size
+	for h.bytes-h.files[0].size >= h.need {
+		newest, _ := heap.Pop(h).(finishedRecording) // always one
+		h.bytes -= newest.size
+	}
+}
+
+// oldestFirst returns the recordings kept, oldest first.
+func (h *oldestRecordings) oldestFirst() []finishedRecording {
+	slices.SortFunc(h.files, func(a, b finishedRecording) int { return a.written.Compare(b.written) })
+	return h.files
+}
+
+// cleanupPass is one pass over the room types' folders.
+type cleanupPass struct {
+	pace    cleanupPace
+	before  time.Time // finished recordings last written before this go; zero keeps them
+	done    *oldestRecordings
+	problem *oldestRecordings
+	markers []string
+	result  cleanupResult
+	errs    []error
 }
 
 // cleanRecordings is one cleanup pass over each room type's folder in dir. It deletes the finished recordings last
 // written before before, unless that's zero; then, while the recordings take more than maxSize bytes, the oldest
 // finished ones, until they take 90% of it, those of rooms with a problem last; and markers whose recording is gone. A
-// negative maxSize is no limit. Recordings in progress are never deleted, and anything that isn't a recording stays.
-func cleanRecordings(dir string, before time.Time, maxSize int64) (cleanupResult, error) {
-	found, err := listRecordings(dir)
-	if found == nil {
-		return cleanupResult{}, err
+// negative maxSize is no limit. count is the writer's count of the recordings' bytes, which says how much the pass may
+// have to free before it has walked them; the pass counts them again, and if count was too low it frees less than it
+// should, which cleaned then makes up for with another pass. Recordings in progress are never deleted, and anything
+// that isn't a recording stays.
+func cleanRecordings(dir string, before time.Time, maxSize, count int64, pace cleanupPace) (cleanupResult, error) {
+	var need int64
+	if maxSize >= 0 && count > maxSize {
+		need = count - maxSize/10*9
 	}
-	errs := []error{err}
-	result := cleanupResult{size: found.size, files: found.files}
-	remove := func(f *finishedRecording) {
-		if err := os.Remove(f.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			errs = append(errs, err)
-			return
-		}
-		result.size -= f.size
-		result.deleted++
-		result.freed += f.size
+	p := &cleanupPass{
+		pace: pace, before: before, done: &oldestRecordings{need: need}, problem: &oldestRecordings{need: need},
 	}
-	kept := found.finished[:0]
-	for i := range found.finished {
-		if !before.IsZero() && found.finished[i].written.Before(before) {
-			remove(&found.finished[i])
-			continue
-		}
-		kept = append(kept, found.finished[i])
-	}
-	if maxSize >= 0 && result.size > maxSize {
-		slices.SortFunc(kept, func(a, b finishedRecording) int {
-			if a.problem != b.problem {
-				if a.problem {
-					return 1 // problems last
-				}
-				return -1
-			}
-			return a.written.Compare(b.written)
-		})
-		target := maxSize / 10 * 9
-		for i := range kept {
-			if result.size <= target {
-				break
-			}
-			remove(&kept[i])
-		}
-	}
-	for _, marker := range found.markers {
-		if found.inProgress[strings.TrimSuffix(marker, recordingFlagExt)+recordingExt] {
-			continue
-		}
-		if err := os.Remove(marker); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			errs = append(errs, err)
-		}
-	}
-	return result, errors.Join(errs...)
-}
-
-// recordingListing is what a cleanup pass finds in the room types' folders.
-type recordingListing struct {
-	size       int64 // bytes of recordings, finished and in progress
-	files      int   // recording files and markers
-	finished   []finishedRecording
-	markers    []string
-	inProgress map[string]bool
-}
-
-// listRecordings walks each room type's folder in dir once. It returns nil if it can't read dir; a folder it can't read
-// is skipped, and returned as an error with what the others hold.
-func listRecordings(dir string) (*recordingListing, error) {
-	types, err := os.ReadDir(dir)
+	types, err := os.ReadDir(dir) // only the room types' folders
 	if err != nil {
-		return nil, err
+		return p.result, err
 	}
-	found := &recordingListing{inProgress: make(map[string]bool)}
-	var errs []error
 	for _, typ := range types {
-		if !typ.IsDir() {
-			continue
-		}
-		folder := filepath.Join(dir, typ.Name())
-		files, err := os.ReadDir(folder)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		for _, file := range files {
-			found.add(folder, file)
+		if typ.IsDir() {
+			p.errs = append(p.errs, eachFile(filepath.Join(dir, typ.Name()), pace, p.see))
 		}
 	}
-	return found, errors.Join(errs...)
+	p.deleteOldest(maxSize)
+	p.deleteOrphanMarkers()
+	return p.result, errors.Join(p.errs...)
 }
 
-// add counts one file of a room type's folder, if it's a recording or a marker.
-func (l *recordingListing) add(folder string, file fs.DirEntry) {
+// eachFile calls fn for each file in folder, reading it in batches, with a pause after each, so a folder of millions
+// of files neither holds the CPU nor fills the memory.
+func eachFile(folder string, pace cleanupPace, fn func(folder string, file fs.DirEntry)) error {
+	f, err := os.Open(filepath.Clean(folder))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }() // only read
+	for {
+		files, err := f.ReadDir(pace.batch)
+		for _, file := range files {
+			fn(folder, file)
+		}
+		switch {
+		case errors.Is(err, io.EOF):
+			return nil
+		case err != nil:
+			return err
+		}
+		time.Sleep(pace.pause)
+	}
+}
+
+// see counts one file of a room type's folder, if it's a recording or a marker. A finished recording past Retention is
+// deleted at once; one that may have to go for MaxSize is offered to the heaps.
+func (p *cleanupPass) see(folder string, file fs.DirEntry) {
 	kind := kindOfRecordingFile(file.Name())
 	if kind == notARecording || !file.Type().IsRegular() {
 		return
 	}
-	l.files++
+	p.result.files++
 	path := filepath.Join(folder, file.Name())
 	if kind == recordingMarker {
-		l.markers = append(l.markers, path)
+		p.markers = append(p.markers, path)
 		return
 	}
 	info, err := file.Info()
 	if err != nil {
 		return // gone already
 	}
-	l.size += info.Size()
-	if kind == recordingInProgress {
-		l.inProgress[path] = true
+	f := finishedRecording{path: path, size: info.Size(), written: info.ModTime()}
+	if kind != recordingInProgress && !p.before.IsZero() && f.written.Before(p.before) {
+		p.remove(&f)
 		return
 	}
-	l.finished = append(l.finished, finishedRecording{
-		path: path, size: info.Size(), written: info.ModTime(), problem: kind == recordingProblem,
-	})
+	p.result.size += f.size
+	switch kind {
+	case recordingDone:
+		p.result.finishedLeft++
+		p.done.offer(f)
+	case recordingProblem:
+		p.result.finishedLeft++
+		p.problem.offer(f)
+	case recordingInProgress, notARecording, recordingMarker:
+		// Counted above, and never deleted for MaxSize; the other two returned earlier.
+	}
+}
+
+// deleteOldest deletes the oldest finished recordings kept, those with a problem last, while the recordings are over
+// maxSize, down to 90% of it, in batches with a pause after each.
+func (p *cleanupPass) deleteOldest(maxSize int64) {
+	if maxSize < 0 || p.result.size <= maxSize {
+		return
+	}
+	target := maxSize / 10 * 9
+	for n, f := range slices.Concat(p.done.oldestFirst(), p.problem.oldestFirst()) {
+		if p.result.size <= target {
+			return
+		}
+		if p.remove(&f) {
+			p.result.size -= f.size
+			p.result.finishedLeft--
+		}
+		if (n+1)%p.pace.batch == 0 {
+			time.Sleep(p.pace.pause)
+		}
+	}
+}
+
+// remove deletes a finished recording, and reports whether it did, or it was gone already.
+func (p *cleanupPass) remove(f *finishedRecording) bool {
+	if err := os.Remove(f.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		p.errs = append(p.errs, err)
+		return false
+	}
+	p.result.deleted++
+	p.result.freed += f.size
+	return true
+}
+
+// deleteOrphanMarkers deletes the markers whose recording in progress is gone: finished between the walk and now, or
+// abandoned. There are only ever a few.
+func (p *cleanupPass) deleteOrphanMarkers() {
+	for _, marker := range p.markers {
+		_, err := os.Stat(strings.TrimSuffix(marker, recordingFlagExt) + recordingExt)
+		if !errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err := os.Remove(marker); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			p.errs = append(p.errs, err)
+		}
+	}
 }
 
 // finishLeftovers finishes the recordings in progress in roomType's folder that the last process left, written to
@@ -670,48 +766,51 @@ func (l *recordingListing) add(folder string, file fs.DirEntry) {
 // renamed by how it ended: done if its last segment closed normally, a problem if it has a marker, its room panicked or
 // got stuck, or the process died while it ran. A file that holds no recording can't be replayed, so it's deleted. It
 // returns how many it finished.
-func finishLeftovers(dir, roomType string, keep map[RoomID]bool, started time.Time) (int, error) {
-	folder := filepath.Join(dir, roomType)
-	files, err := os.ReadDir(folder)
-	if err != nil {
-		return 0, err
-	}
+func finishLeftovers(dir, roomType string, keep map[RoomID]bool, started time.Time, pace cleanupPace) (int, error) {
 	finished := 0
 	var errs []error
-	for _, file := range files {
+	err := eachFile(filepath.Join(dir, roomType), pace, func(folder string, file fs.DirEntry) {
 		name := file.Name()
 		if kindOfRecordingFile(name) != recordingInProgress || !file.Type().IsRegular() ||
 			keep[RoomID(strings.TrimSuffix(name, recordingExt))] {
-			continue
+			return
 		}
 		info, err := file.Info()
 		if err != nil || !info.ModTime().Before(started) {
-			continue // gone, or this process's
+			return // gone, or this process's
 		}
-		path := filepath.Join(folder, name)
-		segments, err := readRecordingFile(path)
-		switch {
-		case errors.Is(err, errNoRecording):
-			removeRecordings(map[string]bool{path: true})
-			continue
-		case err != nil:
+		renamed, err := finishLeftover(filepath.Join(folder, name))
+		if err != nil {
 			errs = append(errs, err)
-			continue
 		}
-		last := segments[len(segments)-1].close
-		if last == nil || CloseReason(last.GetReason()) == ClosePanic || CloseReason(last.GetReason()) == CloseStuck {
-			if err := makeMarker(path); err != nil {
-				errs = append(errs, err)
-				continue
-			}
+		if renamed {
+			finished++
 		}
-		if err := finishFile(path); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		finished++
+	})
+	return finished, errors.Join(append(errs, err)...)
+}
+
+// finishLeftover renames one recording the last process left, by how it ended, and reports whether it did. A file that
+// holds no recording is deleted instead.
+func finishLeftover(path string) (bool, error) {
+	segments, err := readRecordingFile(path)
+	switch {
+	case errors.Is(err, errNoRecording):
+		removeRecordings(map[string]bool{path: true})
+		return false, nil
+	case err != nil:
+		return false, err
 	}
-	return finished, errors.Join(errs...)
+	last := segments[len(segments)-1].close
+	if last == nil || CloseReason(last.GetReason()) == ClosePanic || CloseReason(last.GetReason()) == CloseStuck {
+		if err := makeMarker(path); err != nil {
+			return false, err
+		}
+	}
+	if err := finishFile(path); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // record notes the input of the turn running, to write once the turn ends. The callers check r.recorder first, so a room

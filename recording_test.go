@@ -433,7 +433,7 @@ func TestOverMaxSizeWithOnlyRoomsRunningNothingIsRecorded(t *testing.T) {
 		w.add(running, segmentRecord("running"))
 		flushed()
 
-		w.cleaned(2000) // a pass found only recordings in progress, over the limit
+		w.cleaned(cleanupResult{size: 2000}) // a pass found only recordings in progress, over the limit
 		w.add(running, turnRecord(1))
 		w.add(later, segmentRecord("later"))
 		flushed()
@@ -446,7 +446,7 @@ func TestOverMaxSizeWithOnlyRoomsRunningNothingIsRecorded(t *testing.T) {
 			t.Error("abandoning freed space, so the writer asks for a pass to count again")
 		}
 
-		w.cleaned(0)
+		w.cleaned(cleanupResult{})
 		w.add(later, segmentRecord("later"))
 		w.close()
 		assert.FileExists(t, later, "recorded again once the recordings fit")
@@ -485,6 +485,10 @@ func writeAged(t *testing.T, path string, size int, age time.Duration) {
 	require.NoError(t, os.Chtimes(path, at, at))
 }
 
+// smallPace makes cleanup passes work two files at a time, with no pause, so a test with a few files covers several
+// batches.
+var smallPace = cleanupPace{batch: 2}
+
 func TestACleanupDeletesTheOldestFinishedRecordingsProblemsLast(t *testing.T) {
 	dir := t.TempDir()
 	folder := filepath.Join(dir, "rec")
@@ -499,11 +503,12 @@ func TestACleanupDeletesTheOldestFinishedRecordingsProblemsLast(t *testing.T) {
 	writeAged(t, in("gone"+recordingFlagExt), 0, time.Hour)
 	writeAged(t, in("notes.txt"), 1000, 8*time.Hour)
 
-	result, err := cleanRecordings(dir, time.Time{}, 400) // 500 bytes of recordings; 90% of 400 is 360
+	result, err := cleanRecordings(dir, time.Time{}, 400, 500, smallPace) // 500 bytes of recordings; 90% of 400 is 360
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(300), result.size)
 	assert.Equal(t, 2, result.deleted)
+	assert.Equal(t, 2, result.finishedLeft)
 	assert.NoFileExists(t, in("oldest"+recordingDoneExt))
 	assert.NoFileExists(t, in("old"+recordingDoneExt))
 	assert.FileExists(t, in("new"+recordingDoneExt))
@@ -512,6 +517,56 @@ func TestACleanupDeletesTheOldestFinishedRecordingsProblemsLast(t *testing.T) {
 	assert.FileExists(t, in("running"+recordingFlagExt), "nor its marker")
 	assert.NoFileExists(t, in("gone"+recordingFlagExt), "a marker left alone goes")
 	assert.FileExists(t, in("notes.txt"), "only recordings are deleted")
+}
+
+func TestACleanupFromACountTooLowFreesTheRestNextTime(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestRecordingWriter(t)
+		setMaxSize(w, 400)
+		in := func(name string) string { return filepath.Join(w.dir, "rec", name) }
+		for i, name := range []string{"a", "b", "c", "d", "e"} { // a is the oldest
+			writeAged(t, in(name+recordingDoneExt), 100, time.Duration(5-i)*time.Hour)
+		}
+
+		// The first pass after a start: the writer hasn't counted anything yet.
+		first, err := cleanRecordings(w.dir, time.Time{}, 400, 0, smallPace)
+		require.NoError(t, err)
+		assert.Zero(t, first.deleted, "it didn't know it had to free anything")
+		assert.Equal(t, int64(500), first.size)
+		w.cleaned(first)
+
+		select {
+		case <-w.cleanup:
+		default:
+			t.Fatal("over the limit with finished recordings left, so it asks for another pass")
+		}
+		w.mu.Lock()
+		assert.False(t, w.full, "finished recordings can still go, so rooms are still recorded")
+		count := w.size
+		w.mu.Unlock()
+
+		second, err := cleanRecordings(w.dir, time.Time{}, 400, count, smallPace)
+		require.NoError(t, err)
+		assert.Equal(t, int64(300), second.size)
+		assert.NoFileExists(t, in("a"+recordingDoneExt))
+		assert.NoFileExists(t, in("b"+recordingDoneExt))
+		assert.FileExists(t, in("c"+recordingDoneExt))
+	})
+}
+
+func TestACountTooHighStillStopsAtNinetyPercent(t *testing.T) {
+	dir := t.TempDir()
+	folder := filepath.Join(dir, "rec")
+	require.NoError(t, os.MkdirAll(folder, recordingDirMode))
+	for i, name := range []string{"a", "b", "c", "d", "e"} {
+		writeAged(t, filepath.Join(folder, name+recordingDoneExt), 100, time.Duration(5-i)*time.Hour)
+	}
+
+	result, err := cleanRecordings(dir, time.Time{}, 400, 5000, smallPace)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(300), result.size, "the pass's own count decides when it has freed enough")
+	assert.Equal(t, 2, result.deleted)
 }
 
 func TestRetentionDeletesOnlyOldFinishedRecordings(t *testing.T) {
@@ -525,7 +580,7 @@ func TestRetentionDeletesOnlyOldFinishedRecordings(t *testing.T) {
 	writeAged(t, in("waiting"+recordingExt), 1, 48*time.Hour)
 	writeAged(t, in("notes.txt"), 1, 48*time.Hour)
 
-	result, err := cleanRecordings(dir, time.Now().Add(-24*time.Hour), -1)
+	result, err := cleanRecordings(dir, time.Now().Add(-24*time.Hour), -1, 0, smallPace)
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.deleted)
@@ -554,7 +609,7 @@ func TestTheLastProcessesRecordingsAreFinishedAtStart(t *testing.T) {
 	require.NoError(t, os.WriteFile(empty, []byte("not a recording"), recordingFileMode))
 
 	nextStart := time.Now().Add(time.Minute)
-	finished, err := finishLeftovers(w.dir, "rec", map[RoomID]bool{"saved": true}, nextStart)
+	finished, err := finishLeftovers(w.dir, "rec", map[RoomID]bool{"saved": true}, nextStart, smallPace)
 
 	require.NoError(t, err)
 	assert.Equal(t, 3, finished)
@@ -572,7 +627,7 @@ func TestTheRunningProcessesRecordingsArentLeftovers(t *testing.T) {
 	w.add(path, segmentRecord("running"))
 	w.close()
 
-	finished, err := finishLeftovers(w.dir, "rec", nil, time.Now().Add(-time.Minute))
+	finished, err := finishLeftovers(w.dir, "rec", nil, time.Now().Add(-time.Minute), smallPace)
 
 	require.NoError(t, err)
 	assert.Zero(t, finished)

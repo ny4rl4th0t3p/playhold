@@ -7,6 +7,9 @@ hero:
   tagline: Authoritative rooms and composable modules, on your own server.
   actions:
     - theme: brand
+      text: Walkthrough
+      link: /start/walkthrough
+    - theme: alt
       text: Run in production
       link: /guides/production
     - theme: alt

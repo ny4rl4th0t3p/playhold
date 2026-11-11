@@ -8,8 +8,10 @@ A self-hosted game backend in Go, built from authoritative rooms and composable 
 playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After
 that, each release adds support for another kind of game.
 
-**Documentation:** <https://ny4rl4th0t3p.github.io/playhold/>, including rough
-[measurements](https://ny4rl4th0t3p.github.io/playhold/measurements.html) from development.
+**Documentation:** <https://ny4rl4th0t3p.github.io/playhold/>. Start with the
+[walkthrough](https://ny4rl4th0t3p.github.io/playhold/start/walkthrough.html), which runs the sample game and stops its
+server mid-game. The site also has rough [measurements](https://ny4rl4th0t3p.github.io/playhold/measurements.html) from
+development.
 
 ## The idea
 

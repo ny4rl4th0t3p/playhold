@@ -6,11 +6,18 @@ export default defineConfig({
     base: "/playhold/",
     themeConfig: {
         nav: [
+            {text: "Start here", link: "/start/walkthrough"},
             {text: "Guides", link: "/guides/production"},
             {text: "Reference", link: "/reference/configuration"},
             {text: "Changelog", link: "/changelog"},
         ],
         sidebar: [
+            {
+                text: "Start here",
+                items: [
+                    {text: "Walkthrough", link: "/start/walkthrough"},
+                ],
+            },
             {
                 text: "Guides",
                 items: [

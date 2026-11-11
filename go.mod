@@ -1,6 +1,6 @@
 module github.com/ny4rl4th0t3p/playhold
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/coder/websocket v1.8.15

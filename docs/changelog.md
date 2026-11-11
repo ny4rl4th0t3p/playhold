@@ -53,6 +53,11 @@ it uses another address.
 - A store implemented outside playhold must add them. The memory and PostgreSQL stores have them; the PostgreSQL store
   adds an `incidents` table and a `last_seen` column on `guests` when it starts.
 
+**Go 1.27.4 or newer.** Earlier versions of Go's `net/http` can crash an HTTP server (GO-2026-6859), and every game on
+playhold serves HTTP.
+
+- Build with Go 1.27.4 or newer.
+
 ### New responses for clients
 
 New error codes `RATE_LIMITED`, `TURNED_OFF` and `ROOM_NOT_FOUND`, and new close reasons, `INACTIVE` and

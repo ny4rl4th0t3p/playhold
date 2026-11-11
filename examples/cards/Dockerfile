@@ -10,7 +10,7 @@ COPY sdk/ts sdk/ts
 COPY examples/cards/web examples/cards/web
 RUN npm --prefix examples/cards/web run build
 
-FROM golang:1.27.3-alpine AS binaries
+FROM golang:1.27.4-alpine AS binaries
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

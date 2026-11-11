@@ -3,10 +3,11 @@
 # cores. Each run starts from an empty database, in a Compose project of its own, so your other games are left alone.
 # Stop anything else using port 8080 first.
 #
-#   sh t12.sh
+#   sh t12.sh [name]
 #
-# Writes to t12-results/, and ends by printing each run's summary and its longest snapshot delay. Settings: RUNS, GAMES,
-# RATE, WARMUP and DURATION.
+# Writes to t12-results/, or with a name to t12-results/NAME, which must not exist yet, so runs with other settings stay
+# apart. Ends by printing each run's summary and its longest snapshot delay; t12-report.sh prints the rest. Settings:
+# RUNS, GAMES, RATE, WARMUP and DURATION.
 #
 # With PROFILE=1, every run also collects the same profiles at the same point, PROFILE_AFTER seconds after its bot
 # starts (default 90, past the warm-up): a 30 s CPU profile, then a 5 s execution trace, then allocations, blocking and
@@ -16,7 +17,11 @@
 set -eu
 
 runs="${RUNS:-3}"
-results="t12-results"
+results="t12-results${1:+/$1}"
+if [ -n "${1:-}" ] && [ -e "$results" ]; then
+    echo "$results already exists; pick another name" >&2
+    exit 1
+fi
 compose="docker compose -p playhold-t12 -f compose.yaml -f compose.t12.yaml"
 profile="${PROFILE:-}"
 profile_after="${PROFILE_AFTER:-90}"
@@ -36,6 +41,10 @@ export FINISHED_ROOM_TIME="${FINISHED_ROOM_TIME:-5s}" # so finished games don't 
 # refusing new players under load would change what's measured.
 export CRASH_JOURNAL="${CRASH_JOURNAL-}"
 export ADMISSION="${ADMISSION-off}"
+# Off unless asked for, like the journal: RECORDING=/var/lib/cards/recordings records every game, and each run then
+# also writes the recordings' size and count to its -recordings.txt. It has to be a folder under /var/lib/cards, the
+# volume the size is read from.
+export RECORDING="${RECORDING-}"
 
 mkdir -p "$results"
 
@@ -99,8 +108,21 @@ measure() {
     wait "$bot_stats" 2>/dev/null || true
 
     $compose logs --no-log-prefix game >"$results/$label-game.log" 2>&1
+    if [ -n "$RECORDING" ]; then
+        measure_recordings "$label"
+    fi
     $compose --profile load down -v --remove-orphans
     return "$status"
+}
+
+# measure_recordings writes the size of the run's recordings, in KiB, and how many there are. The game stops first, so
+# its last records are written. Its image has no shell, so a throwaway container reads the volume instead.
+measure_recordings() {
+    label="$1"
+    $compose stop game
+    docker run --rm -v playhold-t12_journal:/data:ro busybox \
+        sh -c "echo \"kib=\$(du -sk '/data/${RECORDING#/var/lib/cards/}' | cut -f1) files=\$(find '/data/${RECORDING#/var/lib/cards/}' -name '*.rec' | wc -l)\"" \
+        >"$results/$label-recordings.txt" 2>&1 || echo "measuring the recordings failed" >&2
 }
 
 n=1
@@ -121,6 +143,11 @@ if [ -n "$profile" ]; then
     echo "CPU pinning Docker applied to the game server in each profiled run (should be 0):"
     grep -H . "$results"/prof-*-cpuset.txt || true
     echo "Profiles and their text reports are in $results/prof-*."
+fi
+if [ -n "$RECORDING" ]; then
+    echo
+    echo "Recordings left by each run, in KiB, written over the bot's whole run (DURATION, warm-up included):"
+    grep -H . "$results"/*-recordings.txt || true
 fi
 echo
 echo "Longest snapshot delay in each report of each run with PostgreSQL on, in the order they were logged:"

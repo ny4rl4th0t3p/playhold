@@ -30,6 +30,9 @@ services:
       - ${CRASH_JOURNAL-/var/lib/cards/journal}
       - -crash-journal-entries
       - ${CRASH_JOURNAL_ENTRIES:-0}
+      # Off unless set, so the demo and the load bot don't fill the disk: /var/lib/cards/recordings uses the volume below.
+      - -recording
+      - ${RECORDING:-}
       - -empty-room-timeout
       - ${EMPTY_ROOM_TIMEOUT:-5m}
       - -max-rooms
@@ -57,7 +60,7 @@ services:
       - ":9464"
       - -traces
       - ${TRACES:-off}
-    # The crash journal lives on a volume, so it's still there after the crash it's for.
+    # The crash journal lives on a volume, so it's still there after the crash it's for; so do recordings, if on.
     volumes:
       - journal:/var/lib/cards
     # Docker kills the process after this, so it has to be longer than the shutdown timeout.

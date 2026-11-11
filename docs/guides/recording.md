@@ -33,6 +33,9 @@ writes in the background every 100 ms, so a room never waits on the disk. If the
 records are dropped and logged, and the recording marks the gap: a replay stops there rather than report a difference
 that isn't one.
 
+Recording every game of the sample card game at 3,000 moves a second wrote about 23 MB a minute, about 6 KB a game; at
+that rate, the default retention keeps about 1 TB. See [Measurements](../measurements.md).
+
 ## What a recording holds
 
 Every input a room's turns start from, in order, each with the room's clock:

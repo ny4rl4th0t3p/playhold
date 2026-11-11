@@ -84,6 +84,7 @@ sh record-stats.sh
 | `MESSAGE_RATE`           | 50ms/40                               | Frames per connection, as `EVERY/BURST`, or `off`. The same as the server's own default                    |
 | `CRASH_JOURNAL`          | `/var/lib/cards/journal`, on a volume | The crash journal's file; set it empty to keep none. `t12.sh` leaves it off unless set                     |
 | `CRASH_JOURNAL_ENTRIES`  | 0, the default of 1,024               | How many turns the crash journal keeps                                                                     |
+| `RECORDING`              | empty, off                            | Folder to record every game in, such as `/var/lib/cards/recordings`; keep it private, it holds every move  |
 | `ADMISSION`              | empty, on                             | `off` stops refusing new guests, rooms and seats when the server is overloaded, to measure past that point |
 | `TRACES`                 | off                                   | `measure` traces every turn and store call, then drops the spans, to measure what tracing costs            |
 | `DEBUG_ADDR`             | empty, off                            | Address for Go's profiling endpoints, such as `:6060`. With `t12.sh`, published on `127.0.0.1:6060` only   |
@@ -173,7 +174,7 @@ docker compose restart game
 using port 8080 first, including the demo, which would also take CPU from the measurement:
 
 ```bash
-sh t12.sh
+sh t12.sh [name]
 ```
 
 What it does, for each run:
@@ -189,7 +190,8 @@ What it does, for each run:
 It does one run with saving off and one with it on, 3 times, alternating, so it takes about 35 minutes. Set `RUNS`,
 `GAMES`, `RATE`, `WARMUP` and `DURATION` to change that.
 
-Everything goes to `t12-results/`, named by setting and run, such as `on-2`:
+Everything goes to `t12-results/`, or with a name to `t12-results/NAME`, so runs with other settings stay apart, such as
+`RECORDING=/var/lib/cards/recordings sh t12.sh recording`. Files are named by setting and run, such as `on-2`:
 
 | File                | What it holds                                                               |
 |---------------------|-----------------------------------------------------------------------------|
@@ -210,6 +212,10 @@ At the end it prints each run's `summary` line and each report's longest snapsho
 `max_delay` in the server's log is the longest a change waited before it was saved, which is how much a crash could
 lose at that moment. With `SNAPSHOT_INTERVAL` set, it counts only the wait for PostgreSQL, so a crash can lose up to
 the interval more.
+
+To compare runs, `sh t12-report.sh [name]`, with the name given to `t12.sh`, prints one line per run: the summary in ms, then over the same window the
+game server's and PostgreSQL's average CPU, the game server's most memory in MiB, the bot's most CPU, the longest
+snapshot delay and, with `RECORDING`, the recordings' size in KiB and their count.
 
 A run only counts if the machine was otherwise idle, and if the CSVs show the bot stayed under about 80% of its two
 cores and the game server under 70% of its one. Docker counts 100% per core, so for the bot that's about 160%.

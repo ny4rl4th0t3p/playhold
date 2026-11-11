@@ -15,8 +15,8 @@ A test runs inside `playholdtest.Run`, which is `testing/synctest`'s bubble, and
 Each room has a runtime of its own, closed when the test ends.
 
 - `Join` seats a player and connects them, so they get views from then on. Joining again reconnects them, as a client
-  coming back does. `TryJoin` returns a refusal instead of failing the test: `ErrRoomFull`, or the error from the game's
-  `OnJoinAttempt`.
+  coming back does. `TryJoin` returns a refusal instead of failing the test: `ErrRoomFull`, the error from the game's
+  `OnJoinAttempt`, or `ErrRoomClosed` once the room has closed.
 - `Send` sends a module's message as the player.
 - `View` decodes the module's view in the latest state the player received, or returns nil if the module showed them
   nothing.
@@ -36,8 +36,8 @@ and `Send` returns `ErrRoomClosed`; `Closed` then says `ClosePanic`.
 
 ## Time
 
-Time only moves when the test moves it. `Advance` moves it forward, and timers, grace periods and the close for
-inactivity fire as they come due, each in its own turn:
+Time only moves when the test moves it. `Advance` moves it forward: timers and grace periods fire as they come due,
+each in its own turn, and a room no player has used for `InactiveRoomTimeout` closes:
 
 <<< ../../playholdtest/playholdtest_test.go#advance
 

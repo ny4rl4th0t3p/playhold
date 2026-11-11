@@ -36,7 +36,8 @@ describe the code on the `main` branch. A walkthrough and a tutorial come with t
 ## What works today
 
 - **A game survives what a real server goes through.** The sample's survival test plays a game while the server is
-  restarted, killed and redeployed with a new save format, and passes only if nobody loses a seat or a card.
+  restarted, killed and redeployed with a new save format, and passes only if nobody loses their seat, and no hand
+  changes by more than one card across a reconnect.
 - **It fits a small server.** On a container with 1 CPU and 1 GB of memory, the sample plays 500 games at 3,000 moves a
   second, answering half of them within about 0.6 ms. See the rough [measurements](./measurements.md).
 - **Its defaults are the safe ones.** TLS, rate limits and overload protection are on unless turned off, and turning

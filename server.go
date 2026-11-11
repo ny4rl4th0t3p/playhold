@@ -75,8 +75,8 @@ type ServerConfig struct {
 	// Off unless it has a Dir. See RecordingConfig.
 	Recording RecordingConfig
 	// RestartWhenStuck lets the server restart its process when a stuck room's goroutine is still running 30 seconds after
-	// the watchdog gave up on it, and the server has been overloaded for a minute since: most likely a goroutine spinning
-	// forever, which Go can't stop. The server drains for 10 seconds, saves every room, and ListenAndServe returns
+	// the watchdog gave up on it, while the server has been overloaded for a minute without a break: most likely a goroutine
+	// spinning forever, which Go can't stop. The server drains for 10 seconds, saves every room, and ListenAndServe returns
 	// ErrRestartNeeded; a server not using ListenAndServe watches RestartNeeded. Set it only where a service manager, such
 	// as systemd or a container restart policy, starts the process again; otherwise the server stays down. Without it,
 	// the server logs an error every minute while that lasts. It needs admission control on.

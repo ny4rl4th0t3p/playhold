@@ -2,7 +2,7 @@
 
 A playhold server starts in production mode. It refuses settings that would expose players, and it won't serve over
 plain HTTP unless a proxy in front of it ends TLS. This page covers TLS, proxies, the allowed web origins, and the
-development mode for your own machine.
+development mode for your own machine. What the server needs from whatever runs it is in [Deploy](./deploy.md).
 
 Every snippet calls `run`, which is how a game's `main` function serves a `Server`:
 
@@ -79,7 +79,7 @@ client's address comes from the proxy's `X-Forwarded-For` header: the rightmost 
 anywhere else, that header is ignored, since a client could make it up. For a proxy that sends another header, such as
 `Forwarded`, set `ProxyClientIP`.
 
-The client's address matters for the [rate limits](./limits.md), which count per address.
+The client's address matters for the [limits](./limits.md) that count per address.
 
 ## Web origins
 

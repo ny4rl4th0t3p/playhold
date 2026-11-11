@@ -77,7 +77,8 @@ See [Limit abuse and load](./limits.md).
 
 ## Logs
 
-The server logs through `log/slog`, to `ServerConfig.Logger`. Its lines carry what they're about:
+The server logs through `log/slog`: its own lines go to `ServerConfig.Logger`, and rooms' lines to the runtime's
+`Config.Logger`, which `ServerConfig.Logger` defaults to. The lines carry what they're about:
 
 | Lines about                                   | Carry                                                                                 |
 |-----------------------------------------------|---------------------------------------------------------------------------------------|
@@ -86,7 +87,8 @@ The server logs through `log/slog`, to `ServerConfig.Logger`. Its lines carry wh
 | A connection, once its client has said Hello  | `player`                                                                              |
 | The crash journal's turns                     | The turn's room, player, module, message and event                                    |
 
-A client's IP address appears only in the lines about a connection refused for lacking TLS.
+A client's IP address appears only in the lines about a connection refused for lacking TLS and, with TLS, about a
+failed TLS handshake.
 
 ### Leaving player IDs out
 
@@ -119,7 +121,7 @@ a provider.
 
 ### What tracing costs
 
-Every span the provider samples costs CPU. In the [rough measurements](../measurements.md) setup, tracing every turn
-took about a tenth more of the game server's CPU, and with saving on, 99% of moves were answered within about 10 ms
-instead of 3 to 8 ms. On a busy server, have the provider sample a share of the traces, such as with the OpenTelemetry
+Every span the provider samples costs CPU. In the [rough measurements](../measurements.md#tracing-every-turn) setup,
+tracing every turn took about a tenth more of the game server's CPU, and 99% of moves were answered within about 5 ms
+instead of 3 with saving off, and about 10 ms instead of 7 with it on. On a busy server, have the provider sample a share of the traces, such as with the OpenTelemetry
 SDK's ratio-based sampler.

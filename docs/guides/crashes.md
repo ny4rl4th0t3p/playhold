@@ -1,7 +1,8 @@
 # When something crashes
 
-A panic only closes its room, which comes back from its last save. Some failures take the whole server down: a fatal
-error that kills the process, such as a stack overflow from endless recursion, or a handler that never returns. This
+A panic only closes its room, which, with a store, comes back from its last save. Some failures take the whole server
+down: a fatal error that kills the process, such as a stack overflow from endless recursion, or a handler that never
+returns and keeps running after the watchdog closed its room. This
 page covers the crash journal, which shows what was running when that happened, and the breaker, which stops the same
 message from doing it again and again.
 
@@ -69,8 +70,9 @@ kills the process would keep the server down for every game, restart after resta
 
 **A room that keeps doing it isn't restored.** A room with two incidents in the 10 minutes before a start isn't
 restored, so a timer that kills the process can't keep the server down either. The room stays in the store and is
-logged. A later start brings it back, with a new build or once its incidents are older than 10 minutes. If a player
-joins its code meanwhile, that starts a new game, and the newest saved room keeps the code.
+logged. A later start brings it back, with a new build or once its incidents are older than 10 minutes. Meanwhile its
+code stays taken: no new room gets it, and joining it is refused with `ROOM_NOT_FOUND`. With `AllowClientCodes`, joining
+it starts a new game instead, and at the next start the newest saved room keeps the code and the older one is deleted.
 
 A new build of the server starts with no incidents: the build is identified by a hash of the server's executable.
 Incidents are also deleted after 7 days.

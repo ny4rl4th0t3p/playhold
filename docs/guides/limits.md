@@ -50,13 +50,13 @@ A server can be under its caps and still overloaded. Admission control checks th
 | Signal     | Over it when                                                                                   | Default |
 |------------|------------------------------------------------------------------------------------------------|---------|
 | `Memory`   | The Go runtime holds this share of the memory limit. Not checked without a limit               | 0.9     |
-| `SchedP99` | Goroutines wait this long to run, at the 99th percentile over 5 seconds: the CPU can't keep up | 20 ms   |
+| `SchedP99` | Goroutines wait this long to run, at the 99th percentile over 4 seconds: the CPU can't keep up | 20 ms   |
 | `Queue`    | This share of all rooms' inbound queues is in use                                              | 0.5     |
 
 While any signal is over, the server refuses new work:
 
 - new guests get an `UNAVAILABLE` error;
-- new rooms and new seats get a `SERVER_FULL` error.
+- new rooms, new seats and new places in the matchmaking queue get a `SERVER_FULL` error.
 
 It never refuses a player coming back to a seat they already have, and rooms already running carry on. It takes new
 work again once every signal has stayed under 90% of its threshold for 10 checks in a row, so it doesn't flap on and
@@ -68,5 +68,5 @@ off. `/readyz` doesn't change: an overloaded server still serves the players it 
 warning. [Restart when stuck](./keeping-games-running.md#restart-when-stuck)
 needs it on.
 
-The memory limit is `MemoryLimit`, about 80% of the machine's memory by default. The `GOMEMLIMIT` environment variable
-always wins.
+The memory limit is `MemoryLimit`, about 80% of the machine's memory by default, or of the container's limit if that's
+lower. The `GOMEMLIMIT` environment variable always wins.

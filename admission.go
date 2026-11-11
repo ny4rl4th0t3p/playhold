@@ -22,7 +22,7 @@ type Admission struct {
 	// Memory is the share of the memory limit (GOMEMLIMIT, or ServerConfig.MemoryLimit) the Go runtime may hold. The
 	// default is 0.9. It's not checked when there's no limit.
 	Memory float64
-	// SchedP99 is how long goroutines may wait to run, at the 99th percentile over the last 5 seconds: the sign that the
+	// SchedP99 is how long goroutines may wait to run, at the 99th percentile over the last 4 seconds: the sign that the
 	// CPU can't keep up. The default is 20 ms. The Go runtime records waits in steps of about 25%, and the p99 is read as
 	// the bottom of its step, so a wait counts as over only once it's certainly over.
 	SchedP99 time.Duration

@@ -115,8 +115,8 @@ func (r *Room) TryJoin(player playhold.PlayerID) (*Player, error) {
 	return p, nil
 }
 
-// Advance moves time forward by d. Timers, grace periods and the close for inactivity that come due meanwhile fire in
-// order, each in its turn, as they would on a server.
+// Advance moves time forward by d. Timers and grace periods that come due meanwhile fire in order, each in its own turn,
+// and a room no player has used for InactiveRoomTimeout closes, as they would on a server.
 func (*Room) Advance(d time.Duration) {
 	time.Sleep(d)
 	synctest.Wait()

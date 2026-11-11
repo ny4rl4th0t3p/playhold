@@ -15,6 +15,7 @@ export default defineConfig({
                 text: "Guides",
                 items: [
                     {text: "Run in production", link: "/guides/production"},
+                    {text: "Deploy", link: "/guides/deploy"},
                     {text: "Limit abuse and load", link: "/guides/limits"},
                     {text: "Keep games running", link: "/guides/keeping-games-running"},
                     {text: "When something crashes", link: "/guides/crashes"},

@@ -1,7 +1,8 @@
 # Configuration
 
-Every setting, with its default. A field left at its zero value uses the default; turning something off always takes
-an explicit `Off`, and the server logs it at startup. The guides explain when to change each one.
+Every setting, with its default. A field left at its zero value uses the default. Turning something off takes an
+explicit `Off`, or a negative value for `MemoryLimit` and `RecordingConfig.MaxSize`, and the server logs it at startup,
+except for `Config.SlowTurn` and `MemoryLimit`. The guides explain when to change each one.
 
 ## ServerConfig
 
@@ -64,7 +65,7 @@ See [Limit abuse and load](../guides/limits.md).
 | `MaxMessageBytes`  | 32 KiB                            | The largest client message; a larger one closes the connection      |
 | `HandshakeTimeout` | 10 s                              | How long a new connection has to say Hello                          |
 | `Admission`        | On                                | When the server is too busy for new guests, rooms and seats         |
-| `MemoryLimit`      | About 80% of the machine's memory | Go's soft memory limit; negative leaves it alone; `GOMEMLIMIT` wins |
+| `MemoryLimit`      | 80% of the memory it can use      | Go's soft memory limit; negative leaves it alone; `GOMEMLIMIT` wins |
 
 ### Crashes
 

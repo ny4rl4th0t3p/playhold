@@ -39,10 +39,12 @@ it uses another address.
 **The server makes rooms' codes.** A `Join` with a code no room has used to create the room; now it's refused with
 `ROOM_NOT_FOUND`, and a `Join` with an empty code creates a room with a code the server makes.
 
-- In a client, create rooms with the SDKs' `createRoom`, and share the code it reports.
+- In a client, create rooms with the TypeScript SDK's `createRoom` or the Go SDK's `CreateRoom`, and share the code it
+  reports.
 - A game that picks its own codes sets `ServerConfig.AllowClientCodes`. See [Find a game](./guides/finding-a-game.md).
 
-**Guests expire.** A guest who hasn't connected for 90 days is deleted, and coming back, starts again as a new guest.
+**Guests expire.** A guest the server hasn't seen for 90 days, counting each Hello it accepts, is deleted, and coming
+back, starts again as a new guest.
 
 - Change the period with `GuestExpiry`, or keep every guest with `GuestExpiry: playhold.Timeout{Off: true}`. See
   [What playhold keeps about players](./guides/privacy.md).
@@ -67,7 +69,7 @@ See [Errors and close reasons](./reference/errors.md).
 ### Added
 
 - `SnapshotInterval`, to save busy rooms less often.
-- `RoomConfig.OnJoinAttempt`, for the game to decide who takes a seat, and the SDKs' `createRoom`.
+- `RoomConfig.OnJoinAttempt`, for the game to decide who takes a seat, and the SDKs' `createRoom` and `CreateRoom`.
 - Matchmaking, with `ServerConfig.Matchmaking`: a queue, the game's matcher, and a new room for each group, with its
   seats kept for the players for a while. New frames `Queue`, `LeaveQueue`, `Queued` and `Matched`, and the Go SDK's
   `Queue`, `Matched` and `LeaveQueue`. The TypeScript SDK's `queue` and `leaveQueue`, with a `queued` status, which
@@ -96,7 +98,7 @@ See [Errors and close reasons](./reference/errors.md).
 - Logs name the player on a connection once it has said Hello, and the turn a stuck or panicking room was running.
 - Guest expiry, and a page on what playhold keeps about players, where and for how long.
   `ServerConfig.HidePlayerIDs` leaves player IDs out of logs and traces.
-- This documentation site.
+- This documentation site, with a page on what a server needs from whatever runs it, and what to back up.
 - The sample: profiles of the server during a `t12.sh` run.
 
 ## v0.2.0, 6 November 2026

@@ -13,11 +13,11 @@ ID is still personal data where it can be linked to someone, such as through an 
 |----------------------|-------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|---------------------------------------------------|
 | The store: guests    | Each guest's ID, a hash of their secret, when they were created and when last seen                          | Until unseen for `GuestExpiry`, 90 days by default                           | `GuestExpiry`                                     |
 | The store: rooms     | Each running room's saved state: its seated guests' IDs, and the game's own state                           | Until the room closes, when its save is deleted; a restart keeps it          | `EmptyRoomTimeout`, `InactiveRoomTimeout`         |
-| The store: incidents | The ID of the player whose turn crashed the server or hung a room                                           | 7 days, or until a new build of the server starts                            |                                                   |
-| Logs                 | Guest IDs on lines about a connection or a turn; an IP address only on a connection refused for lacking TLS | As long as the game's logging keeps them                                     | `HidePlayerIDs`, `Logger`                         |
+| The store: incidents | The ID of the player whose turn crashed the server or hung a room                                           | 7 days, or a new build; deleted when the server next starts                  |                                                   |
+| Logs                 | Guest IDs on lines about a connection or a turn; IP addresses on TLS refusals and failed TLS handshakes     | As long as the game's logging keeps them                                     | `HidePlayerIDs`, `Logger`                         |
 | Metrics              | Nothing about players                                                                                       | As long as the monitoring keeps them                                         |                                                   |
 | Traces               | Guest IDs on turns' spans                                                                                   | As long as the tracing backend keeps them                                    | `TracerProvider`, off by default; `HidePlayerIDs` |
-| The crash journal    | Each turn's guest ID and the full message, which can be anything a player typed                             | Overwritten as new turns come; the file stays until deleted                  | `CrashJournal`, off by default                    |
+| The crash journal    | Each turn's guest ID and its message up to `EntrySize`, which can be anything a player typed                | Overwritten as new turns come; the file stays until deleted                  | `CrashJournal`, off by default                    |
 | Recordings           | Every turn of a recorded room: the guest IDs in it and every message in full                                | `Retention` after its last turn, 30 days by default; sooner past `MaxSize`   | `Record`, `Recording`; off by default             |
 | The server's memory  | IP addresses, for the rate limits per address                                                               | Forgotten once an address has been quiet for a while; never written anywhere | The rate limits                                   |
 | The player's browser | Their guest ID and secret, in `localStorage` with the TypeScript SDK's defaults                             | Until the player clears the site's data                                      | The SDK's `storage` option                        |
@@ -31,13 +31,13 @@ restores it or someone deletes it.
   every hour. A player who comes back later starts again as a new guest. Choose the shortest time that still suits the
   game: data protection rules such as the GDPR ask to keep personal data no longer than needed, without setting a
   period.
-- **Logs.** playhold logs through `ServerConfig.Logger`, and keeps nothing itself. Rotate and delete logs on a schedule,
+- **Logs.** playhold logs through `ServerConfig.Logger`, and rooms through the runtime's `Config.Logger`, and keeps
+  nothing itself. Rotate and delete logs on a schedule,
   as for any server. With `HidePlayerIDs`, no log line or span carries a guest ID.
-- **The crash journal.** It holds players' messages in full, so turn it on only where it's needed, and keep its file,
-  and any copy of it, as private as the database.
-- **Recordings.** Like the journal, they hold players' messages in full, and `HidePlayerIDs` doesn't apply to them,
-  since
-  a replay needs each turn's player. Keep their folder, and any copy of a recording, as private as the database, and
+- **The crash journal.** It holds players' messages, cut at `EntrySize`, so turn it on only where it's needed, and keep
+  its file, and any copy of it, as private as the database.
+- **Recordings.** They hold players' messages in full, and `HidePlayerIDs` doesn't apply to them, since a replay needs
+  each turn's player. Keep their folder, and any copy of a recording, as private as the database, and
   set `Retention` to as long as the game needs to look into a reported game.
 - **Backups** of the database keep everything above for as long as the backups are kept.
 

@@ -55,13 +55,13 @@ Finished recordings stay until one of two limits deletes them; recordings in pro
   warning.
 
 A cleanup works through the files 500 at a time, with a 10 ms pause after each batch, and keeps in memory only the
-recordings it may delete, so rooms on a small server barely notice it, even over a full folder: recording the sample
-card game with cleanups every 25 seconds, the moves' latency stayed as it was with none. See
+recordings it may delete, so rooms on a small server barely notice it: recording the sample card game with a cleanup
+over about 15,000 files every 25 seconds, the moves' latency stayed as it was with none. See
 [Measurements](../measurements.md). Each cleanup that deletes something logs how long it took, the files it looked at,
 and what it deleted.
 
 `MaxSize` counts the recordings' bytes. On disk, each file takes whole blocks, so small recordings take more space
-than that: recording the sample card game, about 88 MiB of disk for 60 MB of recordings.
+than that: recording the sample card game, about 1.4 times as much.
 
 ## A recording is whole, or gone
 
@@ -83,9 +83,9 @@ A recorded room encodes its state after every turn, to hash it, unless the turn'
 input goes to disk. The disk use is about the size of the inputs: a card game's moves are tens of bytes. The server
 writes in the background every 100 ms, so a room never waits on the disk.
 
-Recording every game of the sample card game at 3,000 moves a second wrote about 23 MB a minute, about 6 KB a game.
-At that rate, 30 days of retention alone would keep about 1 TB; the default `MaxSize` keeps it to 10 GiB, the last 7
-hours or so. See [Measurements](../measurements.md).
+Recording every game of the sample card game at 3,000 moves a second wrote about 16 MB a minute, about 4.5 KB a
+game, which took about 1.4 times as much disk. At that rate, 30 days of retention alone would keep about 0.7 TB; the
+default `MaxSize` keeps the last 11 hours or so. See [Measurements](../measurements.md).
 
 ## What a recording holds
 
@@ -112,7 +112,7 @@ empty for a build that has none.
 A turn that got stuck isn't recorded, since it never ended: the crash journal has it. A record cut off at the end of
 the file, by a machine failure or a copy taken while the room ran, is ignored, with everything before it still read.
 
-A recording holds every player's message in full, like the crash journal, and `HidePlayerIDs` doesn't apply to it,
+A recording holds every player's message in full, and `HidePlayerIDs` doesn't apply to it,
 since a replay needs each turn's player. See [What playhold keeps about players](./privacy.md).
 
 ## Replay one

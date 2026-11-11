@@ -9,8 +9,8 @@
 # apart. Ends by printing each run's summary and its longest snapshot delay; t12-report.sh prints the rest. Settings:
 # RUNS, GAMES, RATE, WARMUP and DURATION.
 #
-# With PROFILE=1, every run also collects the same profiles at the same point, PROFILE_AFTER seconds after its bot
-# starts (default 90, past the warm-up): a 30 s CPU profile, then a 5 s execution trace, then allocations, blocking and
+# With PROFILE=1, every run also collects the same profiles at the same point, 5 s plus PROFILE_AFTER seconds after its
+# bot starts (default 90, past the warm-up): a 30 s CPU profile, then a 5 s execution trace, then allocations, blocking and
 # lock contention, plus the CPU pinning Docker applied. If Go is installed, each profile also gets a text report. These
 # runs are named prof-off-N and prof-on-N, because profiling slows the server down and their latencies don't count.
 

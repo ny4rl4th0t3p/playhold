@@ -32,7 +32,7 @@ the room just closes.
 
 ## Timeouts
 
-Three timeouts close rooms:
+Two timeouts close rooms, and a third tells the game a player left:
 
 | Setting               | Default    | What it does                                                                                                                                                                                |
 |-----------------------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -64,13 +64,14 @@ takes:
 
 A stuck goroutine usually ends by itself, and one that's only blocked costs little memory. One that spins forever takes
 CPU from every room, and only a new process gets rid of it. With `RestartWhenStuck`, the server restarts its process
-when a stuck room's goroutine is still running 30 seconds after the watchdog gave up on it, and the server has been
-overloaded for a minute since:
+when a stuck room's goroutine is still running 30 seconds after the watchdog gave up on it, while the server has been
+overloaded for a minute without a break:
 
 <<< ../../example_test.go#restart-when-stuck
 
 The server then drains for 10 seconds, so a load balancer sends players elsewhere, saves every room, and
-`ListenAndServe` returns `ErrRestartNeeded`. The game exits with an error, as `run` does above, and the service manager
+`ListenAndServe` returns `ErrRestartNeeded`. The game exits with an error, as `run` does in
+[Run in production](./production.md), and the service manager
 starts it again, with every game.
 
 It needs [admission control](./limits.md#admission-control) on, to tell when the server is overloaded. Without
@@ -88,7 +89,7 @@ that doesn't use `ListenAndServe` watches `Server.RestartNeeded` instead.
 
 When its context ends, as on SIGTERM in `run`, it stops without losing a match:
 
-1. It drains: no new rooms or players, and `/readyz` fails, so a load balancer stops sending players here. Players with
+1. It drains: no new rooms, seats or places in the matchmaking queue, and `/readyz` fails, so a load balancer stops sending players here. Players with
    a seat can still come back to it.
 2. It closes every room, which saves it, and writes everything waiting to be saved.
 3. Only then does it disconnect the clients, which reconnect and find their rooms on the next server.

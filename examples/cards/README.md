@@ -63,7 +63,7 @@ sh record-stats.sh
 | `GAME_CPUS`              | 1                                     | CPUs for the game server                                                                                   |
 | `GAME_MEMORY`            | 1g                                    | Memory for the game server, which sets its soft limit to about 80% of this                                 |
 | `EMPTY_ROOM_TIMEOUT`     | 5m                                    | How long a room stays open with nobody connected, including after its game ends, or `off`                  |
-| `MAX_ROOMS`              | 10,000                                | Most rooms at once, counting finished ones until they close; above it, joins get an error                  |
+| `MAX_ROOMS`              | 0, the default of 10,000              | Most rooms at once, counting finished ones until they close; above it, joins get an error                  |
 | `TURN_TIME`              | 1m                                    | How long a player has for each turn                                                                        |
 | `FINISHED_ROOM_TIME`     | 1m                                    | How long a room stays open after its game ends                                                             |
 | `TIMERS_AFTER_RESTART`   | pause                                 | What a server coming back does with turn timers: `pause`, `keep` or `cancel`                               |
@@ -227,9 +227,10 @@ To see where the time goes, profile the same runs:
 PROFILE=1 RUNS=1 sh t12.sh
 ```
 
-Each run then collects the same profiles at the same point, 90 seconds after its bot starts (`PROFILE_AFTER`): a 30 s
-CPU profile, a 5 s execution trace, allocations, blocking and lock contention, and the CPU pinning Docker applied. If Go
-is installed, each profile also gets a text report next to it, such as `prof-on-1-cpu.txt`. These runs are named
+Each run then collects the same profiles at the same point, about 95 seconds after its bot starts (5 s, then
+`PROFILE_AFTER`, 90 by default): a 30 s CPU profile, a 5 s execution trace, allocations, blocking and lock contention,
+and the CPU pinning Docker applied. If Go is installed, each profile also gets a text report next to it, such as
+`prof-on-1-cpu.txt`. These runs are named
 `prof-off-1`, `prof-on-1` and so on, and their latencies don't count, because profiling slows the server down.
 
 ## Run it without Docker

@@ -18,8 +18,8 @@ name. The player shares it, such as in a link, and a friend joins with it.
 `ServerConfig.AllowClientCodes` is for a game that picks its own codes, such as a load test. A new code never takes one
 in use, by a running room or by a saved room the server couldn't bring back.
 
-In the SDKs, `createRoom` asks for a new room. The TypeScript client reports the code in `onJoined`, and the Go client
-returns it. After a lost connection, the client joins the same code again.
+In the TypeScript SDK, `createRoom` asks for a new room and reports the code in `onJoined`, and after a lost connection
+the client joins the same code again. The Go SDK's `CreateRoom` returns the code, and doesn't reconnect by itself.
 
 ## Who takes a seat
 

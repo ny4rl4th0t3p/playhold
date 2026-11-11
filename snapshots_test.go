@@ -518,7 +518,7 @@ func TestSnapshotRestoresTheModulesState(t *testing.T) {
 	typ := newTestRoomType(t, RoomConfig{Modules: []Module{savedModule}})
 	snapshot := &typ.snapshots[0]
 
-	data, err := snapshot.encode(&counterState{value: 12})
+	data, err := snapshot.encode(&counterState{value: 12}, proto.MarshalOptions{})
 	require.NoError(t, err)
 	got, err := snapshot.decode(data)
 	require.NoError(t, err)

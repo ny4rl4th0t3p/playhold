@@ -169,22 +169,30 @@ func (r *Room) fireNext() (panicked bool) {
 	}
 	timer := r.timers[0]
 	r.timers = slices.Delete(r.timers, 0, 1)
+	return r.turn(r.timerInput(timer))
+}
+
+// timerInput is the turn of a timer that has come due, already removed from the pending ones.
+func (r *Room) timerInput(timer roomTimer) input {
 	name := string(proto.MessageName(timer.event))
-	return r.turn(input{timerEvent: name, run: func(rc *RoomContext) error {
+	return input{timerEvent: name, run: func(rc *RoomContext) error {
+		if r.recorder != nil {
+			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Timer{Timer: &wire.RecordedTimer{Id: uint64(timer.id)}}})
+		}
 		if r.journal != nil {
 			payload, _ := proto.Marshal(timer.event) // it was saved with the room, so it encodes
 			r.journalBegin(&JournalEntry{Event: name, Size: len(payload), Payload: payload})
 		}
 		rc.Emit(timer.event)
 		return nil
-	}})
+	}}
 }
 
-func (r *Room) encodeTimers() []*wire.PendingTimer {
+func (r *Room) encodeTimers(opts proto.MarshalOptions) []*wire.PendingTimer {
 	timers := make([]*wire.PendingTimer, 0, len(r.timers))
 	for i := range r.timers {
 		timer := &r.timers[i]
-		event, err := proto.Marshal(timer.event)
+		event, err := opts.Marshal(timer.event)
 		if err != nil {
 			panic(fmt.Sprintf("playhold: timer event %T can't be saved: %v", timer.event, err))
 		}

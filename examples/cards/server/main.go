@@ -59,7 +59,7 @@ type flags struct {
 
 	emptyRoom, grace, inactiveRoom string
 
-	admission, crashJournal string
+	admission, crashJournal, recording string
 
 	crashJournalEntries int
 
@@ -105,6 +105,8 @@ func defineFlags(fs *flag.FlagSet) *flags {
 	fs.StringVar(&f.crashJournal, "crash-journal", "",
 		"file to keep the last turns in, to find and reproduce a crash; empty keeps none; keep it private, it holds players' moves")
 	fs.IntVar(&f.crashJournalEntries, "crash-journal-entries", 0, "how many turns the crash journal keeps; 0 uses the default")
+	fs.StringVar(&f.recording, "recording", "",
+		"folder to record every game in, turn by turn, to replay one; empty records none; keep it private, it holds players' moves")
 	fs.BoolVar(&f.restartWhenStuck, "restart-when-stuck", false,
 		"exit so the service manager restarts the server, when a stuck room's goroutine keeps running while it's overloaded")
 	fs.StringVar(&f.admission, "admission", "",
@@ -163,6 +165,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 	if err != nil {
 		return nil, nil, err
 	}
+	f.options.Record = f.recording != ""
 	cfg := &playhold.ServerConfig{
 		SnapshotInterval:    f.snapshotInterval,
 		TimersAfterRestart:  policy,
@@ -177,6 +180,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		Admission:           playhold.Admission{Off: f.admission == off},
 		RestartWhenStuck:    f.restartWhenStuck,
 		CrashJournal:        playhold.JournalConfig{Path: f.crashJournal, Entries: f.crashJournalEntries},
+		Recording:           playhold.RecordingConfig{Dir: f.recording},
 		OriginPatterns:      splitList(f.origins),
 		TrustedProxies:      trusted,
 		AllowClientCodes:    f.allowClientCodes,

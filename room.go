@@ -253,6 +253,19 @@ type Room struct {
 	journalBuf []byte
 	journalSeq atomic.Uint64
 
+	// The recording, if the room type records and the server has a folder for it. The rest is the room goroutine's,
+	// except segmentStarted, also read by finish, which the watchdog can call.
+	recorder        *recordingWriter
+	recordPath      string
+	stable          bool      // encode the state deterministically, for the recording's hashes
+	replaying       bool      // a replay builds no views
+	seed            [32]byte  // the seed the room was created with
+	initNow         time.Time // the clock Init ran at
+	restored        []byte    // a restored room's state, until its segment starts
+	turnRecord      *wire.RecordedTurn
+	encodedThisTurn []byte // this turn's snapshot, if one was encoded
+	segmentStarted  atomic.Bool
+
 	// The breaker, if any, counts this room's incidents. current is the running turn, and stuckTurn the one the watchdog
 	// gave up on, which is an incident if its goroutine is still running after stuckGrace.
 	incidents *breaker
@@ -294,9 +307,11 @@ func newRoom(id RoomID, typ *RoomType, cfg *Config, onExit func(*Room)) *Room {
 	if size <= 0 {
 		size = defaultQueueSize
 	}
-	rngState := rand.NewChaCha8(cfg.NewSeed())
+	seed := cfg.NewSeed()
+	rngState := rand.NewChaCha8(seed)
 	return &Room{
 		id:     id,
+		seed:   seed,
 		typ:    typ,
 		logger: cfg.Logger.With("room", string(id), "room_type", typ.cfg.Name),
 		onExit: onExit,
@@ -372,7 +387,16 @@ func (r *Room) submitWait(in input) error {
 // dispatch queues a message for the handler registered by the named module. The result, if set, receives the
 // handler's error on the room's goroutine.
 func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byte, result func(error)) error {
-	return r.submit(input{player: player, result: result, module: module, id: id, run: func(rc *RoomContext) error {
+	return r.submit(r.dispatchInput(player, module, id, payload, result))
+}
+
+func (r *Room) dispatchInput(player PlayerID, module string, id uint32, payload []byte, result func(error)) input {
+	return input{player: player, result: result, module: module, id: id, run: func(rc *RoomContext) error {
+		if r.recorder != nil {
+			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Message{Message: &wire.RecordedMessage{
+				Player: string(player), Module: module, Id: id, Payload: payload,
+			}}})
+		}
 		if r.journal != nil {
 			r.journalBegin(&JournalEntry{Player: player, Module: module, MessageID: id, Size: len(payload), Payload: payload})
 		}
@@ -382,7 +406,7 @@ func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byt
 			return fmt.Errorf("%w: module %q message %d", ErrUnknownMessage, module, id)
 		}
 		return handler(rc, payload)
-	}})
+	}}
 }
 
 // seat queues a request to seat the player, who keeps any seat they already have. From then on the sink, if set,
@@ -390,10 +414,22 @@ func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byt
 // on the room's goroutine. It isn't called if the room closes first. It waits for space in the queue, because a busy
 // room must not turn away players coming back to it after a restart, all at once.
 func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
-	return r.submitWait(input{player: player, result: result, run: func(rc *RoomContext) error {
+	return r.submitWait(r.seatInput(player, sink, result))
+}
+
+func (r *Room) seatInput(player PlayerID, sink viewSink, result func(error)) input {
+	return input{player: player, result: result, run: func(rc *RoomContext) error {
+		var recorded *wire.RecordedSeat
+		if r.recorder != nil {
+			recorded = &wire.RecordedSeat{Player: string(player)}
+			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Seat{Seat: recorded}})
+		}
 		r.playerActive()
 		if !slices.Contains(r.seats, player) { // a player who already has a seat is never refused
 			if err := r.takeSeat(rc, player); err != nil {
+				if recorded != nil {
+					recorded.RefusedBy = refusedBy(err)
+				}
 				return err
 			}
 		}
@@ -402,7 +438,24 @@ func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 			r.playerBack(rc, player)
 		}
 		return nil
-	}})
+	}}
+}
+
+// Why the server refused a seat before asking the room, for a recording, which has to refuse it the same way on replay.
+const (
+	refusedDraining   = "draining"
+	refusedOverloaded = "overloaded"
+)
+
+// refusedBy names a refusal that came from the server's state rather than the room's, or returns empty.
+func refusedBy(err error) string {
+	switch {
+	case errors.Is(err, ErrDraining):
+		return refusedDraining
+	case errors.Is(err, ErrOverloaded):
+		return refusedOverloaded
+	}
+	return ""
 }
 
 // takeSeat gives a new player a seat, if they may have one. While seats are reserved for matched players, only they may;
@@ -441,28 +494,44 @@ func (r *Room) takeSeat(rc *RoomContext, player PlayerID) error {
 // otherwise the room closes, so those who came can look for another game. Zero minPlayers means all of them. It's queued
 // before anyone is told the room's code, so nobody can take a seat before it.
 func (r *Room) reserve(players []PlayerID, reserveFor time.Duration, minPlayers int) {
-	_ = r.submit(input{noViews: true, run: func(_ *RoomContext) error {
+	_ = r.submit(r.reserveInput(players, minPlayers))
+	time.AfterFunc(reserveFor, func() { _ = r.submitWait(r.reserveEndInput()) })
+}
+
+func (r *Room) reserveInput(players []PlayerID, minPlayers int) input {
+	return input{noViews: true, run: func(_ *RoomContext) error {
+		if r.recorder != nil {
+			recorded := &wire.RecordedReserve{MinPlayers: int32(minPlayers)} //nolint:gosec // at most MaxPlayers
+			for _, player := range players {
+				recorded.Players = append(recorded.Players, string(player))
+			}
+			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Reserve{Reserve: recorded}})
+		}
 		r.reserved, r.matchJoined, r.minPlayers = slices.Clone(players), nil, minPlayers
 		return nil
-	}})
-	time.AfterFunc(reserveFor, func() {
-		// Not noViews: the game may start its match on MatchReady.
-		_ = r.submitWait(input{run: func(rc *RoomContext) error {
-			switch {
-			case len(r.reserved) == 0:
-				// The whole group joined in time, and MatchReady has gone out.
-			case r.minPlayers == 0 || len(r.matchJoined) < r.minPlayers:
-				r.logger.Info("matched players didn't all join in time, closing the room",
-					"joined", len(r.matchJoined), "missing", len(r.reserved))
-				r.requestStop(CloseMatchIncomplete)
-			default:
-				r.logger.Info("matched players didn't all join in time; the game goes ahead without them",
-					"joined", len(r.matchJoined), "missing", len(r.reserved))
-				r.matchReady(rc)
-			}
-			return nil
-		}})
-	})
+	}}
+}
+
+// reserveEndInput ends the reservation. It isn't noViews: the game may start its match on MatchReady.
+func (r *Room) reserveEndInput() input {
+	return input{run: func(rc *RoomContext) error {
+		if r.recorder != nil {
+			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_ReserveEnd{ReserveEnd: &wire.RecordedReserveEnd{}}})
+		}
+		switch {
+		case len(r.reserved) == 0:
+			// The whole group joined in time, and MatchReady has gone out.
+		case r.minPlayers == 0 || len(r.matchJoined) < r.minPlayers:
+			r.logger.Info("matched players didn't all join in time, closing the room",
+				"joined", len(r.matchJoined), "missing", len(r.reserved))
+			r.requestStop(CloseMatchIncomplete)
+		default:
+			r.logger.Info("matched players didn't all join in time; the game goes ahead without them",
+				"joined", len(r.matchJoined), "missing", len(r.reserved))
+			r.matchReady(rc)
+		}
+		return nil
+	}}
 }
 
 // matchReady tells the room's modules its matched game can start, frees any seats still waiting, and ends the match: the
@@ -475,19 +544,27 @@ func (r *Room) matchReady(rc *RoomContext) {
 // removeViewer stops sending views to the sink and starts the player's grace period, unless the player has since moved
 // to a newer sink. It waits for space in the queue, because a lost request would mean the game never hears they left.
 func (r *Room) removeViewer(player PlayerID, sink viewSink) {
-	_ = r.submitWait(input{player: player, noViews: true, run: func(_ *RoomContext) error {
+	_ = r.submitWait(r.removeViewerInput(player, sink))
+}
+
+// removeViewerInput is only recorded when the sink was the player's, since only then does anything happen.
+func (r *Room) removeViewerInput(player PlayerID, sink viewSink) input {
+	return input{player: player, noViews: true, run: func(_ *RoomContext) error {
 		if r.viewers[player] == sink {
+			if r.recorder != nil {
+				r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Leave{Leave: &wire.RecordedLeave{Player: string(player)}}})
+			}
 			delete(r.viewers, player)
 			r.startGrace(player)
 		}
 		return nil
-	}})
+	}}
 }
 
 // sendViews gives each connected player a full view of the room, in one frame. The views run game code, so they're built
 // before the gate, which only holds the sending.
 func (r *Room) sendViews() {
-	if len(r.typ.views) == 0 {
+	if len(r.typ.views) == 0 || r.replaying {
 		return
 	}
 	type delivery struct {
@@ -625,6 +702,19 @@ func (r *Room) saveSnapshot() {
 		r.saveTimer.Stop()
 		r.saveSet = false
 	}
+	data := r.encodeSnapshot()
+	r.encodedThisTurn = data
+	r.publish(func() {
+		r.lastSnapshot.Store(&data)
+		r.writer.save(store.RoomRecord{ID: string(r.id), Code: r.code, RoomType: r.typ.cfg.Name, Data: data})
+	})
+}
+
+// encodeSnapshot encodes the room as a snapshot saves it. A recorded room encodes deterministically, so the same state
+// always gives the same bytes for its hash; Protobuf doesn't promise that for maps otherwise. A room that can't be
+// encoded panics, closing it, rather than carrying on with nothing saved.
+func (r *Room) encodeSnapshot() []byte {
+	opts := proto.MarshalOptions{Deterministic: r.stable}
 	rngState, err := r.rngState.MarshalBinary()
 	if err != nil {
 		panic(fmt.Sprintf("playhold: room's random numbers can't be saved: %v", err))
@@ -634,7 +724,7 @@ func (r *Room) saveSnapshot() {
 		RngState:       rngState,
 		ClockUnixNanos: r.now.UnixNano(),
 		Modules:        make([]*wire.ModuleSnapshot, 0, len(r.typ.snapshots)),
-		Timers:         r.encodeTimers(),
+		Timers:         r.encodeTimers(opts),
 		LastTimerId:    uint64(r.lastTimerID),
 	}
 	for _, player := range r.seats {
@@ -645,7 +735,7 @@ func (r *Room) saveSnapshot() {
 	}
 	for i := range r.typ.snapshots {
 		module := &r.typ.snapshots[i]
-		state, err := module.encode(r.slots[module.index])
+		state, err := module.encode(r.slots[module.index], opts)
 		if err != nil {
 			panic(fmt.Sprintf("playhold: module %q state can't be saved: %v", module.module, err))
 		}
@@ -655,14 +745,11 @@ func (r *Room) saveSnapshot() {
 			State:   state,
 		})
 	}
-	data, err := proto.Marshal(snapshot)
+	data, err := opts.Marshal(snapshot)
 	if err != nil {
 		panic(fmt.Sprintf("playhold: room can't be saved: %v", err))
 	}
-	r.publish(func() {
-		r.lastSnapshot.Store(&data)
-		r.writer.save(store.RoomRecord{ID: string(r.id), Code: r.code, RoomType: r.typ.cfg.Name, Data: data})
-	})
+	return data
 }
 
 // saveChange saves the room after a turn changed it. With a snapshot interval, a change that comes sooner than the
@@ -743,6 +830,7 @@ func (r *Room) runInit() (panicErr error) {
 		}
 	}()
 	r.now = r.clock()
+	r.initNow = r.now
 	for _, slot := range r.typ.slots {
 		r.slots[slot.index] = slot.init()
 	}
@@ -846,6 +934,7 @@ func (r *Room) turn(in input) (panicked bool) {
 		}
 		if panicked {
 			r.journalMark(JournalPanicked, true)
+			r.writeTurnRecord(nil, true)
 		} else {
 			r.journalMark(JournalDone, true) // nothing, if the watchdog already wrote stuck
 		}
@@ -855,6 +944,7 @@ func (r *Room) turn(in input) (panicked bool) {
 	r.setCurrent(info)
 	r.startWork()
 	defer r.watchdog.Stop()
+	r.turnRecord, r.encodedThisTurn = nil, nil
 
 	started := time.Now() // the real time, whatever clock the room reads
 	err = in.run(&RoomContext{room: r, player: in.player})
@@ -875,6 +965,7 @@ func (r *Room) turn(in input) (panicked bool) {
 		r.saveChange()
 		r.sendViews()
 	}
+	r.writeTurnRecord(err, false)
 	return false
 }
 
@@ -937,6 +1028,7 @@ func (r *Room) callClose(reason CloseReason) {
 func (r *Room) finish(reason CloseReason) {
 	r.finishOnce.Do(func() {
 		r.requestStop(reason)
+		r.recordClose(reason)
 		r.reason = reason
 		r.metrics.closed(reason)
 		r.onExit(r)

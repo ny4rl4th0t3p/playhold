@@ -3,6 +3,8 @@ package playhold
 import (
 	"slices"
 	"time"
+
+	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 )
 
 // PlayerDisconnected is the event emitted when a seated player has been gone for the whole grace period, set by
@@ -35,7 +37,12 @@ type roomSessions struct {
 // has no connections yet, and anyone who doesn't come back has to be noticed. It's the room's first input, so it can't
 // be refused for a full queue.
 func (r *Room) startSessions(s roomSessions) {
-	_ = r.submit(input{noViews: true, run: func(_ *RoomContext) error {
+	_ = r.submit(r.sessionsInput(s))
+}
+
+// sessionsInput is a room's first turn, which also starts its recording's segment.
+func (r *Room) sessionsInput(s roomSessions) input {
+	return input{noViews: true, run: func(_ *RoomContext) error {
 		r.inactive = s.inactive
 		r.admit = s.admit
 		r.playerActive() // the clock starts now, also for a room restored with nobody in it yet
@@ -45,8 +52,9 @@ func (r *Room) startSessions(s roomSessions) {
 				r.startGrace(player)
 			}
 		}
+		r.startSegment(s)
 		return nil
-	}})
+	}}
 }
 
 // startGrace keeps r.graces soonest first, since every grace period is the same length and starts at the current turn.
@@ -79,12 +87,20 @@ func (r *Room) playerActive() {
 func (r *Room) fireGrace() (panicked bool) {
 	player := r.graces[0].player
 	r.graces = slices.Delete(r.graces, 0, 1)
-	return r.turn(input{player: player, timerEvent: "PlayerDisconnected", run: func(rc *RoomContext) error {
+	return r.turn(r.graceInput(player))
+}
+
+// graceInput is the turn of a grace period that has ended, already removed from the pending ones.
+func (r *Room) graceInput(player PlayerID) input {
+	return input{player: player, timerEvent: "PlayerDisconnected", run: func(rc *RoomContext) error {
+		if r.recorder != nil {
+			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Grace{Grace: &wire.RecordedGrace{Player: string(player)}}})
+		}
 		if r.journal != nil {
 			r.journalBegin(&JournalEntry{Player: player, Event: "PlayerDisconnected"})
 		}
 		r.away = append(r.away, player)
 		rc.Emit(PlayerDisconnected{Player: player})
 		return nil
-	}})
+	}}
 }

@@ -174,6 +174,23 @@ func ExampleServerConfig_restartWhenStuck() {
 	}, onTheInternet())
 }
 
+func ExampleRecordingConfig() {
+	// #region recording
+	typ, err := playhold.NewRoomType(playhold.RoomConfig{
+		Name:   "match", // also the name of its recordings' folder
+		Record: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	run(&playhold.ServerConfig{
+		RoomType: typ,
+		// On lasting storage, kept as private as the database: recordings hold players' messages.
+		Recording: playhold.RecordingConfig{Dir: "/var/lib/game/recordings"},
+	}, onTheInternet())
+	// #endregion recording
+}
+
 func ExampleJournalConfig() {
 	run(&playhold.ServerConfig{
 		RoomType: matchType(),

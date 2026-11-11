@@ -18,6 +18,7 @@ ID is still personal data where it can be linked to someone, such as through an 
 | Metrics              | Nothing about players                                                                                       | As long as the monitoring keeps them                                         |                                                   |
 | Traces               | Guest IDs on turns' spans                                                                                   | As long as the tracing backend keeps them                                    | `TracerProvider`, off by default; `HidePlayerIDs` |
 | The crash journal    | Each turn's guest ID and the full message, which can be anything a player typed                             | Overwritten as new turns come; the file stays until deleted                  | `CrashJournal`, off by default                    |
+| Recordings           | Every turn of a recorded room: the guest IDs in it and every message in full                                | `Retention` after the recording's last turn, 30 days by default              | `Record`, `Recording`; off by default             |
 | The server's memory  | IP addresses, for the rate limits per address                                                               | Forgotten once an address has been quiet for a while; never written anywhere | The rate limits                                   |
 | The player's browser | Their guest ID and secret, in `localStorage` with the TypeScript SDK's defaults                             | Until the player clears the site's data                                      | The SDK's `storage` option                        |
 
@@ -34,6 +35,10 @@ restores it or someone deletes it.
   as for any server. With `HidePlayerIDs`, no log line or span carries a guest ID.
 - **The crash journal.** It holds players' messages in full, so turn it on only where it's needed, and keep its file,
   and any copy of it, as private as the database.
+- **Recordings.** Like the journal, they hold players' messages in full, and `HidePlayerIDs` doesn't apply to them,
+  since
+  a replay needs each turn's player. Keep their folder, and any copy of a recording, as private as the database, and
+  set `Retention` to as long as the game needs to look into a reported game.
 - **Backups** of the database keep everything above for as long as the backups are kept.
 
 ## What a game adds

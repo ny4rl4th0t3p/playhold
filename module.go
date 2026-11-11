@@ -124,9 +124,9 @@ func Snapshot[T, M any, PM interface {
 		index:   key.index,
 		version: version,
 		steps:   make(map[int]func(old []byte) ([]byte, error)),
-		encode: func(state any) ([]byte, error) {
+		encode: func(state any, opts proto.MarshalOptions) ([]byte, error) {
 			typed, _ := state.(*T) // always *T: State is the only writer of this slot
-			return proto.Marshal(save(typed))
+			return opts.Marshal(save(typed))
 		},
 		decode: func(data []byte) (any, error) {
 			msg := PM(new(M))
@@ -284,6 +284,10 @@ type RoomConfig struct {
 	OnJoinAttempt func(rc *RoomContext, attempt *JoinAttempt) error
 	// Close runs once on the room's goroutine after its last turn, unless Init failed.
 	Close func(rc *RoomContext, reason CloseReason)
+	// Record records every turn of this type's rooms, on a server with RecordingConfig.Dir set, so a game can be replayed
+	// with playholdtest.Replay. Every module's state needs a snapshot, and Name has to be a folder name: letters, digits,
+	// - and _. A recorded room encodes its state after every turn, to hash it.
+	Record bool
 }
 
 // JoinAttempt is a player asking for a free seat. It gains fields as playhold learns more about players, such as their
@@ -329,7 +333,7 @@ type moduleSnapshot struct {
 	module  string
 	index   int
 	version int
-	encode  func(state any) ([]byte, error)
+	encode  func(state any, opts proto.MarshalOptions) ([]byte, error)
 	decode  func(data []byte) (any, error)
 
 	steps map[int]func(old []byte) ([]byte, error) // from a version to the next
@@ -388,6 +392,24 @@ func (t *RoomType) attachMigrations() error {
 					t.cfg.Name, snapshot.module, snapshot.version, from))
 			}
 		}
+	}
+	return errors.Join(errs...)
+}
+
+// checkRecording refuses a room type that records but can't: its name names its recordings' folder, and its state's hash
+// needs every module's state.
+func (t *RoomType) checkRecording() error {
+	if !t.cfg.Record {
+		return nil
+	}
+	var errs []error
+	if !validRecordingName(t.cfg.Name) {
+		errs = append(errs, fmt.Errorf("playhold: room type %q records, so its name has to be a folder name: letters, "+
+			"digits, - and _", t.cfg.Name))
+	}
+	if err := t.requireSnapshots(); err != nil {
+		errs = append(errs, fmt.Errorf("playhold: room type %q records, so every module's state needs a snapshot: %w",
+			t.cfg.Name, err))
 	}
 	return errors.Join(errs...)
 }
@@ -493,6 +515,10 @@ func NewRoomType(cfg RoomConfig) (*RoomType, error) {
 					cfg.Name, module.Name(), provider))
 			}
 		}
+	}
+
+	if err := typ.checkRecording(); err != nil {
+		errs = append(errs, err)
 	}
 
 	if err := errors.Join(errs...); err != nil {

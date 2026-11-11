@@ -68,12 +68,13 @@ See [Limit abuse and load](../guides/limits.md).
 
 ### Crashes
 
-See [Restart when stuck](../guides/keeping-games-running.md#restart-when-stuck) and
-[When something crashes](../guides/crashes.md).
+See [Restart when stuck](../guides/keeping-games-running.md#restart-when-stuck),
+[When something crashes](../guides/crashes.md) and [Record and replay](../guides/recording.md).
 
 | Field              | Default | What it does                                                           |
 |--------------------|---------|------------------------------------------------------------------------|
 | `CrashJournal`     | Off     | The crash journal                                                      |
+| `Recording`        | Off     | Where recorded room types' rooms are recorded; see RecordingConfig     |
 | `RestartWhenStuck` | False   | Restarts the process when a stuck room's goroutine keeps it overloaded |
 
 ### Logs and traces
@@ -130,6 +131,7 @@ game.
 | `QueueSize`     | 32                | Inputs a room's queue holds; over it, a message gets `QUEUE_FULL`                                                    |
 | `MaxPlayers`    | No limit          | Seats per room; over it, joining gets `ROOM_FULL`                                                                    |
 | `OnJoinAttempt` | Nil, seats anyone | Decides whether a new player takes a free seat; see [Who takes a seat](../guides/finding-a-game.md#who-takes-a-seat) |
+| `Record`        | False             | Records every turn of its rooms, with `Recording.Dir`; see [Record and replay](../guides/recording.md)               |
 
 A server only restores saved rooms of its own room type's `Name`, so renaming a room type leaves its saved rooms
 unrestored. They stay in the store, and the server logs each one it skips.
@@ -167,6 +169,15 @@ See [Matchmaking](../guides/finding-a-game.md#matchmaking).
 | `ReserveFor` | 30 s                                             | How long a matched group's seats wait for its players       |
 | `MinPlayers` | 0, the whole group                               | How many of a group may start without the rest              |
 | `FillFor`    | 0, full groups only                              | How long the default matcher waits to fill a group          |
+
+### RecordingConfig
+
+See [Record and replay](../guides/recording.md).
+
+| Field       | Default | What it does                                                           |
+|-------------|---------|------------------------------------------------------------------------|
+| `Dir`       | Empty   | Where recordings go, a folder per room type. Empty turns recording off |
+| `Retention` | 30 days | Deletes a recording this long after its last write, checked every hour |
 
 ### JournalConfig
 

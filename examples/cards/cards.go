@@ -31,6 +31,8 @@ type Options struct {
 	// TurnsSnapshotVersion is the format the turns module saves games in, so a deploy that changes it can be tried on a
 	// running game. The default is 1, and 2 is the only other.
 	TurnsSnapshotVersion int
+	// Record records every game, turn by turn, on a server with a recording folder, so a game can be replayed.
+	Record bool
 }
 
 // ClientSchemaVersions is what a client built from this code says in its Hello.
@@ -58,6 +60,7 @@ func NewRoomTypeWith(options Options) (*playhold.RoomType, error) {
 	return playhold.NewRoomType(playhold.RoomConfig{
 		Name:       "crazy-eights",
 		MaxPlayers: rules.Players,
+		Record:     options.Record,
 		Modules: []playhold.Module{
 			deck.Module{},
 			turns.Module{

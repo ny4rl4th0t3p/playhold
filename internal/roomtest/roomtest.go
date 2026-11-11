@@ -13,6 +13,32 @@ import (
 // New starts a room for a test. Set by playhold.
 var New func(cfg *Config) (Room, error)
 
+// Replay plays the recording at path again against typ, a *playhold.RoomType. The error is for a file it can't read or
+// a typ that isn't a room type; a game that plays differently is a Report with Diverged set. Set by playhold.
+var Replay func(typ any, path string, logger *slog.Logger) (*Report, error)
+
+// Report is how a replay went.
+type Report struct {
+	Turns         int
+	Build         string
+	Revision      string
+	SchemaMatches bool
+	Incomplete    bool
+	Diverged      *Divergence
+}
+
+// Divergence is the first turn that didn't end as recorded.
+type Divergence struct {
+	Segment   int
+	Turn      int // from 1; 0 is the room starting to run
+	Input     any // a playhold.RecordedTurn, or nil for the start
+	Reason    string
+	WantHash  string
+	GotHash   string
+	WantError string
+	GotError  string
+}
+
 // Config is what a test asks for. This package can't import playhold, so playhold's types are passed as any.
 type Config struct {
 	Type     any      // a *playhold.RoomType

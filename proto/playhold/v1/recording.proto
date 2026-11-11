@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package playhold.v1;
+
+option go_package = "github.com/ny4rl4th0t3p/playhold/internal/wire;wire";
+
+// RecordingRecord is one record of a room's recording. The file holds them in order, each after its length and a
+// CRC-32. It's only ever stored, never sent to a client, because it holds every player's messages.
+message RecordingRecord {
+  oneof body {
+    RecordingSegment segment = 1;
+    RecordedTurn turn = 2;
+    RecordedClose close = 3;
+    // gap says records were dropped before this one, so the segment can't be replayed past it.
+    RecordedGap gap = 4;
+  }
+}
+
+// RecordingSegment starts a segment: the room starting to run, new or restored.
+message RecordingSegment {
+  string room_id = 1;
+  string room_type = 2;
+  // build is a hash of the server's executable, empty if it couldn't be read.
+  string build = 3;
+  repeated RecordedModule modules = 4;
+  int64 grace_nanos = 5;
+  int64 inactive_nanos = 6;
+  // A new room has its seed and the clock its Init ran at; a restored one has its state as restored.
+  bytes seed = 7;
+  int64 init_unix_nanos = 8;
+  bytes restored = 9;
+  // The first turn, which gives the room its sessions, runs at this clock, and hash is the room's state after it.
+  int64 start_unix_nanos = 10;
+  bytes hash = 11;
+  // revision is the version control revision Go stamped into the server's build, with "-modified" for uncommitted
+  // changes, empty if it had none. It says which code to check out to replay the room.
+  string revision = 12;
+}
+
+// RecordedModule is a module's snapshot version.
+message RecordedModule {
+  string module = 1;
+  uint32 version = 2;
+}
+
+// RecordedTurn is one turn: its input, the room's clock when it started, its error, and the room's state after it.
+message RecordedTurn {
+  int64 unix_nanos = 1;
+  oneof input {
+    RecordedMessage message = 2;
+    RecordedSeat seat = 3;
+    RecordedLeave leave = 4;
+    RecordedTimer timer = 5;
+    RecordedGrace grace = 6;
+    RecordedReserve reserve = 7;
+    RecordedReserveEnd reserve_end = 8;
+  }
+  // error is the turn's error text, empty if it had none.
+  string error = 9;
+  // panicked says the turn panicked, which closes or restores the room; it has no hash.
+  bool panicked = 10;
+  bytes hash = 11;
+}
+
+message RecordedMessage {
+  string player = 1;
+  string module = 2;
+  uint32 id = 3;
+  bytes payload = 4;
+}
+
+message RecordedSeat {
+  string player = 1;
+  // refused_by is set when the server, not the room, refused the seat: draining or overloaded.
+  string refused_by = 2;
+}
+
+message RecordedLeave {
+  string player = 1;
+}
+
+message RecordedTimer {
+  uint64 id = 1;
+}
+
+message RecordedGrace {
+  string player = 1;
+}
+
+message RecordedReserve {
+  repeated string players = 1;
+  int32 min_players = 2;
+}
+
+message RecordedReserveEnd {}
+
+// RecordedClose ends a segment.
+message RecordedClose {
+  int64 unix_nanos = 1;
+  int32 reason = 2;
+}
+
+message RecordedGap {
+  uint32 dropped = 1;
+}

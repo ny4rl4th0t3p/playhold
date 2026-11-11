@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -70,6 +71,9 @@ type ServerConfig struct {
 	// CrashJournal keeps the last turns on disk, to find and reproduce what crashed the server. Off unless it has a Path.
 	// See JournalConfig.
 	CrashJournal JournalConfig
+	// Recording is where the rooms of a room type with RoomConfig.Record are recorded, turn by turn, to replay a game.
+	// Off unless it has a Dir. See RecordingConfig.
+	Recording RecordingConfig
 	// RestartWhenStuck lets the server restart its process when a stuck room's goroutine is still running 30 seconds after
 	// the watchdog gave up on it, and the server has been overloaded for a minute since: most likely a goroutine spinning
 	// forever, which Go can't stop. The server drains for 10 seconds, saves every room, and ListenAndServe returns
@@ -157,7 +161,8 @@ type Server struct {
 
 	admission      *admission // nil if off
 	stuck          *stuckWatch
-	journal        *journal // nil if off
+	journal        *journal         // nil if off
+	recorder       *recordingWriter // nil if off
 	breaker        *breaker
 	metrics        *metrics
 	stopBackground context.CancelFunc
@@ -196,6 +201,13 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	recorder, err := openRecorder(cfg, rt, logger) // also before, so a restored room's recording goes on
+	if err != nil {
+		if crashJournal != nil {
+			_ = crashJournal.close()
+		}
+		return nil, err
+	}
 
 	allowConnect, guestRate, messageRate := newRateLimits(cfg, m, logger)
 	admit := newAdmission(cfg.Admission.orDefault(), rt.queueFill, logger)
@@ -217,6 +229,9 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 			if crashJournal != nil {
 				_ = crashJournal.close()
 			}
+			if recorder != nil {
+				recorder.close()
+			}
 			return nil, err
 		}
 	}
@@ -230,6 +245,9 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	go stuck.run(background)
 	go g.lobby.matchmaker.run(background) // returns at once without matchmaking
 	startGuestExpiry(background, cfg.GuestExpiry, g.guests, m, logger)
+	if recorder != nil {
+		startRecordingRetention(background, &cfg.Recording, logger)
+	}
 	server := &Server{
 		writer:         writer,
 		rt:             rt,
@@ -241,6 +259,7 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 		admission:      admit,
 		stuck:          stuck,
 		journal:        crashJournal,
+		recorder:       recorder,
 		breaker:        incidents,
 		metrics:        m,
 		stopBackground: stopBackground,
@@ -368,6 +387,33 @@ func openIncidents(
 	}
 	rt.useBreaker(incidents)
 	return crashJournal, incidents, nil
+}
+
+// openRecorder starts the recorder if the room type records, after making its folder, and gives it to the runtime's rooms.
+// It returns nil if the room type doesn't record. A room type that records with no folder to record to is refused, so a
+// game that asked for recordings never quietly gets none.
+func openRecorder(cfg *ServerConfig, rt *Runtime, logger *slog.Logger) (*recordingWriter, error) {
+	typ := cfg.RoomType.cfg
+	switch {
+	case typ.Record && cfg.Recording.Dir == "":
+		return nil, fmt.Errorf("playhold: room type %q records its rooms, but ServerConfig.Recording.Dir isn't set", typ.Name)
+	case !typ.Record:
+		if cfg.Recording.Dir != "" {
+			logger.Info("a recording folder is set, but the room type doesn't record; set RoomConfig.Record to record it")
+		}
+		return nil, nil // nothing records, which isn't an error
+	}
+	if err := os.MkdirAll(filepath.Join(cfg.Recording.Dir, typ.Name), recordingDirMode); err != nil {
+		return nil, fmt.Errorf("playhold: making the recordings' folder: %w", err)
+	}
+	build, err := currentBuild()
+	if err != nil {
+		logger.Warn("could not read the server's executable, so recordings don't say which build made them", "error", err)
+	}
+	w := newRecordingWriter(cfg.Recording.Dir, build, logger)
+	rt.useRecorder(w)
+	logger.Info("recording rooms", "dir", cfg.Recording.Dir, "room_type", typ.Name, "revision", w.revision)
+	return w, nil
 }
 
 // openServerJournal opens the crash journal if the config has a path, reports what it shows about the last crash, and
@@ -518,6 +564,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	if s.journal != nil {
 		_ = s.journal.close() // a second Shutdown finds it closed already, which is fine
+	}
+	if s.recorder != nil {
+		s.recorder.close() // after the rooms, so their last records are written
 	}
 	s.transport.Close()
 	return err

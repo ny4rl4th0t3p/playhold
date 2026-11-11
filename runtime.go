@@ -48,6 +48,8 @@ type Runtime struct {
 	metrics *metrics     // set by a Server
 	tracer  trace.Tracer // set by a Server with a TracerProvider
 
+	recorder *recordingWriter // set by a Server with a recording folder
+
 	hidePlayers bool // set by a Server with HidePlayerIDs
 }
 
@@ -103,6 +105,9 @@ func (rt *Runtime) restoreRoom(
 	room.restart = restart
 	if err := room.applySnapshot(data, policy); err != nil {
 		return nil, err
+	}
+	if room.recorder != nil {
+		room.restored = room.encodeSnapshot() // as restored, after migrations and the timers' policy
 	}
 	if err := rt.register(room); err != nil {
 		return nil, err
@@ -182,6 +187,10 @@ func (rt *Runtime) attach(room *Room) {
 	room.incidents = rt.breaker
 	room.metrics = rt.metrics
 	room.tracer = rt.tracer
+	if rt.recorder != nil && room.typ.cfg.Record {
+		room.recorder, room.stable = rt.recorder, true
+		room.recordPath = rt.recorder.path(room.typ.cfg.Name, room.id)
+	}
 	if rt.hidePlayers {
 		room.hidePlayers = true
 		room.logger = hidePlayers(room.logger)
@@ -210,6 +219,12 @@ func (rt *Runtime) useMetrics(m *metrics) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.metrics = m
+}
+
+func (rt *Runtime) useRecorder(w *recordingWriter) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.recorder = w
 }
 
 func (rt *Runtime) useTracer(tracer trace.Tracer) {

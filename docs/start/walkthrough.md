@@ -16,7 +16,7 @@ HTTP, so keep it on your own machine.
 
 ## Play
 
-1. Open <http://localhost:8080> and choose **New game**. The page shows the room's code, and puts it in its own address
+1. Open `http://localhost:8080` and choose **New game**. The page shows the room's code, and puts it in its own address
    as `?room=<code>`.
 2. Open that address in a private window, or in another browser, and the game starts. Two tabs in the same browser
    share one identity, so the newer one takes over and the older one says it stopped.
@@ -40,8 +40,8 @@ turn. The server saved the game after every move, and brought it back when it st
 docker compose kill game && docker compose up -d game
 ```
 
-The server's health checks are at <http://localhost:8080/healthz> and <http://localhost:8080/readyz>, and its
-Prometheus metrics at <http://localhost:9464/metrics>.
+The server's health checks are at `http://localhost:8080/healthz` and `http://localhost:8080/readyz`, and its
+Prometheus metrics at `http://localhost:9464/metrics`.
 
 ## What did what
 
@@ -61,7 +61,7 @@ All paths are in `examples/cards`:
 | `compose.yaml`    | The server and PostgreSQL, with the settings in the sample's README                        |
 
 The modules never import each other: `hands` declares what it needs from the piles and the turns, and `cards.go` hands
-it those.
+it those. [Modules, keepers and events](../concepts/modules.md) covers how that works.
 
 ## Next
 

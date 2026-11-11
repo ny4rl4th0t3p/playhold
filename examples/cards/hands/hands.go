@@ -22,6 +22,8 @@ var (
 	ErrMustDraw    = errors.New("you have to draw before passing")
 )
 
+// #region keepers
+
 // DeckKeeper is what hands needs from the deck module.
 type DeckKeeper interface {
 	Draw(rc *playhold.RoomContext, n int) []string
@@ -35,6 +37,8 @@ type TurnKeeper interface {
 	Current(rc *playhold.RoomContext) playhold.PlayerID
 	Advance(rc *playhold.RoomContext)
 }
+
+// #endregion keepers
 
 var key = playhold.NewKey[state]("hands")
 
@@ -52,6 +56,8 @@ type Module struct {
 // Name implements playhold.Module.
 func (Module) Name() string { return "hands" }
 
+// #region register
+
 // Register implements playhold.Module.
 func (m Module) Register(r *playhold.Registry) {
 	r.Needs("deck", m.Deck)
@@ -65,6 +71,8 @@ func (m Module) Register(r *playhold.Registry) {
 	playhold.Handle(r, uint32(pb.HandsMessage_HANDS_MESSAGE_PASS), m.pass)
 	playhold.View(r, m.view)
 }
+
+// #endregion register
 
 func save(s *state) *pb.HandsState {
 	hands := make(map[string]*pb.Cards, len(s.cards))
@@ -105,6 +113,8 @@ func (m Module) turnExpired(rc *playhold.RoomContext, event *pb.TurnExpired) {
 	m.Turns.Advance(rc)
 }
 
+// #region play
+
 func (m Module) play(rc *playhold.RoomContext, msg *pb.Play) error {
 	if m.Turns.Current(rc) != rc.Player() {
 		return ErrNotYourTurn
@@ -138,6 +148,8 @@ func (m Module) play(rc *playhold.RoomContext, msg *pb.Play) error {
 	return nil
 }
 
+// #endregion play
+
 func (m Module) draw(rc *playhold.RoomContext, _ *pb.Draw) error {
 	if m.Turns.Current(rc) != rc.Player() {
 		return ErrNotYourTurn
@@ -168,6 +180,8 @@ func (m Module) pass(rc *playhold.RoomContext, _ *pb.Pass) error {
 	return nil
 }
 
+// #region view
+
 // view copies across only this player's own cards. Everyone else's hand is just a count.
 func (m Module) view(rc *playhold.RoomContext) *pb.HandsView {
 	s := key.Get(rc)
@@ -194,3 +208,5 @@ func (m Module) view(rc *playhold.RoomContext) *pb.HandsView {
 	}
 	return view
 }
+
+// #endregion view

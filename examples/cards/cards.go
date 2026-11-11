@@ -57,6 +57,7 @@ func NewRoomTypeWith(options Options) (*playhold.RoomType, error) {
 	if options.OldestClientSchema <= 0 {
 		options.OldestClientSchema = int(pb.SchemaVersion_SCHEMA_VERSION_CURRENT)
 	}
+	// #region room-type
 	return playhold.NewRoomType(playhold.RoomConfig{
 		Name:       "crazy-eights",
 		MaxPlayers: rules.Players,
@@ -72,4 +73,5 @@ func NewRoomTypeWith(options Options) (*playhold.RoomType, error) {
 			hands.Module{Deck: deck.Keeper{}, Turns: turns.Keeper{TurnTime: options.TurnTime}},
 		},
 	})
+	// #endregion room-type
 }

@@ -19,6 +19,16 @@ export default defineConfig({
                 ],
             },
             {
+                text: "Concepts",
+                items: [
+                    {text: "Rooms and turns", link: "/concepts/rooms"},
+                    {text: "Modules, keepers and events", link: "/concepts/modules"},
+                    {text: "Views", link: "/concepts/views"},
+                    {text: "Saving and timers", link: "/concepts/saving"},
+                    {text: "Players and connections", link: "/concepts/players"},
+                ],
+            },
+            {
                 text: "Guides",
                 items: [
                     {text: "Run in production", link: "/guides/production"},

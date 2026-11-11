@@ -46,12 +46,14 @@ func (m Module) Register(r *playhold.Registry) {
 	// The whole game's messages change together, so this one module speaks for all three.
 	r.ClientSchema(int(pb.SchemaVersion_SCHEMA_VERSION_CURRENT), m.OldestClientSchema)
 	playhold.State(r, key, func() *state { return &state{} })
+	// #region versions
 	if m.SnapshotVersion >= snapshotVersion2 {
 		playhold.Snapshot(r, key, snapshotVersion2, saveV2, loadV2)
 		playhold.Migrate(r, key, 1, migrateToV2)
 	} else {
 		playhold.Snapshot(r, key, 1, save, load)
 	}
+	// #endregion versions
 	playhold.On(r, m.playerJoined)
 	playhold.On(r, m.playerWon)
 	playhold.On(r, finishedGameExpired)
@@ -112,6 +114,8 @@ func loadV2(msg *pb.TurnsState) *state {
 	return s
 }
 
+// #region migration
+
 // migrateToV2 moves a game saved at version 1 to version 2.
 func migrateToV2(old []byte) ([]byte, error) {
 	msg := &pb.TurnsState{}
@@ -125,6 +129,8 @@ func migrateToV2(old []byte) ([]byte, error) {
 	return proto.Marshal(msg)
 }
 
+// #endregion migration
+
 // playerDisconnected only shows that they've gone. The turn timer already keeps the game moving without them.
 func playerDisconnected(rc *playhold.RoomContext, event playhold.PlayerDisconnected) {
 	s := key.Get(rc)
@@ -135,6 +141,8 @@ func playerReturned(rc *playhold.RoomContext, event playhold.PlayerReturned) {
 	s := key.Get(rc)
 	s.away = slices.DeleteFunc(s.away, func(player playhold.PlayerID) bool { return player == event.Player })
 }
+
+// #region game-started
 
 // playerJoined starts the game once the room is full. Whoever arrived first goes first.
 func (m Module) playerJoined(rc *playhold.RoomContext, _ playhold.PlayerJoined) {
@@ -147,6 +155,10 @@ func (m Module) playerJoined(rc *playhold.RoomContext, _ playhold.PlayerJoined) 
 	startTurnTimer(rc, s, m.TurnTime)
 	rc.Emit(rules.GameStarted{Players: players})
 }
+
+// #endregion game-started
+
+// #region timers
 
 func (m Module) playerWon(rc *playhold.RoomContext, event rules.PlayerWon) {
 	s := key.Get(rc)
@@ -162,6 +174,8 @@ func finishedGameExpired(rc *playhold.RoomContext, _ *pb.FinishedGameExpired) {
 func startTurnTimer(rc *playhold.RoomContext, s *state, turnTime time.Duration) {
 	s.turnTimer = rc.After(turnTime, &pb.TurnExpired{Player: string(s.players[s.current])})
 }
+
+// #endregion timers
 
 func (m Module) view(rc *playhold.RoomContext) *pb.TurnsView {
 	s := key.Get(rc)

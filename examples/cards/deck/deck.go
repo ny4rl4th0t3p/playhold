@@ -7,6 +7,7 @@ import (
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/rules"
 )
 
+// #region module
 var key = playhold.NewKey[state]("deck")
 
 type state struct {
@@ -29,6 +30,8 @@ func (Module) Register(r *playhold.Registry) {
 	playhold.View(r, view)
 }
 
+// #endregion module
+
 func save(s *state) *pb.DeckState {
 	return &pb.DeckState{Pile: s.pile, Discard: s.discard, ActiveSuit: s.activeSuit}
 }
@@ -36,6 +39,8 @@ func save(s *state) *pb.DeckState {
 func load(msg *pb.DeckState) *state {
 	return &state{pile: msg.GetPile(), discard: msg.GetDiscard(), activeSuit: msg.GetActiveSuit()}
 }
+
+// #region start
 
 // start shuffles and turns over the first card. An eight can't start the game, because nobody has chosen a suit.
 func start(rc *playhold.RoomContext, _ rules.GameStarted) {
@@ -53,9 +58,13 @@ func start(rc *playhold.RoomContext, _ rules.GameStarted) {
 	s.activeSuit = rules.Suit(top)
 }
 
+// #endregion start
+
 func shuffle(rc *playhold.RoomContext, cards []string) {
 	rc.Rand().Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
 }
+
+// #region view
 
 // view shows the top card and how many cards are left. The order of the pile stays private.
 func view(rc *playhold.RoomContext) *pb.DeckView {
@@ -63,12 +72,16 @@ func view(rc *playhold.RoomContext) *pb.DeckView {
 	return &pb.DeckView{Top: top(s), ActiveSuit: s.activeSuit, DrawCount: uint32(len(s.pile))} //nolint:gosec // at most 52
 }
 
+// #endregion view
+
 func top(s *state) string {
 	if len(s.discard) == 0 {
 		return ""
 	}
 	return s.discard[len(s.discard)-1]
 }
+
+// #region keeper
 
 // Keeper is what deck offers other modules.
 type Keeper struct{}
@@ -89,6 +102,8 @@ func (Keeper) Draw(rc *playhold.RoomContext, n int) []string {
 	}
 	return drawn
 }
+
+// #endregion keeper
 
 func recycle(rc *playhold.RoomContext, s *state) {
 	if len(s.discard) <= 1 {

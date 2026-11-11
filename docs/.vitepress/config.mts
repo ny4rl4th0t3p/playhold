@@ -48,6 +48,9 @@ export default defineConfig({
                 items: [
                     {text: "Configuration", link: "/reference/configuration"},
                     {text: "Errors and close reasons", link: "/reference/errors"},
+                    {text: "TypeScript SDK", link: "/reference/sdk-ts"},
+                    {text: "Go SDK", link: "/reference/sdk-go"},
+                    {text: "Wire protocol", link: "/reference/protocol"},
                 ],
             },
             {text: "Measurements", link: "/measurements"},

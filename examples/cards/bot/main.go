@@ -279,6 +279,7 @@ type player struct {
 }
 
 func (p *player) playGame(ctx context.Context, cfg *config, rec *recorder, pace *pacer, code string) error {
+	// #region connect
 	client, err := sdk.Connect(ctx, &sdk.Options{URL: cfg.url, Identity: p.identity, SchemaVersions: cards.ClientSchemaVersions()})
 	if err != nil {
 		var refused *sdk.Error
@@ -293,6 +294,7 @@ func (p *player) playGame(ctx context.Context, cfg *config, rec *recorder, pace 
 	if err := client.Join(ctx, code); err != nil {
 		return err
 	}
+	// #endregion connect
 
 	var sentAt time.Time // when the move still waiting for an answer was due
 	for range maxMoves {

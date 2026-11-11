@@ -79,6 +79,7 @@ let turnEndsAt = 0; // on this browser's clock, worked out from the time left, s
 let turnTotalMs = 0;
 let timerFrozen = false;
 
+// #region client
 const client = new PlayholdClient({
     url: serverUrl(),
     schemaVersions: {turns: SchemaVersion.CURRENT},
@@ -120,6 +121,7 @@ const client = new PlayholdClient({
     },
     onJoined: (code) => showRoom(code),
 });
+// #endregion client
 
 /** Shows an empty game while the server answers. */
 function openGame(): void {

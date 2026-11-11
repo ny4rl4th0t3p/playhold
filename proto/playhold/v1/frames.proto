@@ -4,6 +4,8 @@ package playhold.v1;
 
 option go_package = "github.com/ny4rl4th0t3p/playhold/internal/wire;wire";
 
+// #region frames
+
 // ClientFrame is everything a client can send.
 message ClientFrame {
   // seq is chosen by the client and echoed in any error about this frame.
@@ -95,6 +97,8 @@ message ModuleView {
 message RoomState {
   repeated ModuleView views = 1;
 }
+
+// #endregion frames
 
 // #region error-codes
 

@@ -61,7 +61,7 @@ type flags struct {
 
 	admission, crashJournal, recording string
 
-	crashJournalEntries int
+	crashJournalEntries, recordingMaxMiB int
 
 	maxPerIP, maxRooms int
 
@@ -107,6 +107,8 @@ func defineFlags(fs *flag.FlagSet) *flags {
 	fs.IntVar(&f.crashJournalEntries, "crash-journal-entries", 0, "how many turns the crash journal keeps; 0 uses the default")
 	fs.StringVar(&f.recording, "recording", "",
 		"folder to record every game in, turn by turn, to replay one; empty records none; keep it private, it holds players' moves")
+	fs.IntVar(&f.recordingMaxMiB, "recording-max-mib", 0,
+		"most MiB the recordings may take before the oldest finished ones are deleted; 0 uses the default, 10 GiB; -1 for no limit")
 	fs.BoolVar(&f.restartWhenStuck, "restart-when-stuck", false,
 		"exit so the service manager restarts the server, when a stuck room's goroutine keeps running while it's overloaded")
 	fs.StringVar(&f.admission, "admission", "",
@@ -180,7 +182,7 @@ func (f *flags) config() (*playhold.ServerConfig, *playhold.ListenConfig, error)
 		Admission:           playhold.Admission{Off: f.admission == off},
 		RestartWhenStuck:    f.restartWhenStuck,
 		CrashJournal:        playhold.JournalConfig{Path: f.crashJournal, Entries: f.crashJournalEntries},
-		Recording:           playhold.RecordingConfig{Dir: f.recording},
+		Recording:           playhold.RecordingConfig{Dir: f.recording, MaxSize: int64(f.recordingMaxMiB) << 20}, // -1 stays negative
 		OriginPatterns:      splitList(f.origins),
 		TrustedProxies:      trusted,
 		AllowClientCodes:    f.allowClientCodes,

@@ -80,7 +80,8 @@ See [Errors and close reasons](./reference/errors.md).
   [Test a game](./guides/testing.md).
 - Recording and replay: `RoomConfig.Record` and `ServerConfig.Recording` record every turn of a room type's rooms, with a
   hash of the room's state after each, and `playholdtest.Replay` plays a recording again, failing at the first turn that
-  differs. See [Record and replay](./guides/recording.md).
+  differs. A finished recording is renamed `.done.rec`, or `.problem.rec` after a panic, a stuck turn or a crash, and
+  kept until `Retention` or `MaxSize`, 10 GiB by default, deletes it. See [Record and replay](./guides/recording.md).
 - TLS: automatic certificates from Let's Encrypt, certificate files, or a trusted proxy that ends TLS, with
   `ListenAndServe`.
 - Layered rate limits, with a module's own limits on its messages.

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/store/memory"
 )
 
 // recCounter is a recorded module: players add to a count, a timer adds one, and a message panics. With double, it adds
@@ -69,11 +70,33 @@ func recordedType(t *testing.T, module recCounter) *RoomType {
 // bubble.
 func newRecordingRuntime(t *testing.T) (*Runtime, *recordingWriter) {
 	t.Helper()
-	rt := newTestRuntime(t)
+	return recordingRuntime(t, newTestRuntime(t))
+}
+
+// recordingRuntime gives rt a recorder writing to a folder of the test's.
+func recordingRuntime(t *testing.T, rt *Runtime) (*Runtime, *recordingWriter) {
+	t.Helper()
 	w := newRecordingWriter(t.TempDir(), "test-build", slog.New(slog.DiscardHandler))
 	t.Cleanup(w.close)
 	rt.useRecorder(w)
 	return rt, w
+}
+
+// newTestRecordingWriter returns a writer to a folder of the test's, with the room type's folder made.
+func newTestRecordingWriter(t *testing.T) *recordingWriter {
+	t.Helper()
+	w := newRecordingWriter(t.TempDir(), "test-build", slog.New(slog.DiscardHandler))
+	t.Cleanup(w.close)
+	require.NoError(t, os.MkdirAll(filepath.Join(w.dir, "rec"), recordingDirMode))
+	return w
+}
+
+// setMaxSize sets the writer's limit after it has started, which a server does before; the lock keeps the race detector
+// content.
+func setMaxSize(w *recordingWriter, maxSize int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.maxSize = maxSize
 }
 
 // startRecordedRoom starts a room as the lobby does, which starts its recording.
@@ -111,12 +134,35 @@ func playRecorded(t *testing.T, room *Room) {
 	synctest.Wait()
 }
 
+// flushed lets the writer write what's waiting.
+func flushed() {
+	time.Sleep(recordingFlushEvery)
+	synctest.Wait()
+}
+
 func kinds(segment *RecordingSegment) []string {
 	out := make([]string, 0, len(segment.Turns))
 	for i := range segment.Turns {
 		out = append(out, segment.Turns[i].Kind)
 	}
 	return out
+}
+
+// segmentRecord, turnRecord and closeRecord are records as rooms write them, for tests of the writer alone.
+func segmentRecord(room string) *wire.RecordingRecord {
+	return &wire.RecordingRecord{Body: &wire.RecordingRecord_Segment{Segment: &wire.RecordingSegment{RoomId: room}}}
+}
+
+func turnRecord(timer uint64) *wire.RecordingRecord {
+	return &wire.RecordingRecord{Body: &wire.RecordingRecord_Turn{Turn: &wire.RecordedTurn{
+		Input: &wire.RecordedTurn_Timer{Timer: &wire.RecordedTimer{Id: timer}},
+	}}}
+}
+
+func closeRecord(reason CloseReason) *wire.RecordingRecord {
+	return &wire.RecordingRecord{Body: &wire.RecordingRecord_Close{Close: &wire.RecordedClose{
+		Reason: int32(reason), //nolint:gosec // a small enum
+	}}}
 }
 
 func TestARecordedRoomReplaysTurnForTurn(t *testing.T) {
@@ -130,22 +176,23 @@ func TestARecordedRoomReplaysTurnForTurn(t *testing.T) {
 		w.close()
 		path := w.path("rec", room.ID())
 
-		segments, err := ReadRecording(path)
+		assert.NoFileExists(t, path, "finished, so renamed")
+		done := finishedPath(path, false)
+		segments, err := ReadRecording(done)
 		require.NoError(t, err)
 		require.Len(t, segments, 1)
 		assert.Equal(t, []string{"seat", "message", "message", "message", "timer"}, kinds(&segments[0]))
-		assert.Equal(t, errRecTooBig.Error(), segments[0].Turns[2].Error)
+		assert.Equal(t, errRecTooBig.Error(), segments[0].Turns[2].Error, "a turn's error isn't a problem")
 		assert.True(t, segments[0].Closed)
 		assert.Equal(t, CloseRequested, segments[0].Reason)
 		assert.Equal(t, "test-build", segments[0].Build)
 		assert.False(t, segments[0].Restored)
 
-		report, err := replayRecording(typ, path, nil)
+		report, err := replayRecording(typ, done, nil)
 		require.NoError(t, err)
 		assert.Nil(t, report.Diverged)
 		assert.Equal(t, 5, report.Turns)
 		assert.True(t, report.SchemaMatches)
-		assert.False(t, report.Incomplete)
 	})
 }
 
@@ -158,7 +205,7 @@ func TestAReplayFindsTheFirstTurnThatDiffers(t *testing.T) {
 		waitFor(t, room.Done())
 		w.close()
 
-		report, err := replayRecording(recordedType(t, recCounter{double: true}), w.path("rec", room.ID()), nil)
+		report, err := replayRecording(recordedType(t, recCounter{double: true}), finishedPath(w.path("rec", room.ID()), false), nil)
 
 		require.NoError(t, err)
 		require.NotNil(t, report.Diverged)
@@ -170,36 +217,82 @@ func TestAReplayFindsTheFirstTurnThatDiffers(t *testing.T) {
 	})
 }
 
-func TestACrashAndARestoreAreSegmentsOfOneRecording(t *testing.T) {
+func TestARoomRestoredAfterAPanicGoesOnInTheSameRecording(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
+		snapshots := newTestWriter(t, memory.New()) // first, so it closes after the runtime has shut down
 		rt, w := newRecordingRuntime(t)
 		typ := recordedType(t, recCounter{})
-		room := startRecordedRoom(t, rt, typ)
+		l := newLobby(rt, typ, testIdle, testMaxRooms, snapshots)
+		room := enterRoom(t, l, testCode)
 		playRecorded(t, room)
-		var saved []byte
-		runInRoom(t, room, func(rc *RoomContext) { saved = rc.room.encodeSnapshot() })
-		require.ErrorIs(t, sendAndWait(t, room, recPanic, 0), ErrRoomClosed)
-		waitFor(t, room.Done())
-
-		restored, err := rt.restoreRoom(typ, room.ID(), "", saved, nil, nil, TimersKeepRunning)
-		require.NoError(t, err)
-		restored.startSessions(roomSessions{})
-		require.NoError(t, sendAndWait(t, restored, recAdd, 1))
-		restored.Close()
-		waitFor(t, restored.Done())
-		w.close()
 		path := w.path("rec", room.ID())
 
-		segments, err := ReadRecording(path)
+		require.ErrorIs(t, sendAndWait(t, room, recPanic, 0), ErrMessageFailed)
+		waitFor(t, room.Done())
+		next := l.replacement(testCode, room)
+		require.NotNil(t, next, "restored from its save")
+		require.NoError(t, sendAndWait(t, next, recAdd, 1))
+		flushed()
+		assert.FileExists(t, path, "still in progress")
+		assert.FileExists(t, markerPath(path), "marked as having a problem")
+
+		next.Close()
+		waitFor(t, next.Done())
+		w.close()
+
+		assert.NoFileExists(t, path)
+		assert.NoFileExists(t, markerPath(path), "the marker goes with the rename")
+		problem := finishedPath(path, true)
+		segments, err := ReadRecording(problem)
 		require.NoError(t, err)
 		require.Len(t, segments, 2)
 		assert.True(t, segments[0].Turns[len(segments[0].Turns)-1].Panicked)
 		assert.Equal(t, ClosePanic, segments[0].Reason)
 		assert.True(t, segments[1].Restored)
+		assert.Equal(t, CloseRequested, segments[1].Reason)
 
-		report, err := replayRecording(typ, path, nil)
+		report, err := replayRecording(typ, problem, nil)
 		require.NoError(t, err)
 		assert.Nil(t, report.Diverged)
+	})
+}
+
+func TestAStuckRoomsRecordingIsAProblem(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const timeout = 2 * time.Second
+		rt, w := recordingRuntime(t, newConfiguredRuntime(t, Config{StuckTimeout: timeout}))
+		room := startRecordedRoom(t, rt, recordedType(t, recCounter{}))
+		require.NoError(t, seatAndWait(t, room, "alice"))
+
+		release := make(chan struct{})
+		require.NoError(t, room.submit(input{run: func(_ *RoomContext) error {
+			<-release
+			return nil
+		}}))
+		time.Sleep(timeout)
+		synctest.Wait()
+		close(release)
+		synctest.Wait()
+		w.close()
+
+		segments, err := ReadRecording(finishedPath(w.path("rec", room.ID()), true))
+		require.NoError(t, err)
+		assert.Equal(t, CloseStuck, segments[0].Reason)
+	})
+}
+
+func TestARoomShutDownWithASaveStaysInProgress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		snapshots := newTestWriter(t, memory.New())
+		rt, w := newRecordingRuntime(t)
+		l := newLobby(rt, recordedType(t, recCounter{}), testIdle, testMaxRooms, snapshots)
+		room := enterRoom(t, l, testCode)
+		require.NoError(t, seatAndWait(t, room, "alice"))
+
+		stopProcess(t, rt)
+		w.close()
+
+		assert.FileExists(t, w.path("rec", room.ID()), "the next start restores the room, and appends to it")
 	})
 }
 
@@ -212,7 +305,7 @@ func TestARecordingCutOffStillReplaysUpToTheCut(t *testing.T) {
 		room.Close()
 		waitFor(t, room.Done())
 		w.close()
-		path := w.path("rec", room.ID())
+		path := finishedPath(w.path("rec", room.ID()), false)
 		info, err := os.Stat(path)
 		require.NoError(t, err)
 
@@ -228,33 +321,68 @@ func TestARecordingCutOffStillReplaysUpToTheCut(t *testing.T) {
 	})
 }
 
-func TestDroppedRecordsLeaveAGap(t *testing.T) {
+func TestARecordingThatFallsBehindIsAbandonedWhole(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		w := newRecordingWriter(t.TempDir(), "test-build", slog.New(slog.DiscardHandler))
-		path := w.path("rec", "room")
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), recordingDirMode))
-		turn := func(id uint64) *wire.RecordingRecord {
-			return &wire.RecordingRecord{Body: &wire.RecordingRecord_Turn{Turn: &wire.RecordedTurn{
-				Input: &wire.RecordedTurn_Timer{Timer: &wire.RecordedTimer{Id: id}},
-			}}}
-		}
-		w.add(path, &wire.RecordingRecord{Body: &wire.RecordingRecord_Segment{Segment: &wire.RecordingSegment{RoomId: "room"}}})
-		w.add(path, turn(1))
+		w := newTestRecordingWriter(t)
+		kept, dropped := w.path("rec", "kept"), w.path("rec", "dropped")
+		w.add(kept, segmentRecord("kept"))
+		w.add(dropped, segmentRecord("dropped"))
+		flushed()
+		require.FileExists(t, dropped)
+
 		w.mu.Lock()
 		w.limit = 0 // the disk can't keep up
 		w.mu.Unlock()
-		w.add(path, turn(2))
+		w.add(dropped, turnRecord(1))
 		w.mu.Lock()
 		w.limit = maxRecordingWaiting
 		w.mu.Unlock()
-		w.add(path, turn(3))
+		w.add(dropped, turnRecord(2)) // fits, but its recording is already abandoned
+		w.add(kept, turnRecord(1))
+		w.close()
+
+		assert.NoFileExists(t, dropped, "deleted, not left with a gap")
+		segments, err := ReadRecording(kept)
+		require.NoError(t, err)
+		assert.Len(t, segments[0].Turns, 1, "the other room's recording stays whole")
+	})
+}
+
+func TestANewSegmentRecordsAnAbandonedRoomAgain(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestRecordingWriter(t)
+		path := w.path("rec", "room")
+		w.add(path, segmentRecord("room"))
+		w.mu.Lock()
+		w.abandon(path, "a test")
+		w.mu.Unlock()
+
+		w.add(path, turnRecord(1))
+		w.add(path, segmentRecord("room")) // restored from its save: a whole recording again
+		w.add(path, turnRecord(2))
 		w.close()
 
 		segments, err := ReadRecording(path)
-
 		require.NoError(t, err)
-		assert.True(t, segments[0].Gap)
-		assert.Equal(t, []TimerID{1, 3}, []TimerID{segments[0].Turns[0].Timer, segments[0].Turns[1].Timer})
+		require.Len(t, segments, 1)
+		assert.Equal(t, []TimerID{2}, []TimerID{segments[0].Turns[0].Timer})
+	})
+}
+
+func TestAFailedWriteAbandonsTheRecording(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestRecordingWriter(t)
+		blocked := filepath.Join(w.dir, "blocked")
+		require.NoError(t, os.WriteFile(blocked, nil, recordingFileMode)) // a file where the room type's folder should be
+		path := w.path("blocked", "room")
+
+		w.add(path, segmentRecord("room"))
+		flushed()
+
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		assert.True(t, w.abandoned[path])
+		assert.True(t, w.failing)
 	})
 }
 
@@ -263,7 +391,7 @@ func TestTheWriterMakesAFolderThatsGone(t *testing.T) {
 		w := newRecordingWriter(t.TempDir(), "test-build", slog.New(slog.DiscardHandler))
 		path := w.path("rec", "room") // its folder was never made, as after someone deleted it
 
-		w.add(path, &wire.RecordingRecord{Body: &wire.RecordingRecord_Segment{Segment: &wire.RecordingSegment{RoomId: "room"}}})
+		w.add(path, segmentRecord("room"))
 		w.close()
 
 		segments, err := ReadRecording(path)
@@ -272,24 +400,183 @@ func TestTheWriterMakesAFolderThatsGone(t *testing.T) {
 	})
 }
 
-func TestRetentionDeletesOnlyOldRecordings(t *testing.T) {
+func TestAFinishedRecordingIsRenamedByHowItEnded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestRecordingWriter(t)
+		done, problem := w.path("rec", "done"), w.path("rec", "problem")
+		w.add(done, segmentRecord("done"))
+		w.add(problem, segmentRecord("problem"))
+		w.flag(problem)
+		flushed()
+		require.FileExists(t, markerPath(problem))
+
+		w.add(done, closeRecord(CloseRequested))
+		w.add(problem, closeRecord(CloseRequested)) // restored after its panic, then closed normally
+		w.finish(done)
+		w.finish(problem)
+		w.close()
+
+		assert.FileExists(t, finishedPath(done, false))
+		assert.FileExists(t, finishedPath(problem, true), "the marker survives until the end")
+		assert.NoFileExists(t, markerPath(problem))
+		segments, err := ReadRecording(finishedPath(done, false))
+		require.NoError(t, err)
+		assert.True(t, segments[0].Closed, "renamed only after its last record")
+	})
+}
+
+func TestOverMaxSizeWithOnlyRoomsRunningNothingIsRecorded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestRecordingWriter(t)
+		setMaxSize(w, 1000)
+		running, later := w.path("rec", "running"), w.path("rec", "later")
+		w.add(running, segmentRecord("running"))
+		flushed()
+
+		w.cleaned(2000) // a pass found only recordings in progress, over the limit
+		w.add(running, turnRecord(1))
+		w.add(later, segmentRecord("later"))
+		flushed()
+
+		assert.NoFileExists(t, running, "abandoned")
+		assert.NoFileExists(t, later, "never started")
+		select {
+		case <-w.cleanup:
+		default:
+			t.Error("abandoning freed space, so the writer asks for a pass to count again")
+		}
+
+		w.cleaned(0)
+		w.add(later, segmentRecord("later"))
+		w.close()
+		assert.FileExists(t, later, "recorded again once the recordings fit")
+	})
+}
+
+func TestTheWriterAsksForACleanupPastMaxSize(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestRecordingWriter(t)
+		setMaxSize(w, 10)
+		path := w.path("rec", "room")
+
+		w.add(path, segmentRecord("a room whose segment is over ten bytes"))
+		flushed()
+
+		select {
+		case <-w.cleanup:
+		default:
+			t.Fatal("no pass asked for")
+		}
+		w.add(path, turnRecord(1))
+		flushed()
+		select {
+		case <-w.cleanup:
+			t.Error("asked again, while still over the limit the last pass counted")
+		default:
+		}
+	})
+}
+
+// writeAged writes a file of size bytes, last written age ago.
+func writeAged(t *testing.T, path string, size int, age time.Duration) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(path, make([]byte, size), recordingFileMode))
+	at := time.Now().Add(-age)
+	require.NoError(t, os.Chtimes(path, at, at))
+}
+
+func TestACleanupDeletesTheOldestFinishedRecordingsProblemsLast(t *testing.T) {
 	dir := t.TempDir()
 	folder := filepath.Join(dir, "rec")
 	require.NoError(t, os.MkdirAll(folder, recordingDirMode))
-	old := time.Now().Add(-48 * time.Hour)
-	for _, name := range []string{"old.rec", "new.rec", "notes.txt"} {
-		require.NoError(t, os.WriteFile(filepath.Join(folder, name), []byte("x"), recordingFileMode))
-	}
-	require.NoError(t, os.Chtimes(filepath.Join(folder, "old.rec"), old, old))
-	require.NoError(t, os.Chtimes(filepath.Join(folder, "notes.txt"), old, old))
+	in := func(name string) string { return filepath.Join(folder, name) }
+	writeAged(t, in("oldest"+recordingDoneExt), 100, 5*time.Hour)
+	writeAged(t, in("old"+recordingDoneExt), 100, 4*time.Hour)
+	writeAged(t, in("older-problem"+recordingProblemExt), 100, 6*time.Hour)
+	writeAged(t, in("new"+recordingDoneExt), 100, time.Hour)
+	writeAged(t, in("running"+recordingExt), 100, 7*time.Hour)
+	writeAged(t, in("running"+recordingFlagExt), 0, 7*time.Hour)
+	writeAged(t, in("gone"+recordingFlagExt), 0, time.Hour)
+	writeAged(t, in("notes.txt"), 1000, 8*time.Hour)
 
-	deleted, err := deleteOldRecordings(dir, time.Now().Add(-24*time.Hour))
+	result, err := cleanRecordings(dir, time.Time{}, 400) // 500 bytes of recordings; 90% of 400 is 360
 
 	require.NoError(t, err)
-	assert.Equal(t, 1, deleted)
-	assert.NoFileExists(t, filepath.Join(folder, "old.rec"))
-	assert.FileExists(t, filepath.Join(folder, "new.rec"))
-	assert.FileExists(t, filepath.Join(folder, "notes.txt"), "only recordings are deleted")
+	assert.Equal(t, int64(300), result.size)
+	assert.Equal(t, 2, result.deleted)
+	assert.NoFileExists(t, in("oldest"+recordingDoneExt))
+	assert.NoFileExists(t, in("old"+recordingDoneExt))
+	assert.FileExists(t, in("new"+recordingDoneExt))
+	assert.FileExists(t, in("older-problem"+recordingProblemExt), "problems go last, however old")
+	assert.FileExists(t, in("running"+recordingExt), "never a recording in progress")
+	assert.FileExists(t, in("running"+recordingFlagExt), "nor its marker")
+	assert.NoFileExists(t, in("gone"+recordingFlagExt), "a marker left alone goes")
+	assert.FileExists(t, in("notes.txt"), "only recordings are deleted")
+}
+
+func TestRetentionDeletesOnlyOldFinishedRecordings(t *testing.T) {
+	dir := t.TempDir()
+	folder := filepath.Join(dir, "rec")
+	require.NoError(t, os.MkdirAll(folder, recordingDirMode))
+	in := func(name string) string { return filepath.Join(folder, name) }
+	writeAged(t, in("old"+recordingDoneExt), 1, 48*time.Hour)
+	writeAged(t, in("old-problem"+recordingProblemExt), 1, 48*time.Hour)
+	writeAged(t, in("new"+recordingDoneExt), 1, time.Hour)
+	writeAged(t, in("waiting"+recordingExt), 1, 48*time.Hour)
+	writeAged(t, in("notes.txt"), 1, 48*time.Hour)
+
+	result, err := cleanRecordings(dir, time.Now().Add(-24*time.Hour), -1)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.deleted)
+	assert.NoFileExists(t, in("old"+recordingDoneExt))
+	assert.NoFileExists(t, in("old-problem"+recordingProblemExt), "a problem doesn't extend retention")
+	assert.FileExists(t, in("new"+recordingDoneExt))
+	assert.FileExists(t, in("waiting"+recordingExt), "never a recording in progress, such as one waiting to be restored")
+	assert.FileExists(t, in("notes.txt"), "only recordings are deleted")
+}
+
+// Outside a bubble, whose clock would be older than the files' real times.
+func TestTheLastProcessesRecordingsAreFinishedAtStart(t *testing.T) {
+	w := newTestRecordingWriter(t)
+	crashed, shutDown, saved, panicked := w.path("rec", "crashed"), w.path("rec", "shut-down"),
+		w.path("rec", "saved"), w.path("rec", "panicked")
+	w.add(crashed, segmentRecord("crashed"))
+	w.add(crashed, turnRecord(1)) // then the process died
+	w.add(shutDown, segmentRecord("shut-down"))
+	w.add(shutDown, closeRecord(CloseShutdown)) // with no store, so nothing restores it
+	w.add(saved, segmentRecord("saved"))
+	w.add(saved, closeRecord(CloseShutdown))
+	w.add(panicked, segmentRecord("panicked"))
+	w.add(panicked, closeRecord(ClosePanic))
+	w.close()
+	empty := w.path("rec", "empty")
+	require.NoError(t, os.WriteFile(empty, []byte("not a recording"), recordingFileMode))
+
+	nextStart := time.Now().Add(time.Minute)
+	finished, err := finishLeftovers(w.dir, "rec", map[RoomID]bool{"saved": true}, nextStart)
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, finished)
+	assert.FileExists(t, finishedPath(crashed, true), "a crash is a problem")
+	assert.FileExists(t, finishedPath(shutDown, false))
+	assert.FileExists(t, finishedPath(panicked, true))
+	assert.FileExists(t, saved, "its room is in the store, to be restored")
+	assert.NoFileExists(t, empty, "it can't be replayed")
+	assert.NoFileExists(t, markerPath(crashed))
+}
+
+func TestTheRunningProcessesRecordingsArentLeftovers(t *testing.T) {
+	w := newTestRecordingWriter(t)
+	path := w.path("rec", "running")
+	w.add(path, segmentRecord("running"))
+	w.close()
+
+	finished, err := finishLeftovers(w.dir, "rec", nil, time.Now().Add(-time.Minute))
+
+	require.NoError(t, err)
+	assert.Zero(t, finished)
+	assert.FileExists(t, path, "written since this process started")
 }
 
 func TestARecordedRoomTypeMustBeAbleToRecord(t *testing.T) {
@@ -331,4 +618,5 @@ func TestARecordedRoomTypeNeedsTheServersFolder(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(server.Close)
 	assert.DirExists(t, filepath.Join(cfg.Recording.Dir, "rec"), "a folder for the room type")
+	assert.Equal(t, int64(defaultRecordingMaxSize), server.recorder.maxSize)
 }

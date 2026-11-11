@@ -1032,22 +1032,27 @@ func (r *Room) finish(reason CloseReason) {
 		r.reason = reason
 		r.metrics.closed(reason)
 		r.onExit(r)
+		goesOn := r.writer != nil && reason == CloseShutdown // its save brings it back when the server does
 		if reason == ClosePanic || reason == CloseStuck {
-			r.restartOrForget()
+			goesOn = r.restartOrForget()
 		}
+		r.finishRecording(reason, goesOn)
 		close(r.done)
 	})
 }
 
 // restartOrForget runs before the room reports being done, so anyone who notices sees its replacement already in place.
-func (r *Room) restartOrForget() {
+// It reports whether the room goes on: restored now, or kept saved for the next start.
+func (r *Room) restartOrForget() bool {
 	if r.writer == nil {
-		return
+		return false
 	}
 	if r.stopReason == CloseShutdown {
-		return // it got stuck while the server was stopping, so it can't restart now, but its last snapshot can next time
+		return true // it got stuck while the server was stopping, so it can't restart now, but its last snapshot can next time
 	}
-	if r.restart == nil || !r.restart(r) {
-		r.writer.forget(string(r.id))
+	if r.restart != nil && r.restart(r) {
+		return true
 	}
+	r.writer.forget(string(r.id))
+	return false
 }

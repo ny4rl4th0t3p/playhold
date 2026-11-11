@@ -23,7 +23,6 @@ type Report struct {
 	Build         string
 	Revision      string
 	SchemaMatches bool
-	Incomplete    bool
 	Diverged      *Divergence
 }
 

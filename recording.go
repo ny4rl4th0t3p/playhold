@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -23,27 +24,52 @@ import (
 
 const (
 	defaultRecordingRetention = 30 * 24 * time.Hour
-	recordingRetentionEvery   = time.Hour
+	defaultRecordingMaxSize   = 10 << 30
+	recordingCleanupEvery     = time.Hour
 	recordingFlushEvery       = 100 * time.Millisecond
-	// maxRecordingWaiting is how many bytes of records wait to be written, across all rooms, before new ones are dropped.
+	// maxRecordingWaiting is how many bytes of records wait to be written, across all rooms, before a recording whose
+	// record doesn't fit is abandoned.
 	maxRecordingWaiting = 8 << 20
 	recordingFileMode   = 0o600 // only the server's user: it holds players' messages
 	recordingDirMode    = 0o700
-	recordingExt        = ".rec"
 	recordHeaderSize    = 8 // the record's length, then its CRC-32
 	stateHashBytes      = 8
+)
+
+// The names of a recording's files, after the room's ID. A recording in progress is written to, or waits for its room to
+// be restored; a finished one is never written to again, so a tool can move or delete it.
+const (
+	recordingExt        = ".rec"         // in progress
+	recordingDoneExt    = ".done.rec"    // finished, its room closed normally
+	recordingProblemExt = ".problem.rec" // finished, after its room panicked, got stuck or the process died
+	recordingFlagExt    = ".flag"        // next to one in progress, after its room panicked or got stuck
 )
 
 // RecordingConfig says where the server keeps recordings, and for how long. A room type turns recording on for its rooms
 // with RoomConfig.Record; this is the server's side of it. Each room type's recordings go in a folder of their own, named
 // after the room type, one file per room, named by its ID. A recording holds every player's messages, so keep it as
 // private as the database.
+//
+// A room's file is <room ID>.rec while it runs, or while it waits to be restored after a restart. Once the room is
+// finished for good, it's renamed <room ID>.done.rec, or <room ID>.problem.rec if the room panicked, got stuck, or the
+// process died while it ran. The server never writes to a finished file again, so a process of the game's own can move
+// finished files elsewhere, to keep a history of every game.
+//
+// Every recording on disk replays from its first record to its last. When some of a room's records can't be written,
+// because they come faster than the disk takes them, the recordings are over MaxSize, or a write failed, the room's
+// recording is abandoned instead: its file is deleted, and nothing more is recorded for it. The server logs it.
 type RecordingConfig struct {
 	// Dir is where recordings go. Empty turns recording off, and NewServer then refuses a room type that records.
 	Dir string
-	// Retention deletes a recording this long after it was last written to, checked every hour, so a long game keeps
-	// its whole history while it runs. The default is 30 days. Off keeps every recording, and the server logs a warning.
+	// Retention deletes a finished recording this long after it was last written to, checked every hour. The default is
+	// 30 days. Off keeps finished recordings until MaxSize deletes them, and the server logs a warning.
 	Retention Timeout
+	// MaxSize is the most bytes the recordings in Dir may take, finished and in progress, across all room types. Past it,
+	// the oldest finished recordings are deleted, down to 90% of it, those of rooms that panicked, got stuck or crashed
+	// last. Recordings in progress are never deleted for this: if they alone are over it, they're abandoned, and no room
+	// is recorded until the recordings fit again. The default is 10 GiB. A negative value means no limit, and the server
+	// logs a warning.
+	MaxSize int64
 }
 
 // validRecordingName reports whether a room type's name can be the folder of its recordings: letters, digits, - and _.
@@ -84,22 +110,35 @@ var buildRevision = sync.OnceValue(func() string {
 })
 
 // recordingWriter appends rooms' records to their files in the background, so a room never waits on the disk. Every
-// recordingFlushEvery, each file with records waiting is opened, appended to in one write, and closed again. Past
-// maxRecordingWaiting bytes waiting, new records are dropped, and the next one kept is preceded by a gap.
+// recordingFlushEvery, each file with records waiting is opened, appended to in one write, and closed again; then the
+// files of rooms finished for good are renamed.
+//
+// A recording on disk always replays whole, so a room's records are never dropped one by one: when one can't be written,
+// the room's recording is abandoned. What's waiting for it is dropped, its file is deleted, and its later records are
+// ignored, until its room finishes or starts a new segment, which begins a whole recording again.
 type recordingWriter struct {
 	dir      string
 	build    string
 	revision string
 	logger   *slog.Logger
-	limit    int // maxRecordingWaiting; tests lower it
+	limit    int       // maxRecordingWaiting; tests lower it
+	maxSize  int64     // the most bytes the recordings may take, negative for no limit; set before any room uses it
+	started  time.Time // files last written before this are the last process's
 
-	mu       sync.Mutex
-	pending  map[string][]byte // by file
-	waiting  int
-	gaps     map[string]uint32 // records dropped since a file's last kept one
-	dropping bool              // logged once until records are kept again
-	failing  bool              // a write failed, logged once until one works
+	mu        sync.Mutex
+	pending   map[string][]byte // records waiting, by file
+	waiting   int
+	flags     map[string]bool // files to make a marker next to: their room panicked or got stuck
+	finishing map[string]bool // files to rename once what's waiting is written: their room is finished for good
+	removing  map[string]bool // files of abandoned recordings, to delete with their markers
+	abandoned map[string]bool // recordings given up on, whose records are ignored
+	size      int64           // bytes of recordings in dir: the last cleanup's count, plus what was written since
+	full      bool            // over maxSize with nothing finished left to delete: no room is recorded
+	abandons  int             // recordings abandoned since the last flush
+	warned    bool            // abandoning was logged, once until a flush passes with none
+	failing   bool            // a write failed, logged once until one works
 
+	cleanup  chan struct{} // asks the cleanup for a pass; holds one
 	stop     chan struct{}
 	stopOnce sync.Once
 	done     chan struct{}
@@ -107,50 +146,113 @@ type recordingWriter struct {
 
 func newRecordingWriter(dir, build string, logger *slog.Logger) *recordingWriter {
 	w := &recordingWriter{
-		dir: dir, build: build, revision: buildRevision(), logger: logger, limit: maxRecordingWaiting,
-		pending: make(map[string][]byte), gaps: make(map[string]uint32),
-		stop: make(chan struct{}), done: make(chan struct{}),
+		dir: dir, build: build, revision: buildRevision(), logger: logger, limit: maxRecordingWaiting, maxSize: -1,
+		started: time.Now(),
+		pending: make(map[string][]byte), flags: make(map[string]bool), finishing: make(map[string]bool),
+		removing: make(map[string]bool), abandoned: make(map[string]bool),
+		cleanup: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}),
 	}
 	go w.run()
 	return w
 }
 
-// path is the file of a room's recording.
+// path is the file of a room's recording, while it's in progress.
 func (w *recordingWriter) path(roomType string, room RoomID) string {
 	return filepath.Join(w.dir, roomType, string(room)+recordingExt)
+}
+
+// markerPath is the marker next to a recording in progress, saying its room panicked or got stuck.
+func markerPath(path string) string {
+	return strings.TrimSuffix(path, recordingExt) + recordingFlagExt
+}
+
+// finishedPath is what a recording in progress is renamed to once its room is finished for good.
+func finishedPath(path string, problem bool) string {
+	if problem {
+		return strings.TrimSuffix(path, recordingExt) + recordingProblemExt
+	}
+	return strings.TrimSuffix(path, recordingExt) + recordingDoneExt
 }
 
 // add queues a record for the file. It never waits on the disk.
 func (w *recordingWriter) add(path string, record *wire.RecordingRecord) {
 	data, err := proto.Marshal(record)
 	if err != nil {
-		w.logger.Error("a recording's record can't be encoded, so it's dropped", "error", err)
+		w.logger.Error("a recording's record can't be encoded, so the recording is abandoned", "error", err)
+		w.mu.Lock()
+		w.abandon(path, "a record can't be encoded")
+		w.mu.Unlock()
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.waiting+recordHeaderSize+len(data) > w.limit {
-		w.gaps[path]++
-		if !w.dropping {
-			w.dropping = true
-			w.logger.Warn("recordings are being written slower than rooms make them; records are dropped, and those "+
-				"recordings can't be replayed past the gap", "waiting_bytes", w.waiting)
+	if w.abandoned[path] {
+		if record.GetSegment() == nil || w.full {
+			return
 		}
+		delete(w.abandoned, path) // a new segment begins a whole recording again; the old file goes first, at the flush
+	}
+	switch {
+	case w.full:
+		w.abandon(path, "the recordings are over RecordingConfig.MaxSize, and only rooms still running are left")
+		return
+	case w.waiting+recordHeaderSize+len(data) > w.limit:
+		w.abandon(path, "rooms make records faster than the disk takes them")
 		return
 	}
-	w.dropping = false
-	if dropped := w.gaps[path]; dropped > 0 {
-		delete(w.gaps, path)
-		gap, _ := proto.Marshal(&wire.RecordingRecord{Body: &wire.RecordingRecord_Gap{Gap: &wire.RecordedGap{Dropped: dropped}}})
-		w.append(path, gap)
-	}
-	w.append(path, data)
-}
-
-// append adds one record to the file's waiting bytes. The caller holds mu.
-func (w *recordingWriter) append(path string, data []byte) {
 	w.pending[path] = appendRecord(w.pending[path], data)
 	w.waiting += recordHeaderSize + len(data)
+}
+
+// abandon gives up on a recording: what's waiting for it is dropped, its file and marker are deleted at the next flush,
+// and its later records are ignored. The caller holds mu.
+func (w *recordingWriter) abandon(path, why string) {
+	if data, ok := w.pending[path]; ok {
+		w.waiting -= len(data)
+		delete(w.pending, path)
+	}
+	delete(w.flags, path)
+	w.removing[path] = true
+	if w.finishing[path] {
+		delete(w.finishing, path) // its room is finished, so no record follows
+	} else {
+		w.abandoned[path] = true
+	}
+	w.abandons++
+	if !w.warned {
+		w.warned = true
+		w.logger.Warn("recordings abandoned, and their files deleted, so every recording left replays whole", "why", why)
+	}
+}
+
+// flag marks a recording as one whose room panicked or got stuck, so it's renamed as a problem once finished, and kept
+// longest when space runs out. The marker survives a restart, as the recording does.
+func (w *recordingWriter) flag(path string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.abandoned[path] {
+		w.flags[path] = true
+	}
+}
+
+// finish renames a recording once what's waiting for it is written: its room is finished for good, and won't be restored
+// by this process or the next.
+func (w *recordingWriter) finish(path string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.abandoned[path] {
+		delete(w.abandoned, path) // its file is gone, and nothing more comes for it
+		return
+	}
+	w.finishing[path] = true
+}
+
+// signalCleanup asks the cleanup for a pass, without waiting. The caller holds mu.
+func (w *recordingWriter) signalCleanup() {
+	select {
+	case w.cleanup <- struct{}{}:
+	default: // one is already asked for
+	}
 }
 
 func appendRecord(buf, data []byte) []byte {
@@ -174,29 +276,136 @@ func (w *recordingWriter) run() {
 	}
 }
 
-// flush writes what's waiting, each file in one write. A process that dies in between leaves whole records, so the file
-// can still be read up to there.
+// flush deletes the files of abandoned recordings, writes what's waiting, each file in one write, makes the markers, and
+// renames the files of rooms finished for good, in that order: a marker never exists without its file, and a file is
+// renamed only once its last records are in it. A process that dies in between leaves whole records, so the file can
+// still be read up to there. A file whose write failed may end in part of a record, so its recording is abandoned.
 func (w *recordingWriter) flush() {
-	w.mu.Lock()
-	batch := w.pending
-	w.pending, w.waiting = make(map[string][]byte), 0
-	w.mu.Unlock()
+	b := w.take()
+	freed := removeRecordings(b.removing)
+	out := b.writeOut()
+	w.wrote(b, out, freed)
+}
 
-	var failed error
-	for path, data := range batch {
-		if err := appendToFile(path, data); err != nil {
-			failed = err
-		}
-	}
+// flushBatch is what a flush takes from the writer at once.
+type flushBatch struct {
+	pending   map[string][]byte
+	flags     map[string]bool
+	finishing map[string]bool
+	removing  map[string]bool
+}
+
+// flushOutcome is what writing a batch did.
+type flushOutcome struct {
+	written int64
+	failed  map[string]bool // files whose write failed
+	err     error           // the last error
+}
+
+// take returns what's waiting, and starts over with nothing.
+func (w *recordingWriter) take() flushBatch {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	b := flushBatch{pending: w.pending, flags: w.flags, finishing: w.finishing, removing: w.removing}
+	w.pending, w.waiting = make(map[string][]byte), 0
+	w.flags, w.finishing, w.removing = make(map[string]bool), make(map[string]bool), make(map[string]bool)
+	if w.abandons == 0 {
+		w.warned = false
+	}
+	w.abandons = 0
+	return b
+}
+
+// writeOut writes the batch's records, then makes its markers and renames its finished files, skipping the files whose
+// write failed. It runs without the writer's lock, so rooms never wait on the disk.
+func (b *flushBatch) writeOut() flushOutcome {
+	out := flushOutcome{failed: make(map[string]bool)}
+	for path, data := range b.pending {
+		if err := appendToFile(path, data); err != nil {
+			out.err, out.failed[path] = err, true
+			continue
+		}
+		out.written += int64(len(data))
+	}
+	for path := range b.flags {
+		if out.failed[path] {
+			continue
+		}
+		if err := makeMarker(path); err != nil {
+			out.err = err
+		}
+	}
+	for path := range b.finishing {
+		if out.failed[path] {
+			continue
+		}
+		if err := finishFile(path); err != nil {
+			out.err = err
+		}
+	}
+	return out
+}
+
+// wrote abandons the recordings whose write failed, counts what was written, asks for a cleanup if that's due, and logs
+// a failure once until a flush works.
+func (w *recordingWriter) wrote(b flushBatch, out flushOutcome, freed bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for path := range out.failed {
+		if b.finishing[path] {
+			w.removing[path] = true // its room is finished, so nothing more comes for it
+		} else {
+			w.abandon(path, "writing it failed")
+		}
+	}
+	before := w.size
+	w.size += out.written
+	if (w.maxSize >= 0 && before <= w.maxSize && w.size > w.maxSize) || (w.full && freed) {
+		w.signalCleanup() // once, as the recordings pass the limit; and to count again after abandoning freed some
+	}
 	switch {
-	case failed != nil && !w.failing:
+	case out.err != nil && !w.failing:
 		w.failing = true
-		w.logger.Error("writing recordings failed; rooms go on, but their recordings miss these turns", "error", failed)
-	case failed == nil && len(batch) > 0:
+		w.logger.Error("writing recordings failed; rooms go on, but those recordings are abandoned", "error", out.err)
+	case out.err == nil && len(b.pending) > 0:
 		w.failing = false
 	}
+}
+
+// removeRecordings deletes the files of abandoned recordings, and their markers, and reports whether any file was there.
+func removeRecordings(paths map[string]bool) bool {
+	freed := false
+	for path := range paths {
+		if os.Remove(path) == nil {
+			freed = true
+		}
+		_ = os.Remove(markerPath(path)) // most have none
+	}
+	return freed
+}
+
+// makeMarker makes the empty marker next to a recording in progress.
+func makeMarker(path string) error {
+	f, err := os.OpenFile(markerPath(path), os.O_CREATE|os.O_WRONLY, recordingFileMode)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// finishFile renames a recording in progress whose room is finished for good, as a problem if it has a marker, and then
+// deletes the marker. A rename is atomic, so a tool never sees a finished file before its last record is in it.
+func finishFile(path string) error {
+	marker := markerPath(path)
+	_, err := os.Stat(marker)
+	problem := err == nil
+	if err := os.Rename(path, finishedPath(path, problem)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := os.Remove(marker); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // appendToFile appends data to the file, creating it, and its folder if that's gone, such as after someone cleaned the
@@ -223,68 +432,286 @@ func (w *recordingWriter) close() {
 	<-w.done
 }
 
-// startRecordingRetention deletes recordings not written to for longer than the retention, at once and then every hour,
-// until ctx ends, unless it's off.
-func startRecordingRetention(ctx context.Context, cfg *RecordingConfig, logger *slog.Logger) {
-	retention := cfg.Retention.orDefault(defaultRecordingRetention)
-	if retention.Off {
-		logger.Warn("recordings are never deleted; set RecordingConfig.Retention, or delete old ones yourself")
-		return
+// startCleanup runs in the background until ctx ends. First it finishes the recordings of roomType the last process
+// left in progress, unless keep holds their room, one left in the store to be restored. Then, unless Retention and
+// MaxSize are both off, it runs a cleanup pass at once, every hour, and whenever the writer asks for one.
+func (w *recordingWriter) startCleanup(ctx context.Context, roomType string, keep map[RoomID]bool, retention Timeout) {
+	retention = retention.orDefault(defaultRecordingRetention)
+	switch {
+	case retention.Off && w.maxSize < 0:
+		w.logger.Warn("recordings are never deleted; set RecordingConfig.Retention or MaxSize, or delete old ones yourself")
+	case retention.Off:
+		w.logger.Warn("finished recordings are kept however old, until they're over RecordingConfig.MaxSize")
+	case w.maxSize < 0:
+		w.logger.Warn("recordings have no size limit, so a busy server can fill its disk before Retention deletes them; " +
+			"set RecordingConfig.MaxSize")
 	}
 	go func() {
-		ticker := time.NewTicker(recordingRetentionEvery)
+		finished, err := finishLeftovers(w.dir, roomType, keep, w.started)
+		switch {
+		case err != nil:
+			w.logger.Error("finishing the recordings the last process left failed", "error", err)
+		case finished > 0:
+			w.logger.Info("finished the recordings the last process left", "recordings", finished)
+		}
+		if retention.Off && w.maxSize < 0 {
+			return
+		}
+		ticker := time.NewTicker(recordingCleanupEvery)
 		defer ticker.Stop()
 		for {
-			deleted, err := deleteOldRecordings(cfg.Dir, time.Now().Add(-retention.After))
-			switch {
-			case err != nil:
-				logger.Error("deleting old recordings failed; trying again in an hour", "error", err)
-			case deleted > 0:
-				logger.Info("deleted old recordings", "recordings", deleted, "older_than", retention.After)
-			}
+			w.cleanOnce(retention)
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+			case <-w.cleanup:
 			}
 		}
 	}()
 }
 
-// deleteOldRecordings deletes the recordings in each room type's folder last written before the time. It only touches
-// recording files, so anything else in the folders stays.
-func deleteOldRecordings(dir string, before time.Time) (int, error) {
+// cleanOnce runs one cleanup pass, and tells the writer what's left.
+func (w *recordingWriter) cleanOnce(retention Timeout) {
+	var before time.Time
+	if !retention.Off {
+		before = time.Now().Add(-retention.After)
+	}
+	started := time.Now()
+	result, err := cleanRecordings(w.dir, before, w.maxSize)
+	if err != nil {
+		w.logger.Error("deleting recordings failed; trying again within an hour", "error", err)
+	}
+	if result.deleted > 0 {
+		w.logger.Info("deleted recordings", "took", time.Since(started), "files_looked_at", result.files,
+			"recordings", result.deleted, "bytes", result.freed, "bytes_left", result.size)
+	}
+	w.cleaned(result.size)
+}
+
+// cleaned takes a cleanup pass's count of what's left. If that's still over maxSize, only recordings in progress are
+// left, and no room is recorded until a pass finds them under it again.
+func (w *recordingWriter) cleaned(size int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.size = size
+	wasFull := w.full
+	w.full = w.maxSize >= 0 && size > w.maxSize
+	switch {
+	case w.full && !wasFull:
+		w.logger.Warn("the recordings in progress alone are over RecordingConfig.MaxSize, so they're abandoned, and no "+
+			"room is recorded until the recordings fit again", "bytes", size, "max_size", w.maxSize)
+	case wasFull && !w.full:
+		w.logger.Info("the recordings fit in RecordingConfig.MaxSize again; new rooms are recorded", "bytes", size)
+	}
+}
+
+// recordingFileKind is what a file in a room type's folder is, by its name.
+type recordingFileKind int
+
+const (
+	notARecording recordingFileKind = iota
+	recordingInProgress
+	recordingDone
+	recordingProblem
+	recordingMarker
+)
+
+func kindOfRecordingFile(name string) recordingFileKind {
+	switch {
+	case strings.HasSuffix(name, recordingDoneExt):
+		return recordingDone
+	case strings.HasSuffix(name, recordingProblemExt):
+		return recordingProblem
+	case strings.HasSuffix(name, recordingExt):
+		return recordingInProgress
+	case strings.HasSuffix(name, recordingFlagExt):
+		return recordingMarker
+	}
+	return notARecording
+}
+
+// cleanupResult is what a cleanup pass found and did.
+type cleanupResult struct {
+	size    int64 // bytes of recordings left, finished and in progress
+	files   int   // recording files and markers looked at
+	deleted int
+	freed   int64
+}
+
+// finishedRecording is a finished recording a cleanup pass may delete.
+type finishedRecording struct {
+	path    string
+	size    int64
+	written time.Time
+	problem bool
+}
+
+// cleanRecordings is one cleanup pass over each room type's folder in dir. It deletes the finished recordings last
+// written before before, unless that's zero; then, while the recordings take more than maxSize bytes, the oldest
+// finished ones, until they take 90% of it, those of rooms with a problem last; and markers whose recording is gone. A
+// negative maxSize is no limit. Recordings in progress are never deleted, and anything that isn't a recording stays.
+func cleanRecordings(dir string, before time.Time, maxSize int64) (cleanupResult, error) {
+	found, err := listRecordings(dir)
+	if found == nil {
+		return cleanupResult{}, err
+	}
+	errs := []error{err}
+	result := cleanupResult{size: found.size, files: found.files}
+	remove := func(f *finishedRecording) {
+		if err := os.Remove(f.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, err)
+			return
+		}
+		result.size -= f.size
+		result.deleted++
+		result.freed += f.size
+	}
+	kept := found.finished[:0]
+	for i := range found.finished {
+		if !before.IsZero() && found.finished[i].written.Before(before) {
+			remove(&found.finished[i])
+			continue
+		}
+		kept = append(kept, found.finished[i])
+	}
+	if maxSize >= 0 && result.size > maxSize {
+		slices.SortFunc(kept, func(a, b finishedRecording) int {
+			if a.problem != b.problem {
+				if a.problem {
+					return 1 // problems last
+				}
+				return -1
+			}
+			return a.written.Compare(b.written)
+		})
+		target := maxSize / 10 * 9
+		for i := range kept {
+			if result.size <= target {
+				break
+			}
+			remove(&kept[i])
+		}
+	}
+	for _, marker := range found.markers {
+		if found.inProgress[strings.TrimSuffix(marker, recordingFlagExt)+recordingExt] {
+			continue
+		}
+		if err := os.Remove(marker); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return result, errors.Join(errs...)
+}
+
+// recordingListing is what a cleanup pass finds in the room types' folders.
+type recordingListing struct {
+	size       int64 // bytes of recordings, finished and in progress
+	files      int   // recording files and markers
+	finished   []finishedRecording
+	markers    []string
+	inProgress map[string]bool
+}
+
+// listRecordings walks each room type's folder in dir once. It returns nil if it can't read dir; a folder it can't read
+// is skipped, and returned as an error with what the others hold.
+func listRecordings(dir string) (*recordingListing, error) {
 	types, err := os.ReadDir(dir)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	deleted := 0
+	found := &recordingListing{inProgress: make(map[string]bool)}
 	var errs []error
 	for _, typ := range types {
 		if !typ.IsDir() {
 			continue
 		}
-		files, err := os.ReadDir(filepath.Join(dir, typ.Name()))
+		folder := filepath.Join(dir, typ.Name())
+		files, err := os.ReadDir(folder)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
 		for _, file := range files {
-			if !file.Type().IsRegular() || !strings.HasSuffix(file.Name(), recordingExt) {
-				continue
-			}
-			info, err := file.Info()
-			if err != nil || !info.ModTime().Before(before) {
-				continue // gone already, or recent
-			}
-			if err := os.Remove(filepath.Join(dir, typ.Name(), file.Name())); err != nil {
+			found.add(folder, file)
+		}
+	}
+	return found, errors.Join(errs...)
+}
+
+// add counts one file of a room type's folder, if it's a recording or a marker.
+func (l *recordingListing) add(folder string, file fs.DirEntry) {
+	kind := kindOfRecordingFile(file.Name())
+	if kind == notARecording || !file.Type().IsRegular() {
+		return
+	}
+	l.files++
+	path := filepath.Join(folder, file.Name())
+	if kind == recordingMarker {
+		l.markers = append(l.markers, path)
+		return
+	}
+	info, err := file.Info()
+	if err != nil {
+		return // gone already
+	}
+	l.size += info.Size()
+	if kind == recordingInProgress {
+		l.inProgress[path] = true
+		return
+	}
+	l.finished = append(l.finished, finishedRecording{
+		path: path, size: info.Size(), written: info.ModTime(), problem: kind == recordingProblem,
+	})
+}
+
+// finishLeftovers finishes the recordings in progress in roomType's folder that the last process left, written to
+// before started, and that no room will append to again: their room isn't in keep, the rooms left in the store. Each is
+// renamed by how it ended: done if its last segment closed normally, a problem if it has a marker, its room panicked or
+// got stuck, or the process died while it ran. A file that holds no recording can't be replayed, so it's deleted. It
+// returns how many it finished.
+func finishLeftovers(dir, roomType string, keep map[RoomID]bool, started time.Time) (int, error) {
+	folder := filepath.Join(dir, roomType)
+	files, err := os.ReadDir(folder)
+	if err != nil {
+		return 0, err
+	}
+	finished := 0
+	var errs []error
+	for _, file := range files {
+		name := file.Name()
+		if kindOfRecordingFile(name) != recordingInProgress || !file.Type().IsRegular() ||
+			keep[RoomID(strings.TrimSuffix(name, recordingExt))] {
+			continue
+		}
+		info, err := file.Info()
+		if err != nil || !info.ModTime().Before(started) {
+			continue // gone, or this process's
+		}
+		path := filepath.Join(folder, name)
+		segments, err := readRecordingFile(path)
+		switch {
+		case errors.Is(err, errNoRecording):
+			removeRecordings(map[string]bool{path: true})
+			continue
+		case err != nil:
+			errs = append(errs, err)
+			continue
+		}
+		last := segments[len(segments)-1].close
+		if last == nil || CloseReason(last.GetReason()) == ClosePanic || CloseReason(last.GetReason()) == CloseStuck {
+			if err := makeMarker(path); err != nil {
 				errs = append(errs, err)
 				continue
 			}
-			deleted++
 		}
+		if err := finishFile(path); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		finished++
 	}
-	return deleted, errors.Join(errs...)
+	return finished, errors.Join(errs...)
 }
 
 // record notes the input of the turn running, to write once the turn ends. The callers check r.recorder first, so a room
@@ -351,6 +778,21 @@ func (r *Room) recordClose(reason CloseReason) {
 	}})
 }
 
+// finishRecording tells the recorder, once the room has closed, how its recording goes on. A panic or a stuck turn marks
+// it as having a problem. A room finished for good finishes it; goesOn says the room was restored, or stays saved for the
+// next start, which appends to the same file.
+func (r *Room) finishRecording(reason CloseReason, goesOn bool) {
+	if r.recorder == nil || !r.segmentStarted.Load() {
+		return
+	}
+	if reason == ClosePanic || reason == CloseStuck {
+		r.recorder.flag(r.recordPath)
+	}
+	if !goesOn {
+		r.recorder.finish(r.recordPath)
+	}
+}
+
 // stateHash is the start of a SHA-256 of the room's state, encoded as a snapshot would be: this turn's snapshot if one
 // was just encoded, or a new encoding. A recorded room encodes deterministically, so the same state gives the same hash.
 func (r *Room) stateHash() []byte {
@@ -392,8 +834,6 @@ type RecordingSegment struct {
 	// process died, or the file was copied while the room ran.
 	Closed bool
 	Reason CloseReason
-	// Gap says records were dropped, because the disk was too slow: the segment can't be replayed past it.
-	Gap bool
 }
 
 // RecordedTurn is one turn of a recording: what started it, when by the room's clock, and how it ended.
@@ -444,9 +884,9 @@ func (t *RecordedTurn) String() string {
 	return b.String()
 }
 
-// ReadRecording reads a room's recording, a file from RecordingConfig.Dir. A record the file ends in the middle of, or
-// one damaged, ends the reading: what comes before is returned. Replaying needs the game's room type, with
-// playholdtest.Replay.
+// ReadRecording reads a room's recording, a file from RecordingConfig.Dir, in progress or finished. A record the file
+// ends in the middle of, or one damaged, ends the reading: what comes before is returned. Replaying needs the game's room
+// type, with playholdtest.Replay.
 func ReadRecording(path string) ([]RecordingSegment, error) {
 	segments, err := readRecordingFile(path)
 	if err != nil {
@@ -464,7 +904,6 @@ type recordedSegment struct {
 	start *wire.RecordingSegment
 	turns []*wire.RecordedTurn
 	close *wire.RecordedClose
-	gapAt int // how many turns came before the first gap, or -1 without one
 }
 
 // readRecordingFile reads a recording's records into segments, for ReadRecording and replays. A record cut off or
@@ -489,16 +928,19 @@ func readRecordingFile(path string) ([]recordedSegment, error) {
 		segments = addRecord(segments, record)
 	}
 	if len(segments) == 0 {
-		return nil, fmt.Errorf("playhold: %s holds no recording", path)
+		return nil, fmt.Errorf("playhold: %s %w", path, errNoRecording)
 	}
 	return segments, nil
 }
+
+// errNoRecording means a file holds no segment, so there's nothing to replay.
+var errNoRecording = errors.New("holds no recording")
 
 // addRecord adds a record to the segments read so far. Records before the first segment, which a file can only have if
 // it was damaged, are skipped.
 func addRecord(segments []recordedSegment, record *wire.RecordingRecord) []recordedSegment {
 	if start := record.GetSegment(); start != nil {
-		return append(segments, recordedSegment{start: start, gapAt: -1})
+		return append(segments, recordedSegment{start: start})
 	}
 	if len(segments) == 0 {
 		return segments
@@ -509,8 +951,6 @@ func addRecord(segments []recordedSegment, record *wire.RecordingRecord) []recor
 		last.turns = append(last.turns, record.GetTurn())
 	case record.GetClose() != nil:
 		last.close = record.GetClose()
-	case record.GetGap() != nil && last.gapAt < 0:
-		last.gapAt = len(last.turns)
 	}
 	return segments
 }
@@ -531,7 +971,6 @@ func (s *recordedSegment) public() RecordingSegment {
 		Restored: len(s.start.GetRestored()) > 0,
 		Start:    time.Unix(0, s.start.GetStartUnixNanos()).UTC(),
 		Turns:    make([]RecordedTurn, 0, len(s.turns)),
-		Gap:      s.gapAt >= 0,
 	}
 	for _, turn := range s.turns {
 		out.Turns = append(out.Turns, publicTurn(turn))

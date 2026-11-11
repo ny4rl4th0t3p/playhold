@@ -174,10 +174,11 @@ See [Matchmaking](../guides/finding-a-game.md#matchmaking).
 
 See [Record and replay](../guides/recording.md).
 
-| Field       | Default | What it does                                                           |
-|-------------|---------|------------------------------------------------------------------------|
-| `Dir`       | Empty   | Where recordings go, a folder per room type. Empty turns recording off |
-| `Retention` | 30 days | Deletes a recording this long after its last write, checked every hour |
+| Field       | Default | What it does                                                                                    |
+|-------------|---------|-------------------------------------------------------------------------------------------------|
+| `Dir`       | Empty   | Where recordings go, a folder per room type. Empty turns recording off                          |
+| `Retention` | 30 days | Deletes a finished recording this long after its last write, checked every hour                 |
+| `MaxSize`   | 10 GiB  | The most the recordings may take; past it, the oldest finished ones go. Negative means no limit |
 
 ### JournalConfig
 

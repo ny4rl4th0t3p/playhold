@@ -219,9 +219,9 @@ func TestARecordedGameReplaysTurnForTurn(t *testing.T) {
 	first.move(pb.HandsMessage_HANDS_MESSAGE_PASS, &pb.Pass{})
 	stop()
 
-	files, err := filepath.Glob(filepath.Join(recordings, "crazy-eights", "*.rec"))
+	files, err := filepath.Glob(filepath.Join(recordings, "crazy-eights", "*.done.rec"))
 	require.NoError(t, err)
-	require.Len(t, files, 1, "one room, in the room type's folder")
+	require.Len(t, files, 1, "one room, in the room type's folder, finished: nothing saves it to be restored")
 	// #region replay
 	typ, err := cards.NewRoomTypeWith(cards.Options{Record: true})
 	require.NoError(t, err)

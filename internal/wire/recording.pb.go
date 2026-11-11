@@ -100,6 +100,7 @@ func (x *RecordingRecord) GetClose() *RecordedClose {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in playhold/v1/recording.proto.
 func (x *RecordingRecord) GetGap() *RecordedGap {
 	if x != nil {
 		if x, ok := x.Body.(*RecordingRecord_Gap); ok {
@@ -126,7 +127,10 @@ type RecordingRecord_Close struct {
 }
 
 type RecordingRecord_Gap struct {
-	// gap says records were dropped before this one, so the segment can't be replayed past it.
+	// Never written: added before any release, when dropped records left a gap, before a recording that can't be kept
+	// whole was abandoned instead. Kept so the number is never reused.
+	//
+	// Deprecated: Marked as deprecated in playhold/v1/recording.proto.
 	Gap *RecordedGap `protobuf:"bytes,4,opt,name=gap,proto3,oneof"`
 }
 
@@ -920,6 +924,9 @@ func (x *RecordedClose) GetReason() int32 {
 	return 0
 }
 
+// RecordedGap is never written; see RecordingRecord.gap.
+//
+// Deprecated: Marked as deprecated in playhold/v1/recording.proto.
 type RecordedGap struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Dropped       uint32                 `protobuf:"varint,1,opt,name=dropped,proto3" json:"dropped,omitempty"`
@@ -968,12 +975,12 @@ var File_playhold_v1_recording_proto protoreflect.FileDescriptor
 
 const file_playhold_v1_recording_proto_rawDesc = "" +
 	"\n" +
-	"\x1bplayhold/v1/recording.proto\x12\vplayhold.v1\"\xe7\x01\n" +
+	"\x1bplayhold/v1/recording.proto\x12\vplayhold.v1\"\xeb\x01\n" +
 	"\x0fRecordingRecord\x129\n" +
 	"\asegment\x18\x01 \x01(\v2\x1d.playhold.v1.RecordingSegmentH\x00R\asegment\x12/\n" +
 	"\x04turn\x18\x02 \x01(\v2\x19.playhold.v1.RecordedTurnH\x00R\x04turn\x122\n" +
-	"\x05close\x18\x03 \x01(\v2\x1a.playhold.v1.RecordedCloseH\x00R\x05close\x12,\n" +
-	"\x03gap\x18\x04 \x01(\v2\x18.playhold.v1.RecordedGapH\x00R\x03gapB\x06\n" +
+	"\x05close\x18\x03 \x01(\v2\x1a.playhold.v1.RecordedCloseH\x00R\x05close\x120\n" +
+	"\x03gap\x18\x04 \x01(\v2\x18.playhold.v1.RecordedGapB\x02\x18\x01H\x00R\x03gapB\x06\n" +
 	"\x04body\"\x8f\x03\n" +
 	"\x10RecordingSegment\x12\x17\n" +
 	"\aroom_id\x18\x01 \x01(\tR\x06roomId\x12\x1b\n" +
@@ -1032,9 +1039,9 @@ const file_playhold_v1_recording_proto_rawDesc = "" +
 	"\rRecordedClose\x12\x1d\n" +
 	"\n" +
 	"unix_nanos\x18\x01 \x01(\x03R\tunixNanos\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\x05R\x06reason\"'\n" +
+	"\x06reason\x18\x02 \x01(\x05R\x06reason\"+\n" +
 	"\vRecordedGap\x12\x18\n" +
-	"\adropped\x18\x01 \x01(\rR\adroppedB5Z3github.com/ny4rl4th0t3p/playhold/internal/wire;wireb\x06proto3"
+	"\adropped\x18\x01 \x01(\rR\adropped:\x02\x18\x01B5Z3github.com/ny4rl4th0t3p/playhold/internal/wire;wireb\x06proto3"
 
 var (
 	file_playhold_v1_recording_proto_rawDescOnce sync.Once

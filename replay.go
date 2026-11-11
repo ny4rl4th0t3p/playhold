@@ -46,9 +46,6 @@ func replayRecording(next any, path string, logger *slog.Logger) (*roomtest.Repo
 			report.Diverged = diverged
 			return report, nil
 		}
-		if segment.gapAt >= 0 {
-			report.Incomplete = true
-		}
 	}
 	return report, nil
 }
@@ -80,7 +77,6 @@ type discardSink struct{}
 func (discardSink) SendState(*wire.RoomState) {}
 
 // replaySegment replays a segment's turns, and returns how many it replayed, and the first that didn't end as recorded.
-// A segment with a gap stops there.
 func replaySegment(typ *RoomType, segment *recordedSegment, logger *slog.Logger) (int, *roomtest.Divergence) {
 	start := segment.start
 	p := &replayer{}
@@ -102,9 +98,6 @@ func replaySegment(typ *RoomType, segment *recordedSegment, logger *slog.Logger)
 			WantHash: hex.EncodeToString(start.GetHash()), GotHash: hex.EncodeToString(got)}
 	}
 	turns := segment.turns
-	if segment.gapAt >= 0 {
-		turns = turns[:segment.gapAt] // records are missing after this, so nothing after it can be compared
-	}
 	for n, turn := range turns {
 		if diverged := p.replay(turn); diverged != nil {
 			diverged.Turn, diverged.Input = n+1, publicTurn(turn)

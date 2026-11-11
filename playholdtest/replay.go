@@ -20,8 +20,6 @@ type Report struct {
 	Revision string
 	// SchemaMatches says the room type's modules save at the snapshot versions the recording's did.
 	SchemaMatches bool
-	// Incomplete says records were dropped while the room was recorded, so part of the game couldn't be replayed.
-	Incomplete bool
 	// Diverged is the first turn that didn't end as recorded, or nil if every turn did.
 	Diverged *Divergence
 }
@@ -61,8 +59,8 @@ func (d *Divergence) String() string {
 }
 
 // Replay plays a room's recording again against typ, and fails the test at the first turn that doesn't end as it was
-// recorded, with what differs and that turn's input. A recording made with records missing fails it too, since part of
-// the game wasn't checked. Run it against the code of the recording's revision. It needs no Run around it.
+// recorded, with what differs and that turn's input. Run it against the code of the recording's revision. It needs no
+// Run around it.
 func Replay(t *testing.T, typ *playhold.RoomType, path string) *Report {
 	t.Helper()
 	report, err := TryReplay(t, typ, path)
@@ -72,8 +70,6 @@ func Replay(t *testing.T, typ *playhold.RoomType, path string) *Report {
 	case report.Diverged != nil:
 		t.Fatalf("playholdtest: %s doesn't replay as recorded (recorded by revision %q; schema versions match: %v)\n%s",
 			path, report.Revision, report.SchemaMatches, report.Diverged)
-	case report.Incomplete:
-		t.Fatalf("playholdtest: %s is missing records, so it replayed only %d turns", path, report.Turns)
 	}
 	return report
 }
@@ -85,10 +81,7 @@ func TryReplay(t *testing.T, typ *playhold.RoomType, path string) (*Report, erro
 	if err != nil {
 		return nil, err
 	}
-	report := &Report{
-		Turns: got.Turns, Build: got.Build, Revision: got.Revision, SchemaMatches: got.SchemaMatches,
-		Incomplete: got.Incomplete,
-	}
+	report := &Report{Turns: got.Turns, Build: got.Build, Revision: got.Revision, SchemaMatches: got.SchemaMatches}
 	if d := got.Diverged; d != nil {
 		input, _ := d.Input.(playhold.RecordedTurn) // the zero turn for the start
 		report.Diverged = &Divergence{

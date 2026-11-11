@@ -52,6 +52,7 @@ type lobby struct {
 	makeCode    func() string   // rand.Text; tests replace it to force a clash
 	matchmaker  *matchmaker     // nil without ServerConfig.Matchmaking
 	savedCodes  map[string]bool // the codes of every room in the store at the restore, which new rooms mustn't take
+	savedRooms  map[RoomID]bool // the rooms left in the store after the restore, whose recordings go on
 
 	mu       sync.Mutex
 	rooms    map[string]*lobbyRoom
@@ -304,6 +305,7 @@ func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 	defer l.mu.Unlock()
 	// A room left in the store keeps its code, so a new room mustn't get it: the next start would forget one of the two.
 	l.savedCodes = make(map[string]bool, len(rooms))
+	l.savedRooms = make(map[RoomID]bool, len(rooms))
 	for i := range rooms {
 		l.savedCodes[rooms[i].Code] = true
 	}
@@ -314,6 +316,7 @@ func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 			l.writer.forget(record.ID)
 			continue
 		}
+		l.savedRooms[RoomID(record.ID)] = true // restored below, or left in the store for a later start
 		if record.RoomType != l.typ.cfg.Name {
 			l.rt.logger.Error("skipping a saved room of another type", "room", record.ID, "room_type", record.RoomType)
 			continue

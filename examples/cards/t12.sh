@@ -43,8 +43,10 @@ export CRASH_JOURNAL="${CRASH_JOURNAL-}"
 export ADMISSION="${ADMISSION-off}"
 # Off unless asked for, like the journal: RECORDING=/var/lib/cards/recordings records every game, and each run then
 # also writes the recordings' size and count to its -recordings.txt. It has to be a folder under /var/lib/cards, the
-# volume the size is read from.
+# volume the size is read from. RECORDING_MAX_MIB, such as 500, reaches the size limit within a run, to measure the
+# cleanups; the game logs each one as "deleted recordings".
 export RECORDING="${RECORDING-}"
+export RECORDING_MAX_MIB="${RECORDING_MAX_MIB:-0}"
 
 mkdir -p "$results"
 

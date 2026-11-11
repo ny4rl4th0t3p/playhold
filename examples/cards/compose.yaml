@@ -33,6 +33,8 @@ services:
       # Off unless set, so the demo and the load bot don't fill the disk: /var/lib/cards/recordings uses the volume below.
       - -recording
       - ${RECORDING:-}
+      - -recording-max-mib
+      - ${RECORDING_MAX_MIB:-0}
       - -empty-room-timeout
       - ${EMPTY_ROOM_TIMEOUT:-5m}
       - -max-rooms

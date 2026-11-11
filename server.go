@@ -246,7 +246,8 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	go g.lobby.matchmaker.run(background) // returns at once without matchmaking
 	startGuestExpiry(background, cfg.GuestExpiry, g.guests, m, logger)
 	if recorder != nil {
-		startRecordingRetention(background, &cfg.Recording, logger)
+		// After the restore, so the recordings of rooms left in the store aren't finished.
+		recorder.startCleanup(background, cfg.RoomType.cfg.Name, g.lobby.savedRooms, cfg.Recording.Retention)
 	}
 	server := &Server{
 		writer:         writer,
@@ -411,6 +412,10 @@ func openRecorder(cfg *ServerConfig, rt *Runtime, logger *slog.Logger) (*recordi
 		logger.Warn("could not read the server's executable, so recordings don't say which build made them", "error", err)
 	}
 	w := newRecordingWriter(cfg.Recording.Dir, build, logger)
+	w.maxSize = cfg.Recording.MaxSize
+	if w.maxSize == 0 {
+		w.maxSize = defaultRecordingMaxSize
+	}
 	rt.useRecorder(w)
 	logger.Info("recording rooms", "dir", cfg.Recording.Dir, "room_type", typ.Name, "revision", w.revision)
 	return w, nil

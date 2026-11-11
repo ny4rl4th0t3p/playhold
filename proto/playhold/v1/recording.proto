@@ -11,8 +11,9 @@ message RecordingRecord {
     RecordingSegment segment = 1;
     RecordedTurn turn = 2;
     RecordedClose close = 3;
-    // gap says records were dropped before this one, so the segment can't be replayed past it.
-    RecordedGap gap = 4;
+    // Never written: added before any release, when dropped records left a gap, before a recording that can't be kept
+    // whole was abandoned instead. Kept so the number is never reused.
+    RecordedGap gap = 4 [deprecated = true];
   }
 }
 
@@ -100,6 +101,8 @@ message RecordedClose {
   int32 reason = 2;
 }
 
+// RecordedGap is never written; see RecordingRecord.gap.
 message RecordedGap {
+  option deprecated = true;
   uint32 dropped = 1;
 }

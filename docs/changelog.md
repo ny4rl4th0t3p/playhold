@@ -1,8 +1,9 @@
 # Changelog
 
-## v0.3.0, unreleased
+## v0.3.0, 12 November 2026
 
-The first public release. This section grows as the work lands on `main`.
+The sample game runs over TLS with safe defaults, and the server gains protection against overload and crashes,
+matchmaking, tools to test and replay games, and a documentation site.
 
 ### Breaking changes
 
@@ -85,7 +86,8 @@ See [Errors and close reasons](./reference/errors.md).
   differs. A finished recording is renamed `.done.rec`, or `.problem.rec` after a panic, a stuck turn or a crash, and
   kept until `Retention` or `MaxSize`, 10 GiB by default, deletes it. See [Record and replay](./guides/recording.md).
 - TLS: automatic certificates from Let's Encrypt, certificate files, or a trusted proxy that ends TLS, with
-  `ListenAndServe`.
+  `ListenAndServe`. `ProxyClientIP`, to read the client's address from a trusted proxy's request another way than
+  `X-Forwarded-For`.
 - Layered rate limits, with a module's own limits on its messages.
 - Admission control: new guests, rooms and seats are refused while the server is overloaded.
 - Slow turns are logged, and nothing from a stuck room's goroutine reaches players or the store.
@@ -93,13 +95,16 @@ See [Errors and close reasons](./reference/errors.md).
 - The crash journal and `playholdjournal`.
 - The breaker: a message that keeps crashing the server is turned off for an hour, and a room that keeps crashing it
   isn't restored.
-- Prometheus metrics, on a listener of their own at `127.0.0.1:9464` by default.
+- Prometheus metrics, on a listener of their own at `127.0.0.1:9464` by default, or from `MetricsHandler` for a server
+  not using `ListenAndServe`.
 - OpenTelemetry traces of turns, store calls and the restore, with `ServerConfig.TracerProvider`.
 - Logs name the player on a connection once it has said Hello, and the turn a stuck or panicking room was running.
 - Guest expiry, and a page on what playhold keeps about players, where and for how long.
   `ServerConfig.HidePlayerIDs` leaves player IDs out of logs and traces.
-- This documentation site, with a page on what a server needs from whatever runs it, and what to back up.
-- The sample: profiles of the server during a `t12.sh` run.
+- This documentation site: a walkthrough, concept pages, guides, and references for the configuration, the errors,
+  both SDKs and the wire protocol, with a page on what a server needs from whatever runs it, and what to back up.
+- The sample: profiles of the server during a `t12.sh` run, and `check.sh`, the check at 1,000 players over TLS, with
+  the bot's `-ca`, `-rejoin` and `-spread`.
 
 ## v0.2.0, 6 November 2026
 

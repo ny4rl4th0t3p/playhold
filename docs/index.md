@@ -32,8 +32,9 @@ features:
 ---
 
 ::: warning Early development
-playhold is a hobby project, and its API can still change. The first public release, v0.3.0, isn't out yet; these pages
-describe the code on the `main` branch. A walkthrough and a tutorial come with that release.
+playhold is a hobby project, and its API can still change. These pages describe the code on the `main` branch, as of
+v0.3.0. The SDKs aren't published as packages yet, so building your own game on playhold is still hard; a tutorial
+comes once they are.
 :::
 
 ## What works today

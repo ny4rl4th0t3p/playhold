@@ -2,8 +2,9 @@
 
 A self-hosted game backend in Go, built from authoritative rooms and composable modules.
 
-> **Status: early development.** v0.2.0 runs a sample game in a browser, and a game in progress survives a restart, a
-> crash and a deploy that changes how games are saved. It isn't ready for a public game yet, and the API can change.
+> **Status: early development.** v0.3.0 runs a sample game, Crazy Eights, over TLS with safe defaults, and a game in
+> progress survives a restart, a crash and a deploy that changes how games are saved. Building your own game on
+> playhold is still hard: the SDKs aren't published as packages yet, and the API can change.
 
 playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After
 that, each release adds support for another kind of game.

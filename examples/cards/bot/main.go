@@ -6,14 +6,19 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"maps"
+	mathrand "math/rand/v2" // the moves' timing; crypto/rand is for run IDs
+	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -50,12 +55,14 @@ type config struct {
 	games   int
 	think   time.Duration
 	rate    float64
+	spread  float64
 	ramp    time.Duration
 	warmup  time.Duration
 	report  time.Duration
 	idle    int
 	survive int
 	stall   time.Duration
+	rejoin  bool
 }
 
 func main() {
@@ -66,21 +73,61 @@ func main() {
 	flag.Float64Var(&cfg.rate, "rate", 0,
 		"moves per second across all games, on a fixed schedule whether or not the server keeps up, instead of -think; "+
 			"latency then counts from when each move was due")
+	flag.Float64Var(&cfg.spread, "spread", 0,
+		"with -rate, how irregular the moves are, from 0 to 1: each wait is the average one times a random factor from "+
+			"1-spread to 1+spread, so 0.6 makes a player who moves every 5 s on average wait from 2 to 8 s")
 	flag.DurationVar(&cfg.ramp, "ramp", 10*time.Second, "how long to take starting all the games")
 	flag.DurationVar(&cfg.warmup, "warmup", 0, "how long to leave out of the final summary")
 	flag.DurationVar(&cfg.report, "report", 5*time.Second, "how often to print a report")
 	flag.IntVar(&cfg.idle, "idle", 0, "instead of playing, hold this many idle connections, to measure what one costs")
 	flag.IntVar(&cfg.survive, "survive", 0, "instead of a load, play one game, which has to come through this many server interruptions")
 	flag.DurationVar(&cfg.stall, "stall", time.Minute, "with -survive, how long to only draw and pass, so the game outlasts the interruptions")
+	flag.BoolVar(&cfg.rejoin, "rejoin", false,
+		"when a seat's connection drops, connect again as the same guest and join the same game, counting how long it "+
+			"took; a seat that can't get back in, or whose cards changed, has lost its game")
+	ca := flag.String("ca", "", "a PEM file of a certificate to trust, on top of the system's, for a server with a test certificate")
 	duration := flag.Duration("duration", 0, "how long to run; 0 runs until interrupted")
 	flag.Parse()
 
 	if cfg.games <= 0 || cfg.report <= 0 || cfg.rate < 0 {
 		log.Fatal("-games and -report must be positive, and -rate can't be negative")
 	}
+	if cfg.spread < 0 || cfg.spread > 1 {
+		log.Fatal("-spread must be from 0 to 1")
+	}
+	if *ca != "" {
+		if err := trustCA(*ca); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if err := start(cfg, *duration); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// trustCA makes every connection the bot opens trust the certificate in this PEM file, on top of the system's, so it can
+// reach a server with a test certificate while still checking it. The SDK dials through Go's default HTTP client, so
+// that's where it's set.
+func trustCA(path string) error {
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return err
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool() // no system pool here, so only the test certificate
+	}
+	if !pool.AppendCertsFromPEM(data) {
+		return fmt.Errorf("-ca %s holds no PEM certificate", path)
+	}
+	defaults, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return errors.New("-ca: Go's default HTTP transport isn't an *http.Transport")
+	}
+	transport := defaults.Clone()
+	transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	http.DefaultClient.Transport = transport
+	return nil
 }
 
 func start(cfg *config, duration time.Duration) error {
@@ -161,7 +208,7 @@ func holdOne(ctx context.Context, cfg *config, connected, reached *atomic.Int64)
 
 // run plays until ctx ends, and returns the totals.
 func run(ctx context.Context, cfg *config, out io.Writer) totals {
-	rec := &recorder{measureFrom: time.Now().Add(cfg.warmup)}
+	rec := &recorder{measureFrom: time.Now().Add(cfg.warmup), rejoin: cfg.rejoin}
 	runID := rand.Text()[:runIDLength] // rooms stay open for a while, so a second run must not reuse their codes
 
 	var tables sync.WaitGroup
@@ -212,19 +259,32 @@ func sleep(ctx context.Context, d time.Duration) bool {
 // pacer decides when one table's next move goes out. A table only has one move to make at a time, so at a fixed rate a
 // slow answer makes the next moves late, not fewer: each one's latency counts from when it was due, so a server that
 // falls behind can't hide it by slowing the bot down.
+//
+// With a spread, each wait is the interval times a random factor from 1-spread to 1+spread, so players don't move like
+// clockwork; the average stays the interval, and so the rate.
 type pacer struct {
 	mu       sync.Mutex
 	think    time.Duration
 	interval time.Duration
+	spread   float64
+	random   func() float64 // in [0, 1); math/rand's Float64, which tests replace
 	due      time.Time
 }
 
 func newPacer(cfg *config) *pacer {
-	p := &pacer{think: cfg.think, due: time.Now()}
+	p := &pacer{think: cfg.think, spread: cfg.spread, random: mathrand.Float64, due: time.Now()}
 	if cfg.rate > 0 {
 		p.interval = time.Duration(float64(cfg.games) / cfg.rate * float64(time.Second))
 	}
 	return p
+}
+
+// next is the wait until this table's next move.
+func (p *pacer) next() time.Duration {
+	if p.spread == 0 {
+		return p.interval
+	}
+	return time.Duration(float64(p.interval) * (1 + p.spread*(2*p.random()-1)))
 }
 
 // wait returns once the next move should go out, with the time to count its latency from. It reports false if ctx ended.
@@ -236,7 +296,7 @@ func (p *pacer) wait(ctx context.Context) (due time.Time, ok bool) {
 		return time.Now(), true
 	}
 	p.mu.Lock()
-	p.due = p.due.Add(p.interval)
+	p.due = p.due.Add(p.next())
 	due = p.due
 	p.mu.Unlock()
 	return due, sleep(ctx, time.Until(due))
@@ -273,12 +333,39 @@ func playTable(ctx context.Context, cfg *config, rec *recorder, table string) {
 	}
 }
 
-// player is one seat's identity, kept from game to game.
+// player is one seat's identity, kept from game to game, and with -rejoin, where it stands in the game it's playing.
 type player struct {
 	identity sdk.Identity
+
+	joined    bool      // this game's room has seated it
+	droppedAt time.Time // when it lost its connection, until it's back in the game
+	hand      []string  // its cards in the last view, to check after getting back in
 }
 
+// playGame plays one game to its end. With -rejoin, a dropped connection doesn't end it: the seat connects again and
+// joins the same game, until it's back or can't be, which loses the game.
 func (p *player) playGame(ctx context.Context, cfg *config, rec *recorder, pace *pacer, code string) error {
+	p.joined, p.droppedAt, p.hand = false, time.Time{}, nil
+	for {
+		err := p.session(ctx, cfg, rec, pace, code)
+		switch {
+		case err == nil, !cfg.rejoin, ctx.Err() != nil:
+			return err
+		case !canRetry(err):
+			if p.joined {
+				rec.lost()
+			}
+			return err
+		}
+		if p.joined && p.droppedAt.IsZero() {
+			p.droppedAt = time.Now()
+		}
+		sleep(ctx, reconnectPause)
+	}
+}
+
+// session plays on one connection, until the game ends or the connection does.
+func (p *player) session(ctx context.Context, cfg *config, rec *recorder, pace *pacer, code string) error {
 	// #region connect
 	client, err := sdk.Connect(ctx, &sdk.Options{URL: cfg.url, Identity: p.identity, SchemaVersions: cards.ClientSchemaVersions()})
 	if err != nil {
@@ -295,11 +382,19 @@ func (p *player) playGame(ctx context.Context, cfg *config, rec *recorder, pace 
 		return err
 	}
 	// #endregion connect
+	p.joined = true
 
 	var sentAt time.Time // when the move still waiting for an answer was due
 	for range maxMoves {
 		game, err := nextGame(ctx, client)
+		var refused *sdk.Error
+		if cfg.rejoin && errors.As(err, &refused) && refused.Code != sdk.ErrorUnavailable {
+			continue // a move crossed with a view after getting back in; the next view says what's true now
+		}
 		if err != nil {
+			return err
+		}
+		if err := p.saw(rec, game.hands.GetCards()); err != nil {
 			return err
 		}
 		if !sentAt.IsZero() {
@@ -326,6 +421,21 @@ func (p *player) playGame(ctx context.Context, cfg *config, rec *recorder, pace 
 		}
 	}
 	return errTooLong
+}
+
+// saw checks the cards in the first view after getting back in, which can differ by one move: an answer cut off by the
+// drop, or the very last move lost in a crash. More than that, and the game the seat came back to isn't the one it
+// left.
+func (p *player) saw(rec *recorder, hand []string) error {
+	if !p.droppedAt.IsZero() {
+		if different := handDifference(p.hand, hand); different > 1 {
+			return fmt.Errorf("%w: had %d cards, and now %d", errCardsChanged, len(p.hand), len(hand))
+		}
+		rec.rejoined(time.Since(p.droppedAt))
+		p.droppedAt = time.Time{}
+	}
+	p.hand = hand
+	return nil
 }
 
 func sendMove(ctx context.Context, client *sdk.Client, id pb.HandsMessage, msg proto.Message) error {
@@ -385,6 +495,8 @@ type totals struct {
 	games    int
 	moves    int
 	failures int
+	rejoined int // with -rejoin: seats back in their game after a dropped connection
+	lost     int // with -rejoin: seats that couldn't get back into their game
 }
 
 // recorder collects results from every player.
@@ -397,6 +509,22 @@ type recorder struct {
 	measureFrom time.Time       // what comes before this is warm-up
 	measured    int             // moves since then
 	samples     []time.Duration // their latencies, up to maxSamples
+
+	rejoin      bool          // -rejoin, so the summary says how seats came back
+	slowestBack time.Duration // the longest a seat took to get back into its game
+}
+
+func (r *recorder) rejoined(back time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.totals.rejoined++
+	r.slowestBack = max(r.slowestBack, back)
+}
+
+func (r *recorder) lost() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.totals.lost++
 }
 
 func (r *recorder) move(latency time.Duration) {
@@ -472,9 +600,14 @@ func (r *recorder) summary(out io.Writer) {
 	if len(r.samples) > 0 {
 		slowest = r.samples[len(r.samples)-1]
 	}
-	_, _ = fmt.Fprintf(out, "summary moves=%d seconds=%.0f moves/s=%.1f failures=%d p50=%s p99=%s p99.9=%s max=%s\n",
+	rejoins := ""
+	if r.rejoin {
+		rejoins = fmt.Sprintf(" rejoined=%d lost=%d slowest_back=%s", r.totals.rejoined, r.totals.lost, r.slowestBack)
+	}
+	_, _ = fmt.Fprintf(out, "summary moves=%d seconds=%.0f moves/s=%.1f failures=%d p50=%s p99=%s p99.9=%s max=%s%s\n",
 		r.measured, seconds, float64(r.measured)/seconds, r.totals.failures,
-		percentile(r.samples, lowPercentile), percentile(r.samples, topPercentile), perMille(r.samples, nearTopMille), slowest)
+		percentile(r.samples, lowPercentile), percentile(r.samples, topPercentile), perMille(r.samples, nearTopMille), slowest,
+		rejoins)
 }
 
 // percentile reads from sorted latencies, and returns 0 if there are none.

@@ -1,0 +1,12 @@
+# The turn-based check's TLS, used on top of compose.yaml and compose.t12.yaml by check.sh: the test certificate
+# check.sh makes, mounted for the game server, which serves TLS on 8443, and for the bot, which trusts it.
+services:
+  game:
+    volumes:
+      - ./check-certs:/certs:ro
+    ports:
+      - "127.0.0.1:8443:8443"
+
+  bot:
+    volumes:
+      - ./check-certs:/certs:ro

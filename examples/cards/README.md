@@ -91,6 +91,14 @@ sh record-stats.sh
 | `DEBUG_ADDR`             | empty, off                            | Address for Go's profiling endpoints, such as `:6060`. With `t12.sh`, published on `127.0.0.1:6060` only   |
 | `GAME_GODEBUG`           | empty                                 | With `t12.sh`, the game server's `GODEBUG`, such as `gctrace=1` to log every garbage collection            |
 | `GAME_GOGC`              | empty, Go's default                   | With `t12.sh`, the game server's `GOGC`, such as `400` for rarer garbage collections and a larger heap     |
+| `ADDR`                   | empty, the server's default           | Where the game server listens; empty is `:8080` without TLS, `:443` with it                                |
+| `TLS_CERT`               | empty, no TLS                         | The game server's certificate and key, PEM files inside its container; `check.sh` sets both                |
+| `TLS_KEY`                | empty                                 | The key of `TLS_CERT`                                                                                      |
+| `BOT_URL`                | `ws://game:8080/ws`                   | Where the bot connects                                                                                     |
+| `BOT_CA`                 | empty                                 | A PEM certificate the bot trusts, for a server with a test one                                             |
+| `RAMP`                   | 10s                                   | How long the bot takes to start all its games, or its idle connections                                     |
+| `SPREAD`                 | 0                                     | With `RATE`, how irregular moves are, 0 to 1: `0.6` makes a player who moves every 5 s wait from 2 to 8 s  |
+| `REJOIN`                 | false                                 | `true` makes each seat connect again and rejoin its game after a dropped connection, and count it          |
 
 The bot prints finished games, failures, moves per second and how long the server took to answer a move, followed by the
 reason for any failures:
@@ -214,7 +222,8 @@ At the end it prints each run's `summary` line and each report's longest snapsho
 lose at that moment. With `SNAPSHOT_INTERVAL` set, it counts only the wait for PostgreSQL, so a crash can lose up to
 the interval more.
 
-To compare runs, `sh t12-report.sh [name]`, with the name given to `t12.sh`, prints one line per run: the summary in ms, then over the same window the
+To compare runs, `sh t12-report.sh [name]`, with the name given to `t12.sh`, prints one line per run: the summary in ms,
+then over the same window the
 game server's and PostgreSQL's average CPU, the game server's most memory in MiB, the bot's most CPU, the longest
 snapshot delay and, with `RECORDING`, the recordings' size in KiB and their count.
 
@@ -232,6 +241,30 @@ Each run then collects the same profiles at the same point, about 95 seconds aft
 and the CPU pinning Docker applied. If Go is installed, each profile also gets a text report next to it, such as
 `prof-on-1-cpu.txt`. These runs are named
 `prof-off-1`, `prof-on-1` and so on, and their latencies don't count, because profiling slows the server down.
+
+## Run the turn-based check
+
+`check.sh` runs what a release of playhold is checked against: 1,000 players, each making a move every 2 to 8
+seconds, 5 on average, on the same pinned containers, over TLS with a test certificate it makes the first time. Stop
+anything else
+using ports 8080 and 8443 first, then run one set at a time:
+
+```bash
+sh check.sh SET [name]
+```
+
+| Set         | What it runs                                                                    |
+|-------------|---------------------------------------------------------------------------------|
+| `idle`      | The server alone 30 s, then 1,000 idle connections opened over 60 s, held 3 min |
+| `load`      | 1,000 players with saving off and on, 3 runs each, as `t12.sh` does             |
+| `reconnect` | 1,000 players that rejoin their games, with the server restarted 2 minutes in   |
+| `overload`  | 2,000 players, with room for 600 games, so the rest are refused                 |
+| `soak`      | 1,000 players for `SOAK`, 4h by default, with readings every minute             |
+
+Results go to `t12-results/check-SET`, or `t12-results/NAME`, and `sh t12-report.sh check-SET` reads them. With
+`reconnect`, its last three columns say how many seats came back to their game, how many games were lost, and the
+slowest return. Each run also keeps `-crashes.txt`, how many times Docker restarted the game on its own, which is 0
+unless it crashed.
 
 ## Run it without Docker
 

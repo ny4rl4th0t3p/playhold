@@ -62,6 +62,13 @@ services:
       - ":9464"
       - -traces
       - ${TRACES:-off}
+      # Off unless set: a certificate and its key turn TLS on, at ADDR. check.sh sets all three; see compose.check.yaml.
+      - -addr
+      - ${ADDR:-}
+      - -tls-cert
+      - ${TLS_CERT:-}
+      - -tls-key
+      - ${TLS_KEY:-}
     # The crash journal lives on a volume, so it's still there after the crash it's for; so do recordings, if on.
     volumes:
       - journal:/var/lib/cards
@@ -102,13 +109,21 @@ services:
       target: bot
     command:
       - -url
-      - ws://game:8080/ws
+      - ${BOT_URL:-ws://game:8080/ws}
+      # A certificate to trust, for a server with a test one, as check.sh sets up.
+      - -ca
+      - ${BOT_CA:-}
+      - -ramp
+      - ${RAMP:-10s}
+      - -rejoin=${REJOIN:-false}
       - -games
       - ${GAMES:-100}
       - -think
       - ${THINK:-1s}
       - -rate
       - ${RATE:-0}
+      - -spread
+      - ${SPREAD:-0}
       - -warmup
       - ${WARMUP:-0s}
       - -duration

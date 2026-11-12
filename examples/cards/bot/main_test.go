@@ -3,11 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -124,6 +128,27 @@ func TestBotAtAFixedRateCountsLatencyFromWhenMovesWereDue(t *testing.T) {
 	due, ok = pace.wait(t.Context())
 	require.True(t, ok)
 	assert.Equal(t, start.Add(-time.Hour+500*time.Millisecond), due)
+}
+
+func TestSpreadMakesWaitsIrregularAroundTheSameAverage(t *testing.T) {
+	cfg := &config{games: 500, rate: 200, spread: 0.6} // a table every 2.5 s on average, so 1 to 4 s
+	pace := newPacer(cfg)
+
+	tests := []struct {
+		random float64
+		want   time.Duration
+	}{
+		{random: 0, want: time.Second},
+		{random: 0.5, want: 2500 * time.Millisecond},
+		{random: 0.9999, want: 3999700 * time.Microsecond},
+	}
+	for _, tt := range tests {
+		pace.random = func() float64 { return tt.random }
+		assert.InDelta(t, float64(tt.want), float64(pace.next()), float64(time.Millisecond), "random %v", tt.random)
+	}
+
+	pace.spread = 0
+	assert.Equal(t, 2500*time.Millisecond, pace.next(), "no spread, no randomness")
 }
 
 func TestSummaryLeavesOutTheWarmUp(t *testing.T) {
@@ -254,6 +279,120 @@ func TestSurvivorComesThroughARestartAndADeployWithANewSchema(t *testing.T) {
 
 	require.NoError(t, <-result, "bot output: %s", out.String())
 	assert.Contains(t, out.String(), "survived")
+}
+
+// freeAddr returns an address nothing listens on yet, for a server that has to come back at the same one.
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	var listen net.ListenConfig
+	listener, err := listen.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := listener.Addr().String()
+	require.NoError(t, listener.Close())
+	return addr
+}
+
+func TestRejoinBringsSeatsBackToTheirGameAfterARestart(t *testing.T) {
+	addr := freeAddr(t)
+	records := memory.New()
+	stop := gameServer(t, addr, records, cards.Options{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result := make(chan totals, 1)
+	go func() {
+		result <- run(ctx, &config{
+			url:    "ws://" + addr + "/",
+			games:  1,
+			think:  100 * time.Millisecond, // so the first game is still going at the restart
+			report: time.Hour,
+			rejoin: true,
+		}, &bytes.Buffer{})
+	}()
+
+	time.Sleep(time.Second)
+	stop()
+	gameServer(t, addr, records, cards.Options{})
+
+	got := <-result
+	assert.GreaterOrEqual(t, got.rejoined, 2, "both seats came back to their game")
+	assert.Zero(t, got.lost)
+	assert.Zero(t, got.failures)
+}
+
+func TestRejoinCountsAGameThatCantBeGotBackInto(t *testing.T) {
+	addr := freeAddr(t)
+	stop := gameServer(t, addr, memory.New(), cards.Options{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result := make(chan totals, 1)
+	go func() {
+		result <- run(ctx, &config{
+			url:    "ws://" + addr + "/",
+			games:  1,
+			think:  100 * time.Millisecond,
+			report: time.Hour,
+			rejoin: true,
+		}, &bytes.Buffer{})
+	}()
+
+	time.Sleep(time.Second)
+	stop()
+	gameServer(t, addr, memory.New(), cards.Options{}) // a new store: the guests and their game are gone
+
+	got := <-result
+	assert.Positive(t, got.lost)
+	assert.Positive(t, got.failures)
+}
+
+func TestSummarySaysHowSeatsCameBack(t *testing.T) {
+	rec := &recorder{measureFrom: time.Now(), rejoin: true}
+	rec.rejoined(300 * time.Millisecond)
+	rec.rejoined(time.Second)
+	rec.lost()
+
+	var out bytes.Buffer
+	rec.summary(&out)
+
+	assert.Contains(t, out.String(), " rejoined=2 lost=1 slowest_back=1s")
+}
+
+func TestTrustCALetsTheBotCheckATestCertificate(t *testing.T) {
+	rt := playhold.NewRuntime(playhold.Config{Logger: slog.New(slog.DiscardHandler)})
+	typ, err := cards.NewRoomType()
+	require.NoError(t, err)
+	server, err := playhold.NewServer(rt, &playhold.ServerConfig{RoomType: typ, MemoryLimit: -1, Development: true})
+	require.NoError(t, err)
+	httpServer := httptest.NewTLSServer(server)
+	t.Cleanup(func() {
+		server.Close()
+		httpServer.Close()
+	})
+	url := "wss" + strings.TrimPrefix(httpServer.URL, "https") + "/"
+
+	options := &sdk.Options{URL: url, SchemaVersions: cards.ClientSchemaVersions()}
+	_, err = sdk.Connect(t.Context(), options)
+	require.Error(t, err, "a certificate nobody trusts is refused")
+
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: httpServer.Certificate().Raw})
+	require.NoError(t, os.WriteFile(ca, certificate, 0o600))
+	before := http.DefaultClient.Transport
+	t.Cleanup(func() { http.DefaultClient.Transport = before })
+
+	require.NoError(t, trustCA(ca))
+
+	client, err := sdk.Connect(t.Context(), options)
+	require.NoError(t, err)
+	client.Close()
+}
+
+func TestTrustCARefusesAFileWithNoCertificate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.pem")
+	require.NoError(t, os.WriteFile(path, []byte("not a certificate"), 0o600))
+
+	assert.ErrorContains(t, trustCA(path), "no PEM certificate")
 }
 
 func TestReportGroupsFailureReasonsAndLimitsThem(t *testing.T) {

@@ -1,11 +1,12 @@
 #!/bin/sh
-# Prints one line per t12.sh run, from the files it left: the bot's summary, the game server's and PostgreSQL's average
-# CPU, the game server's most memory and the bot's most CPU, over the window the summary covers (after the warm-up), plus
-# the longest snapshot delay the server logged and, if games were recorded, the recordings' size and count.
+# Prints one line per t12.sh or check.sh run, from the files it left: the bot's summary, the game server's and
+# PostgreSQL's average CPU, the game server's most memory and the bot's most CPU, over the window the summary covers
+# (after the warm-up), plus the longest snapshot delay the server logged; if games were recorded, the recordings' size
+# and count; and with the bot's -rejoin, the seats back in their game, the games lost and the slowest return.
 #
 #   sh t12-report.sh [name]
 #
-# Reads t12-results/, or with a name t12-results/NAME, the same name given to t12.sh.
+# Reads t12-results/, or with a name t12-results/NAME, the same name given to t12.sh or check.sh.
 #
 # Times are in ms, CPU in % of one core, memory in MiB. A dash means the run has no such file or value.
 
@@ -68,9 +69,10 @@ stat() {
         }' "$file"
 }
 
-format='%-16s %8s %7s %7s %7s %7s %8s %8s %8s %7s %7s %9s %8s %7s\n'
+format='%-16s %8s %7s %7s %7s %7s %8s %8s %8s %7s %7s %9s %8s %7s %8s %5s %8s\n'
 # shellcheck disable=SC2059 # the format is ours
-printf "$format" run moves/s p50 p99 p99.9 max failures game_cpu game_mib pg_cpu bot_top snap_max rec_kib rec_n
+printf "$format" run moves/s p50 p99 p99.9 max failures game_cpu game_mib pg_cpu bot_top snap_max rec_kib rec_n \
+    rejoined lost back_ms
 
 for log in "$dir"/*-bot.log; do
     [ -f "$log" ] || continue
@@ -85,14 +87,17 @@ for log in "$dir"/*-bot.log; do
         /^summary / { for (i = 2; i <= NF; i++) { split($i, kv, "="); v[kv[1]] = kv[2] } }
         END {
             if (!("seconds" in v)) { print "-"; exit }
-            printf "%d %d %s %.2f %.2f %.2f %.2f %s\n", end, v["seconds"], v["moves/s"], ms(v["p50"]), ms(v["p99"]),
+            printf "%d %d %s %.2f %.2f %.2f %.2f %s", end, v["seconds"], v["moves/s"], ms(v["p50"]), ms(v["p99"]),
                 ms(v["p99.9"]), ms(v["max"]), v["failures"]
+            # Only with -rejoin on the bot: seats back in their game, games lost, and the slowest return.
+            if ("rejoined" in v) printf " %s %s %.0f\n", v["rejoined"], v["lost"], ms(v["slowest_back"])
+            else print " - - -"
         }' "$log")
     if [ "$1" = - ]; then
         echo "$run: no summary in $log"
         continue
     fi
-    end="$1" len="$2"
+    end="$1" len="$2" rejoined="$9" lost="${10}" back="${11}"
 
     snap=-
     if [ -f "$base-game.log" ]; then
@@ -116,5 +121,5 @@ for log in "$dir"/*-bot.log; do
     printf "$format" "$run" "$3" "$4" "$5" "$6" "$7" "$8" \
         "$(stat "$base-game.csv" "$end" "$len" avg)" "$(stat "$base-game.csv" "$end" "$len" mem)" \
         "$(stat "$base-postgres.csv" "$end" "$len" avg)" "$(stat "$base-bot.csv" "$end" "$len" top)" \
-        "$snap" "$rec_kib" "$rec_n"
+        "$snap" "$rec_kib" "$rec_n" "$rejoined" "$lost" "$back"
 done

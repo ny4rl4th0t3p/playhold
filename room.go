@@ -16,8 +16,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	stored "github.com/ny4rl4th0t3p/playhold/internal/wire" // recordings and snapshots: only ever stored
 	"github.com/ny4rl4th0t3p/playhold/store"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 // defaultQueueSize is the inbound queue capacity of a room whose type does not set one. Each room allocates its whole
@@ -262,7 +263,7 @@ type Room struct {
 	seed            [32]byte  // the seed the room was created with
 	initNow         time.Time // the clock Init ran at
 	restored        []byte    // a restored room's state, until its segment starts
-	turnRecord      *wire.RecordedTurn
+	turnRecord      *stored.RecordedTurn
 	encodedThisTurn []byte // this turn's snapshot, if one was encoded
 	segmentStarted  atomic.Bool
 
@@ -393,7 +394,7 @@ func (r *Room) dispatch(player PlayerID, module string, id uint32, payload []byt
 func (r *Room) dispatchInput(player PlayerID, module string, id uint32, payload []byte, result func(error)) input {
 	return input{player: player, result: result, module: module, id: id, run: func(rc *RoomContext) error {
 		if r.recorder != nil {
-			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Message{Message: &wire.RecordedMessage{
+			r.record(&stored.RecordedTurn{Input: &stored.RecordedTurn_Message{Message: &stored.RecordedMessage{
 				Player: string(player), Module: module, Id: id, Payload: payload,
 			}}})
 		}
@@ -419,10 +420,10 @@ func (r *Room) seat(player PlayerID, sink viewSink, result func(error)) error {
 
 func (r *Room) seatInput(player PlayerID, sink viewSink, result func(error)) input {
 	return input{player: player, result: result, run: func(rc *RoomContext) error {
-		var recorded *wire.RecordedSeat
+		var recorded *stored.RecordedSeat
 		if r.recorder != nil {
-			recorded = &wire.RecordedSeat{Player: string(player)}
-			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Seat{Seat: recorded}})
+			recorded = &stored.RecordedSeat{Player: string(player)}
+			r.record(&stored.RecordedTurn{Input: &stored.RecordedTurn_Seat{Seat: recorded}})
 		}
 		r.playerActive()
 		if !slices.Contains(r.seats, player) { // a player who already has a seat is never refused
@@ -501,11 +502,11 @@ func (r *Room) reserve(players []PlayerID, reserveFor time.Duration, minPlayers 
 func (r *Room) reserveInput(players []PlayerID, minPlayers int) input {
 	return input{noViews: true, run: func(_ *RoomContext) error {
 		if r.recorder != nil {
-			recorded := &wire.RecordedReserve{MinPlayers: int32(minPlayers)} //nolint:gosec // at most MaxPlayers
+			recorded := &stored.RecordedReserve{MinPlayers: int32(minPlayers)} //nolint:gosec // at most MaxPlayers
 			for _, player := range players {
 				recorded.Players = append(recorded.Players, string(player))
 			}
-			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Reserve{Reserve: recorded}})
+			r.record(&stored.RecordedTurn{Input: &stored.RecordedTurn_Reserve{Reserve: recorded}})
 		}
 		r.reserved, r.matchJoined, r.minPlayers = slices.Clone(players), nil, minPlayers
 		return nil
@@ -516,7 +517,7 @@ func (r *Room) reserveInput(players []PlayerID, minPlayers int) input {
 func (r *Room) reserveEndInput() input {
 	return input{run: func(rc *RoomContext) error {
 		if r.recorder != nil {
-			r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_ReserveEnd{ReserveEnd: &wire.RecordedReserveEnd{}}})
+			r.record(&stored.RecordedTurn{Input: &stored.RecordedTurn_ReserveEnd{ReserveEnd: &stored.RecordedReserveEnd{}}})
 		}
 		switch {
 		case len(r.reserved) == 0:
@@ -552,7 +553,7 @@ func (r *Room) removeViewerInput(player PlayerID, sink viewSink) input {
 	return input{player: player, noViews: true, run: func(_ *RoomContext) error {
 		if r.viewers[player] == sink {
 			if r.recorder != nil {
-				r.record(&wire.RecordedTurn{Input: &wire.RecordedTurn_Leave{Leave: &wire.RecordedLeave{Player: string(player)}}})
+				r.record(&stored.RecordedTurn{Input: &stored.RecordedTurn_Leave{Leave: &stored.RecordedLeave{Player: string(player)}}})
 			}
 			delete(r.viewers, player)
 			r.startGrace(player)
@@ -642,7 +643,7 @@ func (r *Room) applySnapshot(data []byte, policy TimersAfterRestart) (err error)
 		}
 	}()
 
-	snapshot := &wire.RoomSnapshot{}
+	snapshot := &stored.RoomSnapshot{}
 	if err := proto.Unmarshal(data, snapshot); err != nil {
 		return fmt.Errorf("playhold: decoding room: %w", err)
 	}
@@ -682,7 +683,7 @@ func (r *Room) applySnapshot(data []byte, policy TimersAfterRestart) (err error)
 	return nil
 }
 
-func findModule(snapshot *wire.RoomSnapshot, module string) *wire.ModuleSnapshot {
+func findModule(snapshot *stored.RoomSnapshot, module string) *stored.ModuleSnapshot {
 	for _, saved := range snapshot.GetModules() {
 		if saved.GetModule() == module {
 			return saved
@@ -719,11 +720,11 @@ func (r *Room) encodeSnapshot() []byte {
 	if err != nil {
 		panic(fmt.Sprintf("playhold: room's random numbers can't be saved: %v", err))
 	}
-	snapshot := &wire.RoomSnapshot{
+	snapshot := &stored.RoomSnapshot{
 		Seats:          make([]string, 0, len(r.seats)),
 		RngState:       rngState,
 		ClockUnixNanos: r.now.UnixNano(),
-		Modules:        make([]*wire.ModuleSnapshot, 0, len(r.typ.snapshots)),
+		Modules:        make([]*stored.ModuleSnapshot, 0, len(r.typ.snapshots)),
 		Timers:         r.encodeTimers(opts),
 		LastTimerId:    uint64(r.lastTimerID),
 	}
@@ -739,7 +740,7 @@ func (r *Room) encodeSnapshot() []byte {
 		if err != nil {
 			panic(fmt.Sprintf("playhold: module %q state can't be saved: %v", module.module, err))
 		}
-		snapshot.Modules = append(snapshot.Modules, &wire.ModuleSnapshot{
+		snapshot.Modules = append(snapshot.Modules, &stored.ModuleSnapshot{
 			Module:  module.module,
 			Version: uint32(module.version), //nolint:gosec // a small number the module chose
 			State:   state,

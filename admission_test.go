@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 func TestAdmissionDefaults(t *testing.T) {

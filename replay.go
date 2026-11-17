@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/roomtest"
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	stored "github.com/ny4rl4th0t3p/playhold/internal/wire" // recordings and snapshots: only ever stored
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 func init() {
@@ -51,7 +52,7 @@ func replayRecording(next any, path string, logger *slog.Logger) (*roomtest.Repo
 }
 
 // sameModules reports whether typ's modules save at the versions the recording's did.
-func sameModules(typ *RoomType, recorded []*wire.RecordedModule) bool {
+func sameModules(typ *RoomType, recorded []*stored.RecordedModule) bool {
 	modules := typ.recordedModules()
 	if len(modules) != len(recorded) {
 		return false
@@ -112,7 +113,7 @@ func replaySegment(typ *RoomType, segment *recordedSegment, logger *slog.Logger)
 
 // begin brings the room to where its segment started: a new room runs Init at its recorded clock, and a restored one
 // loads its recorded state. Then the turn that gave it its sessions runs.
-func (p *replayer) begin(start *wire.RecordingSegment) error {
+func (p *replayer) begin(start *stored.RecordingSegment) error {
 	r := p.room
 	if restored := start.GetRestored(); len(restored) > 0 {
 		if err := r.applySnapshot(restored, TimersKeepRunning); err != nil {
@@ -134,7 +135,7 @@ func (p *replayer) begin(start *wire.RecordingSegment) error {
 }
 
 // replay runs one recorded turn and compares how it ended.
-func (p *replayer) replay(turn *wire.RecordedTurn) *roomtest.Divergence {
+func (p *replayer) replay(turn *stored.RecordedTurn) *roomtest.Divergence {
 	r := p.room
 	p.now = time.Unix(0, turn.GetUnixNanos())
 	in, why := p.input(turn)
@@ -178,7 +179,7 @@ func (p *replayer) replay(turn *wire.RecordedTurn) *roomtest.Divergence {
 }
 
 // input rebuilds the turn's input, or says why it can't: a timer or grace period the room doesn't have pending.
-func (p *replayer) input(turn *wire.RecordedTurn) (in input, why string) {
+func (p *replayer) input(turn *stored.RecordedTurn) (in input, why string) {
 	r := p.room
 	switch {
 	case turn.GetMessage() != nil:

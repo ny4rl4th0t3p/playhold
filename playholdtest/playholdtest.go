@@ -29,7 +29,7 @@ import (
 
 	"github.com/ny4rl4th0t3p/playhold"
 	"github.com/ny4rl4th0t3p/playhold/internal/roomtest"
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 const closeTimeout = 10 * time.Second // fake time, so it never slows a test down

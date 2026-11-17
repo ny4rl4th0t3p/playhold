@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 	"github.com/ny4rl4th0t3p/playhold/store"
 	"github.com/ny4rl4th0t3p/playhold/store/memory"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 const testInactive = 10 * time.Minute // longer than testIdle and testGrace

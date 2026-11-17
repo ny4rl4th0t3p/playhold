@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 // New starts a room for a test. Set by playhold.

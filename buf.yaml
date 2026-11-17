@@ -4,6 +4,18 @@ modules:
 lint:
   use:
     - STANDARD
+  # frames.proto's Go code is public (wire/), so the Go SDK can share it; recording.proto and snapshot.proto are only
+  # ever stored, and stay internal (internal/wire). Same proto package, different Go packages, on purpose.
+  ignore_only:
+    PACKAGE_SAME_GO_PACKAGE:
+      - proto/playhold/v1/frames.proto
+      - proto/playhold/v1/recording.proto
+      - proto/playhold/v1/snapshot.proto
 breaking:
   use:
     - FILE
+  # frames.proto's Go code moved to the public wire module, so the Go SDK can share it. Nothing on the wire changed; only
+  # the commit that moved it needs this, and the next one removes it.
+  ignore_only:
+    FILE_SAME_GO_PACKAGE:
+      - proto/playhold/v1/frames.proto

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package playhold.v1;
 
-option go_package = "github.com/ny4rl4th0t3p/playhold/internal/wire;wire";
+option go_package = "github.com/ny4rl4th0t3p/playhold/wire;wire";
 
 // #region frames
 

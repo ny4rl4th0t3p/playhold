@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 // These tests use a real network connection, which synctest bubbles don't support, so they use real time.

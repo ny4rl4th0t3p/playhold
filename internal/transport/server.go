@@ -14,7 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 // StatusReplaced is the WebSocket close status of a connection replaced by a newer one from the same player.

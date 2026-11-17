@@ -13,11 +13,13 @@ help: ## Show the available targets
 
 check: build vet gamevet test web docs lint buflint bufbreaking vuln ## Run every check that needs nothing running (see also: integration)
 
-build: ## Build all packages
+build: ## Build all packages, the wire module's too
 	go build ./...
+	cd wire && go build ./...
 
-vet: ## Run go vet
+vet: ## Run go vet, on the wire module too
 	go vet ./...
+	cd wire && go vet ./...
 
 gamevet: ## Run the determinism checks on code built on playhold
 	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \

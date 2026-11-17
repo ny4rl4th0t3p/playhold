@@ -1254,7 +1254,7 @@ const file_playhold_v1_frames_proto_rawDesc = "" +
 	"\x12CLOSE_REASON_PANIC\x10\x03\x12\x16\n" +
 	"\x12CLOSE_REASON_STUCK\x10\x04\x12\x19\n" +
 	"\x15CLOSE_REASON_INACTIVE\x10\x05\x12!\n" +
-	"\x1dCLOSE_REASON_MATCH_INCOMPLETE\x10\x06B5Z3github.com/ny4rl4th0t3p/playhold/internal/wire;wireb\x06proto3"
+	"\x1dCLOSE_REASON_MATCH_INCOMPLETE\x10\x06B,Z*github.com/ny4rl4th0t3p/playhold/wire;wireb\x06proto3"
 
 var (
 	file_playhold_v1_frames_proto_rawDescOnce sync.Once

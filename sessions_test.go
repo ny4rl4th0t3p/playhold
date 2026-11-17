@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
 	"github.com/ny4rl4th0t3p/playhold/store"
 	"github.com/ny4rl4th0t3p/playhold/store/memory"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 const testGrace = 20 * time.Second // shorter than testIdle

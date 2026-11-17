@@ -10,7 +10,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/ny4rl4th0t3p/playhold/internal/transport"
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 const (

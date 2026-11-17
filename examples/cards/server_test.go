@@ -20,10 +20,11 @@ import (
 	"github.com/ny4rl4th0t3p/playhold"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards"
 	"github.com/ny4rl4th0t3p/playhold/examples/cards/pb"
-	"github.com/ny4rl4th0t3p/playhold/internal/wire"
+	stored "github.com/ny4rl4th0t3p/playhold/internal/wire" // snapshots: only ever stored
 	"github.com/ny4rl4th0t3p/playhold/playholdtest"
 	"github.com/ny4rl4th0t3p/playhold/store"
 	"github.com/ny4rl4th0t3p/playhold/store/memory"
+	"github.com/ny4rl4th0t3p/playhold/wire"
 )
 
 // These tests run the game on a real server, for what only a server does: the handshake and its schema check, refusing a
@@ -183,13 +184,13 @@ func TestGameIsSavedWithEverythingItNeeds(t *testing.T) {
 	first, dealt := startServerGame(t, startServer(t, records))
 	require.NotEmpty(t, dealt)
 
-	var modules []*wire.ModuleSnapshot
+	var modules []*stored.ModuleSnapshot
 	require.Eventually(t, func() bool {
 		rooms, err := records.LoadRooms(testContext(t))
 		if err != nil || len(rooms) != 1 {
 			return false
 		}
-		snapshot := &wire.RoomSnapshot{}
+		snapshot := &stored.RoomSnapshot{}
 		if proto.Unmarshal(rooms[0].Data, snapshot) != nil {
 			return false
 		}

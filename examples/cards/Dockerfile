@@ -13,6 +13,7 @@ RUN npm --prefix examples/cards/web run build
 FROM golang:1.27.4-alpine AS binaries
 WORKDIR /src
 COPY go.mod go.sum ./
+COPY wire/go.mod wire/
 RUN go mod download
 COPY . .
 ENV CGO_ENABLED=0

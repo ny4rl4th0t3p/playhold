@@ -29,8 +29,8 @@ A server is the room type, a runtime that runs the rooms, and `ListenAndServe`. 
 go run ./server
 ```
 
-It logs that development mode is on, then where it listens. There's nothing to open in a browser yet: that's chapter
-4. Stop it with Ctrl+C.
+It logs that development mode is on, then where it listens. There's nothing to open in a browser yet: that's
+[chapter 4](./a-page.md). Stop it with Ctrl+C.
 
 ## How a game starts
 
@@ -73,4 +73,4 @@ More on the Go SDK: [Go SDK](../reference/sdk-go.md).
 
 ## Next
 
-Two people can't play yet without writing Go. Chapter 4 gives the game a page in the browser.
+Two people can't play yet without writing Go. [Chapter 4](./a-page.md) gives the game a page in the browser.

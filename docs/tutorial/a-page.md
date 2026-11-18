@@ -133,4 +133,4 @@ server with no store keeps its rooms and guests only in memory.
 
 ## Next
 
-Chapter 5 saves the game, so it survives the server stopping, and gives each turn a time limit.
+[Chapter 5](./saving.md) saves the game, so it survives the server stopping.

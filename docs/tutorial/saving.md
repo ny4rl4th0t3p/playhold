@@ -31,7 +31,7 @@ each way:
 - `save` runs after every change to the room, and `load` when the server restores it. The state itself stays a plain
   struct; only the saved form is Protobuf.
 - The version says which shape the saved bytes have. A later change to what's saved raises it, and tells the server
-  how to turn games saved at the old version into the new one. That's chapter 6.
+  how to turn games saved at the old version into the new one. That's [chapter 6](./time.md).
 - A server with a store refuses to start if a module's state has no snapshot, so a game can't quietly lose part of
   itself at a restart.
 
@@ -104,5 +104,5 @@ What each table holds, and what to back up: [Deploy](../guides/deploy.md#backups
 
 ## Next
 
-Chapter 6 gives each turn a time limit, which changes what the board saves, so it raises the snapshot's version and
+[Chapter 6](./time.md) gives each turn a time limit, which changes what the board saves, so it raises the snapshot's version and
 moves games saved at version 1 to it.

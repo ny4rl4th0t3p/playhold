@@ -28,6 +28,7 @@ export default defineConfig({
                     {text: "3. A server", link: "/tutorial/a-server"},
                     {text: "4. A page", link: "/tutorial/a-page"},
                     {text: "5. Saving", link: "/tutorial/saving"},
+                    {text: "6. Time, and a new version", link: "/tutorial/time"},
                 ],
             },
             {

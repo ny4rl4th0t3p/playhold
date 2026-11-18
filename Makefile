@@ -1,6 +1,6 @@
 GOVULNCHECK_VERSION := v1.9.0
 # The Crazy Eights commit or tag the docs import their examples from, cloned into docs/.crazy-eights.
-CRAZY_EIGHTS_REF := a70aa735e3faa0d46a5a6ac1db95d635dec1bc87
+CRAZY_EIGHTS_REF := v0.4.0
 CRAZY_EIGHTS_REPO := https://github.com/ny4rl4th0t3p/playhold-crazy-eights.git
 BUF_VERSION := v1.75.0
 BUF := go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)

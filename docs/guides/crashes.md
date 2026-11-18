@@ -43,12 +43,14 @@ cause.
 
 ### Read it
 
-Copy the file, then print it with `playholdjournal`, oldest turn first, one line per turn, payloads in base64. From a
-clone of playhold:
+Copy the file, then print it with `playholdjournal`, oldest turn first, one line per turn, payloads in base64, using
+the playhold version the game runs:
 
 ```bash
-go run ./cmd/playholdjournal path/to/journal
+go run github.com/ny4rl4th0t3p/playhold/cmd/playholdjournal@v0.4.0 path/to/journal
 ```
+
+A game can list it as a tool in its `go.mod`, as Crazy Eights does, and run it with `go tool playholdjournal`.
 
 `ReadCrashJournal` reads it from Go, to replay a
 message in a test.

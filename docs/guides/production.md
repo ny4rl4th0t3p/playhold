@@ -86,3 +86,10 @@ The client's address matters for the [limits](./limits.md) that count per addres
 A browser says which page opened a connection. The server's own host is always allowed. To let a page hosted elsewhere
 connect, such as a game on itch.io, list its origins in `OriginPatterns`, such as `*.itch.zone`. A pattern that matches
 every origin, such as `*`, is refused outside development mode.
+
+::: warning Host the page on its own, never on the game's server
+`ListenConfig.Handler` can serve a game's page from the game's server, as the sample's local demo does. Don't do that
+in production. A static host or a CDN serves the page faster and closer to each player, the game's server keeps its
+CPU, memory and connections for the rooms, and a new page is deployed without restarting the server and disconnecting
+every player.
+:::

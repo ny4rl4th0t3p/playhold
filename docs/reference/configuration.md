@@ -97,7 +97,7 @@ What `ListenAndServe` takes. The health checks are always at `/healthz` and `/re
 |------------------------|----------------------------------|---------------------------------------------------------------------------------------------|
 | `Addr`                 | `:443` with TLS, `:8080` without | The address to listen on                                                                    |
 | `Path`                 | `/ws`                            | Where clients connect                                                                       |
-| `Handler`              | Nil, which answers 404           | Serves every other path; a game's page is better hosted on its own, not here                |
+| `Handler`              | Nil, which answers 404           | Serves every other path; a game's page only in development, see Web origins                 |
 | `AutocertDomains`      | None                             | Turns on automatic certificates from Let's Encrypt for these domains                        |
 | `AutocertCacheDir`     | Required with `AutocertDomains`  | The folder that keeps the certificates across restarts                                      |
 | `AutocertEmail`        | None                             | Where Let's Encrypt writes about problems with the certificates                             |

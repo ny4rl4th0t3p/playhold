@@ -16,6 +16,11 @@ docker compose up --build
 This starts the game's server and PostgreSQL, which keeps the games. The server runs in development mode, over plain
 HTTP, so keep it on your own machine.
 
+::: warning The page comes from the game's server, for this demo only
+So that one address is all it takes, the demo's server also serves the page. Never do that on a server players reach:
+host the page on its own. See [Web origins](../guides/production.md#web-origins).
+:::
+
 ## Play
 
 1. Open `http://localhost:8080` and choose **New game**. The page shows the room's code, and puts it in its own address

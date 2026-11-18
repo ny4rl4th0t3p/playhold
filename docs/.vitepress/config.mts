@@ -4,8 +4,8 @@ export default defineConfig({
     title: "playhold",
     description: "A self-hosted game backend in Go, built from authoritative rooms and composable modules.",
     base: "/playhold/",
-    // Crazy Eights, checked out for the examples the pages import; its own Markdown isn't part of the site.
-    srcExclude: [".crazy-eights/**"],
+    // The games checked out for the examples the pages import; their own Markdown isn't part of the site.
+    srcExclude: [".crazy-eights/**", ".tictactoe/**"],
     themeConfig: {
         nav: [
             {text: "Start here", link: "/start/walkthrough"},
@@ -18,6 +18,12 @@ export default defineConfig({
                 text: "Start here",
                 items: [
                     {text: "Walkthrough", link: "/start/walkthrough"},
+                ],
+            },
+            {
+                text: "Tutorial",
+                items: [
+                    {text: "1. A module", link: "/tutorial/a-module"},
                 ],
             },
             {

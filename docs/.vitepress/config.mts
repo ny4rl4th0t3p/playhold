@@ -29,6 +29,7 @@ export default defineConfig({
                     {text: "4. A page", link: "/tutorial/a-page"},
                     {text: "5. Saving", link: "/tutorial/saving"},
                     {text: "6. Time, and a new version", link: "/tutorial/time"},
+                    {text: "7. A second module", link: "/tutorial/a-second-module"},
                 ],
             },
             {

@@ -121,4 +121,4 @@ Then play a new game, and let a turn run out.
 
 ## Next
 
-The board is one module. Chapter 7 adds a second one, which keeps a score across games.
+The board is one module. [Chapter 7](./a-second-module.md) adds a second one, which keeps a score across games.

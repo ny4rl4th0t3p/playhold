@@ -1,19 +1,28 @@
 # TypeScript SDK
 
-`sdk/ts` connects a web page to a playhold server: the guest's identity, joining a room or the matchmaking queue,
-sending messages and receiving views. It reconnects by itself after a dropped connection, and joins the same room
-again.
+[playhold-sdk-ts](https://github.com/ny4rl4th0t3p/playhold-sdk-ts) connects a web page to a playhold server: the
+guest's identity, joining a room or the matchmaking queue, sending messages and receiving views. It reconnects by
+itself after a dropped connection, and joins the same room again.
 
-It isn't published yet. A page uses it from a clone of playhold, with a `file:` dependency on the clone's `sdk/ts` in
-its `package.json`, as the sample's page does with `"playhold-sdk": "file:../../../sdk/ts"`. The package exports its
-TypeScript source, so the page's build compiles it, such as with Vite.
+It isn't on npm. A page installs it from its repository, by tag, which needs `git`:
+
+```bash
+npm install git+https://github.com/ny4rl4th0t3p/playhold-sdk-ts.git#v0.4.0
+```
+
+```ts
+import {PlayholdClient} from "playhold-sdk";
+```
+
+An SDK `v0.X.y` works with any playhold `v0.X.*`. The package exports its TypeScript source, so the page's build
+compiles it, such as with Vite.
 
 ## A client
 
-The sample's page, `examples/cards/web/src/main.ts`, is a complete client. It makes one client for the page, and calls
-`client.connect()` once its handlers are set:
+Crazy Eights' page, `web/src/main.ts` in [its repository](https://github.com/ny4rl4th0t3p/playhold-crazy-eights), is a
+complete client. It makes one client for the page, and calls `client.connect()` once its handlers are set:
 
-<<< ../../examples/cards/web/src/main.ts#client
+<<< ../.crazy-eights/web/src/main.ts#client
 
 ## Options
 

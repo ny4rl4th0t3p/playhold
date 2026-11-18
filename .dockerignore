@@ -1,8 +1,0 @@
-.git
-.github
-.claude
-.mcp.json
-.env
-.env.*
-**/node_modules
-**/dist

@@ -82,6 +82,6 @@ container's network, so with TLS, WebSocket and TCP overheads.
   with the refused players trying again every second, and one snapshot was 0.9 s late.
 
 To run the same measurements, see `t12.sh` in the
-[sample game](https://github.com/ny4rl4th0t3p/playhold/tree/main/examples/cards#measure-what-saving-costs), with
+[sample game](https://github.com/ny4rl4th0t3p/playhold-crazy-eights#measure-what-saving-costs), with
 `RECORDING=/var/lib/cards/recordings` for the recording runs and `TRACES=measure` for the tracing ones, and `check.sh`
-for [the 1,000-player check](https://github.com/ny4rl4th0t3p/playhold/tree/main/examples/cards#run-the-turn-based-check).
+for [the 1,000-player check](https://github.com/ny4rl4th0t3p/playhold-crazy-eights#run-the-turn-based-check).

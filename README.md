@@ -2,9 +2,9 @@
 
 A self-hosted game backend in Go, built from authoritative rooms and composable modules.
 
-> **Status: early development.** v0.3.0 runs a sample game, Crazy Eights, over TLS with safe defaults, and a game in
-> progress survives a restart, a crash and a deploy that changes how games are saved. Building your own game on
-> playhold is still hard: the SDKs aren't published as packages yet, and the API can change.
+> **Status: early development.** In v0.4.0, the SDKs and the sample game, Crazy Eights, have repositories of their own:
+> the SDKs install by tag, and the game builds on playhold's releases and survives a restart, a crash and a deploy that
+> changes how games are saved. A tutorial on building your own game comes next, and the API can change.
 
 playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After
 that, each release adds support for another kind of game.
@@ -61,11 +61,17 @@ development.
 ## Layout
 
 - Root: the Go server library, imported as `github.com/ny4rl4th0t3p/playhold`
-- `sdk/`: libraries a game's client uses to talk to the server, one folder per language
+- `wire/`: the frames' Go code, a module of its own that the server and the Go SDK share
 - `store/`: what a server keeps across restarts, with memory and PostgreSQL versions
 - `playholdtest/`: runs a game's rooms in Go tests, without a server
-- `proto/`: the wire format they share
-- `examples/cards/`: a sample game, Crazy Eights, with a browser page
+- `proto/`: the wire format
+
+In repositories of their own, on playhold's releases:
+
+- [playhold-sdk-ts](https://github.com/ny4rl4th0t3p/playhold-sdk-ts) and
+  [playhold-sdk-go](https://github.com/ny4rl4th0t3p/playhold-sdk-go): the libraries a game's client uses
+- [playhold-crazy-eights](https://github.com/ny4rl4th0t3p/playhold-crazy-eights): a sample game, Crazy Eights, with a
+  browser page
 
 ## Not planned
 

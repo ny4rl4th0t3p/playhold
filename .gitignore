@@ -9,9 +9,10 @@ go.work.sum
 # Node
 node_modules/
 
-# Documentation site
+# Documentation site, and the Crazy Eights checkout its examples come from (make crazy-eights)
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+docs/.crazy-eights/
 
 # Editors and OS
 .idea/

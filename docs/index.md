@@ -33,8 +33,7 @@ features:
 
 ::: warning Early development
 playhold is a hobby project, and its API can still change. These pages describe the code on the `main` branch, as of
-v0.3.0. The SDKs aren't published as packages yet, so building your own game on playhold is still hard; a tutorial
-comes once they are.
+v0.4.0. A tutorial on building your own game comes next.
 :::
 
 ## What works today
@@ -47,5 +46,5 @@ comes once they are.
 - **Its defaults are the safe ones.** TLS, rate limits and overload protection are on unless turned off, and turning
   one off is logged. See [Run in production](./guides/production.md).
 
-The [sample game](https://github.com/ny4rl4th0t3p/playhold/tree/main/examples/cards), Crazy Eights with a browser page,
+The [sample game](https://github.com/ny4rl4th0t3p/playhold-crazy-eights), Crazy Eights with a browser page,
 shows a whole game built on playhold, and the guides cover running a server.

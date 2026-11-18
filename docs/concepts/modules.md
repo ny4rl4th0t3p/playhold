@@ -9,7 +9,7 @@ calls another through a **keeper**, and tells the others what happened with an *
 A module has a name, unique in its room type, and a `Register` method that declares everything it does. The sample's
 `deck` module, which owns the piles of cards:
 
-<<< ../../examples/cards/deck/deck.go#module
+<<< ../.crazy-eights/deck/deck.go#module
 
 - **`playhold.NewKey`** makes the key to the module's state, once, in a package-level variable. The key stays
   unexported, so only this module can reach its state.
@@ -24,12 +24,12 @@ A module has a name, unique in its room type, and a `Register` method that decla
 `playhold.Handle` declares a handler for one of the module's messages, by an ID local to the module, with the message
 type it decodes:
 
-<<< ../../examples/cards/hands/hands.go#register
+<<< ../.crazy-eights/hands/hands.go#register
 
 A message from a client names its module and that ID, and its payload is a Protobuf message. The handler gets it
 decoded, and `rc.Player()` is who sent it:
 
-<<< ../../examples/cards/hands/hands.go#play
+<<< ../.crazy-eights/hands/hands.go#play
 
 An error the handler returns reaches only the sender, as a `REJECTED` error with its text, so it mustn't say anything
 that player may not see. Nothing in the room changes because of it unless the handler changed it first: check
@@ -41,11 +41,11 @@ with `BAD_MESSAGE`.
 
 A module that needs another declares what it needs as an interface, in its own package:
 
-<<< ../../examples/cards/hands/hands.go#keepers
+<<< ../.crazy-eights/hands/hands.go#keepers
 
 The providing module offers a type with those methods, here `deck.Keeper`, without knowing who uses it:
 
-<<< ../../examples/cards/deck/deck.go#keeper
+<<< ../.crazy-eights/deck/deck.go#keeper
 
 The game wires them together where it lists its modules, the only place that sees all of them: `hands.Module{Deck:
 deck.Keeper{}, Turns: turns.Keeper{...}}` in the sample's room type, shown in
@@ -61,11 +61,11 @@ An event is any Go value that isn't an interface. A module emits it with `rc.Emi
 its type with `playhold.On` gets it, without either one knowing about the other. The sample's `turns` module starts
 the game once the room is full:
 
-<<< ../../examples/cards/turns/turns.go#game-started
+<<< ../.crazy-eights/turns/turns.go#game-started
 
 `deck` and `hands` both subscribe to `GameStarted`, which is defined in a package all three import, `rules`:
 
-<<< ../../examples/cards/deck/deck.go#start
+<<< ../.crazy-eights/deck/deck.go#start
 
 Events are delivered after the handler that emitted them returns, in the same turn, to the modules in the room type's
 order. That's why the sample lists `deck` before `hands`: the deck is shuffled before the cards are dealt. Events

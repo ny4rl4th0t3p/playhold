@@ -5,9 +5,11 @@ map of the code that did each part. You need Git and Docker with Compose; nothin
 
 ## Run it
 
+The sample game, Crazy Eights, has a repository of its own, built on playhold as any game would be:
+
 ```bash
-git clone https://github.com/ny4rl4th0t3p/playhold.git
-cd playhold/examples/cards
+git clone https://github.com/ny4rl4th0t3p/playhold-crazy-eights.git
+cd playhold-crazy-eights
 docker compose up --build
 ```
 
@@ -45,7 +47,7 @@ Prometheus metrics at `http://localhost:9464/metrics`.
 
 ## What did what
 
-All paths are in `examples/cards`:
+All paths are in the game's repository:
 
 | Path              | What it is                                                                                 |
 |-------------------|--------------------------------------------------------------------------------------------|
@@ -65,6 +67,6 @@ it those. [Modules, keepers and events](../concepts/modules.md) covers how that 
 
 ## Next
 
-- To put the server under load and measure it, see the sample's
-  [README](https://github.com/ny4rl4th0t3p/playhold/tree/main/examples/cards).
+- To put the server under load and measure it, see the game's
+  [README](https://github.com/ny4rl4th0t3p/playhold-crazy-eights).
 - To run a server for players, see [Run in production](../guides/production.md) and [Deploy](../guides/deploy.md).

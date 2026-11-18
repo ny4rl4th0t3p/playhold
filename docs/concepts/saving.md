@@ -25,9 +25,9 @@ earlier version to the next with `playhold.Migrate`. A room saved by the old ser
 the new one restores it. The sample's `turns` module has a version 2, which keeps the current player by ID instead of by
 position, behind a setting so the change can be tried on a running game:
 
-<<< ../../examples/cards/turns/turns.go#versions
+<<< ../.crazy-eights/turns/turns.go#versions
 
-<<< ../../examples/cards/turns/turns.go#migration
+<<< ../.crazy-eights/turns/turns.go#migration
 
 - Every version needs its step, from 1 up to the current one, so a server can read a game saved by any earlier release.
   `NewRoomType` fails if one is missing.
@@ -43,7 +43,7 @@ can still play, are separate: `Registry.ClientSchema` declares those.
 `rc.After` emits an event after a while, in a turn of its own, to the modules subscribed to it. The sample's `turns`
 module sets a turn timer, cancels it when someone wins, and closes the room a while after the game ends:
 
-<<< ../../examples/cards/turns/turns.go#timers
+<<< ../.crazy-eights/turns/turns.go#timers
 
 - The event has to be a Protobuf message, because it's saved with the room.
 - `rc.After` returns a `TimerID`, which a module keeps in its state to cancel the timer with `rc.CancelTimer`, or to

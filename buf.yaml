@@ -14,8 +14,3 @@ lint:
 breaking:
   use:
     - FILE
-  # frames.proto's Go code moved to the public wire module, so the Go SDK can share it. Nothing on the wire changed; only
-  # the commit that moved it needs this, and the next one removes it.
-  ignore_only:
-    FILE_SAME_GO_PACKAGE:
-      - proto/playhold/v1/frames.proto

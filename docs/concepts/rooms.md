@@ -7,7 +7,7 @@ handles its work one piece at a time, so game code never needs a lock, and two r
 
 A game describes its rooms once, as a room type built from modules. The sample game's:
 
-<<< ../../examples/cards/cards.go#room-type
+<<< ../.crazy-eights/cards.go#room-type
 
 `NewRoomType` registers every module and checks how they fit together: a duplicate module name, state or message, a
 keeper nobody wired in, or a module needed but missing. It reports every problem at once, so a wiring mistake stops the

@@ -83,10 +83,11 @@ play the same game.
 
 `Received` returns every state a player was sent, each encoded as it goes to a client. A test that looks for something the
 player must never see, such as another player's cards, searches these bytes: the sample game's tests check every state
-for card names that player can't see, in `examples/cards/cards_test.go`.
+for card names that player can't see, in `cards_test.go` in
+[Crazy Eights](https://github.com/ny4rl4th0t3p/playhold-crazy-eights).
 
 ## What it doesn't cover
 
 `playholdtest` runs the room, not the server: no handshake, rate limits, admission control or matchmaking. A room never
 gets `MatchReady`, which only comes from matchmaking; a test of a game that starts on it emits it with `Do`. A test of
-those runs a server, as the sample's `examples/cards/server_test.go` does.
+those runs a server, as Crazy Eights' `server_test.go` does, with the Go SDK as its client.

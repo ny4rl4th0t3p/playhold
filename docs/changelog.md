@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.4.0, 18 November 2026
+
+The SDKs and the sample game move to repositories of their own, built on playhold's releases as any game's code would
+be, and installable without a clone of playhold.
+
+### Breaking changes
+
+**The Go SDK is its own module.** `github.com/ny4rl4th0t3p/playhold/sdk/go` is gone from playhold.
+
+- Require `github.com/ny4rl4th0t3p/playhold-sdk-go` at `v0.4.0`, and import it as
+  `sdk "github.com/ny4rl4th0t3p/playhold-sdk-go"`. The package and its API are unchanged. See [Go SDK](./reference/sdk-go.md).
+
+**The TypeScript SDK is its own repository.** `sdk/ts` is gone from playhold.
+
+- Depend on `"playhold-sdk": "git+https://github.com/ny4rl4th0t3p/playhold-sdk-ts.git#v0.4.0"` instead of a `file:`
+  path into a clone; installing it needs `git`. The package's name and API are unchanged. See
+  [TypeScript SDK](./reference/sdk-ts.md).
+
+**The sample game moved.** `examples/cards` is now
+[playhold-crazy-eights](https://github.com/ny4rl4th0t3p/playhold-crazy-eights), with its bot, Compose setup and
+measurement scripts. Its packages are no longer in playhold's module.
+
+### Added
+
+- `github.com/ny4rl4th0t3p/playhold/wire`, a module of its own with only protobuf as a dependency: the frames' Go
+  types, shared by the server and the Go SDK, so one program can use both, such as a game server running its own bots.
+
+### Changed
+
+- `golang.org/x/net` v0.62.0, which fixes two advisories in its `html` package (GO-2026-6866, GO-2026-6860). playhold
+  doesn't use that package.
+
 ## v0.3.0, 12 November 2026
 
 The sample game runs over TLS with safe defaults, and the server gains protection against overload and crashes,

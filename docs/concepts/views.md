@@ -10,11 +10,11 @@ A module declares its view with `playhold.View`: a function that returns a Proto
 player it's for. The sample's `hands` module copies across only that player's own cards, and a count for everyone
 else's:
 
-<<< ../../examples/cards/hands/hands.go#view
+<<< ../.crazy-eights/hands/hands.go#view
 
 The `deck` module shows the top card and how many cards are left, and keeps the pile's order to itself:
 
-<<< ../../examples/cards/deck/deck.go#view
+<<< ../.crazy-eights/deck/deck.go#view
 
 - Copy across only what that player may see, and never send the module's state itself: a field added to the state
   later stays private until someone adds it to the view.

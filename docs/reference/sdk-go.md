@@ -1,18 +1,29 @@
 # Go SDK
 
-`sdk/go`, package `sdk`, connects a Go program to a playhold server, for bots and load tests. It's minimal on purpose:
-unlike the TypeScript SDK, it doesn't reconnect by itself, because a load test has to see and count what goes wrong. To
-come back after a dropped connection, a program connects again with the same identity and joins the same code.
+[playhold-sdk-go](https://github.com/ny4rl4th0t3p/playhold-sdk-go), package `sdk`, connects a Go program to a
+playhold server, for bots and load tests. It's minimal on purpose: unlike the TypeScript SDK, it doesn't reconnect by
+itself, because a load test has to see and count what goes wrong. To come back after a dropped connection, a program
+connects again with the same identity and joins the same code.
 
-It's part of the playhold module, `github.com/ny4rl4th0t3p/playhold/sdk/go`, used from a clone until it's published.
-The sample's bot, `examples/cards/bot`, is a complete client, from load tests to the survival test.
+```bash
+go get github.com/ny4rl4th0t3p/playhold-sdk-go@v0.4.0
+```
+
+```go
+import sdk "github.com/ny4rl4th0t3p/playhold-sdk-go"
+```
+
+An SDK `v0.X.y` works with any playhold `v0.X.*`. It shares playhold's `wire` module for the frames, so one program can
+use both, such as a game server running its own bots. Crazy Eights' bot, in `bot/` in
+[its repository](https://github.com/ny4rl4th0t3p/playhold-crazy-eights), is a complete client, from load tests to the
+survival test.
 
 ## A client
 
-The sample's bot connects each seat, keeps its identity from game to game, and joins its table's room. A server that
+The bot connects each seat, keeps its identity from game to game, and joins its table's room. A server that
 has forgotten the guest answers `ErrorUnauthorized`, and the bot starts again as a new one:
 
-<<< ../../examples/cards/bot/main.go#connect
+<<< ../.crazy-eights/bot/main.go#connect
 
 It then reads each view with `Next`, and sends its moves with `Send`.
 

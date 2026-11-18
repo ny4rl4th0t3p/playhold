@@ -121,7 +121,7 @@ Copy the recording from the server, finished or in progress, check out the code 
 it in a test with `playholdtest.Replay`, against the game's room type. The sample game's tests record a game on a real
 server, then:
 
-<<< ../../examples/cards/server_test.go#replay
+<<< ../.crazy-eights/server_test.go#replay
 
 The room plays every turn again, at its recorded clock, with timers firing as recorded: a timer the recording fired
 has to be pending, or that's a difference. `Replay` fails the test at the first turn that doesn't end as recorded, with:

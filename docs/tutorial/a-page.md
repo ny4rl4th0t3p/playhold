@@ -1,7 +1,7 @@
 # 4. A page
 
 This chapter gives the game a page in the browser, on the TypeScript SDK: one player starts a game and sends its link,
-the other opens it, and they play. The game's server serves the page too.
+the other opens it, and they play. The page is hosted on its own, not by the game's server.
 
 The finished code is `chapter4/` in
 [playhold-tictactoe](https://github.com/ny4rl4th0t3p/playhold-tictactoe). Its Go paths start with
@@ -49,7 +49,8 @@ and `Status` enums, the same numbers as the Go side.
 <<< ../.tictactoe/chapter4/web/index.html
 :::
 
-`web/src/main.ts` makes one client for the page. It connects to the server that served the page, at `/ws`:
+`web/src/main.ts` makes one client for the page. The server's address is set when the page is built, with
+`VITE_SERVER_URL`, or by default port 8080 of the machine the page came from:
 
 <<< ../.tictactoe/chapter4/web/src/main.ts#client
 
@@ -77,26 +78,55 @@ The texts for each status are in the `text` region of the whole file.
 <<< ../.tictactoe/chapter4/web/src/main.ts
 :::
 
-## Serve it
+## Let the page in
 
-The server serves the built page, from `web/dist`, on every path but `/ws`, through `ListenConfig.Handler`. The page
-then reaches the game at the address it came from:
+The page comes from Vite's development server, at `localhost:5173`, and the game's server is at port 8080: another
+address. Browsers say which page opened a connection, and the server refuses a page it doesn't know, development mode
+included, so it lists the page's address in `OriginPatterns`. The addresses come from the `ORIGINS` environment
+variable, so no deploy's address is written in the code, and by default it's Vite's on this machine:
 
 <<< ../.tictactoe/chapter4/server/main.go#server
 
+On a public server, `ORIGINS` is the domain that hosts the page, such as `game.example`. See
+[Web origins](../guides/production.md#web-origins).
+
+::: tip "Connection lost. Reconnecting…" in every browser
+The server is refusing the page's address. Opened from another machine, the page's address isn't `localhost:5173`:
+start Vite with `npm --prefix web run dev -- --host`, and the server with the address Vite shows, such as
+`ORIGINS=192.168.1.20:5173 go run ./server`.
+:::
+
+## Why the page isn't served by the game server
+
+`ListenConfig.Handler` could serve the built page from the game's own server, but don't: host the page on its own,
+here on Vite's development server, and for players on any static host, a CDN or a site such as itch.io.
+
+- The page is files that never change between releases, which a static host serves faster and closer to each player.
+- The game's server then does one job, the rooms, and keeps its CPU, memory and connections for them.
+- Each is deployed on its own: a new page doesn't restart the server, which disconnects every player until they're
+  back, and a new server doesn't need a new page.
+
+For a public page, build it with the server's address, such as `VITE_SERVER_URL=wss://game.example/ws npm --prefix web
+run build`, and upload `web/dist`.
+
 ## Play it
 
-From the module's folder:
+From the module's folder, in two terminals:
 
 ```bash
-npm --prefix web run build
 go run ./server
 ```
 
-1. Open `http://localhost:8080`, and choose **New game**.
+```bash
+npm --prefix web run dev
+```
+
+1. Open `http://localhost:5173`, and choose **New game**.
 2. Open the game's link in a private window or another browser. Two tabs of the same browser share one guest identity,
    so the newer would take the older's place.
-3. Play.
+3. Play. Vite reloads the page each time you save a change to it.
+
+To play from another machine on your network, see the tip in [Let the page in](#let-the-page-in).
 
 Stop the server in the middle of a game, and start it again: the page reconnects by itself, but the game is gone. A
 server with no store keeps its rooms and guests only in memory.

@@ -24,6 +24,8 @@ export default defineConfig({
                 text: "Tutorial",
                 items: [
                     {text: "1. A module", link: "/tutorial/a-module"},
+                    {text: "2. Its own messages", link: "/tutorial/messages"},
+                    {text: "3. A server", link: "/tutorial/a-server"},
                 ],
             },
             {

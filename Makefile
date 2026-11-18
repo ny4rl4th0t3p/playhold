@@ -2,7 +2,7 @@ GOVULNCHECK_VERSION := v1.9.0
 # The games the docs import their examples from, each at a commit or tag, checked out into docs/.<name>.
 CRAZY_EIGHTS_REF := v0.4.0
 CRAZY_EIGHTS_REPO := https://github.com/ny4rl4th0t3p/playhold-crazy-eights.git
-TICTACTOE_REF := 62abc2232989b29cd31e6ce2089c4372f89ac95d
+TICTACTOE_REF := ea0817ec1bcb621a37605be3894225814771999f
 TICTACTOE_REPO := https://github.com/ny4rl4th0t3p/playhold-tictactoe.git
 
 # checkout clones repository $(2) into folder $(1), unless it already has commit or tag $(3), and checks that out.

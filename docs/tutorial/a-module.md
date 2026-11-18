@@ -108,4 +108,4 @@ go vet -vettool=$(go tool -n playholdvet) ./...
 
 ## Next
 
-The view is a string the page would have to pick apart. Chapter 2 gives the game messages of its own.
+The view is a string a page would have to pick apart. [Chapter 2](./messages.md) gives the game messages of its own.

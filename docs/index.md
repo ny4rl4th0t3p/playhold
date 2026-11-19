@@ -10,6 +10,9 @@ hero:
       text: Walkthrough
       link: /start/walkthrough
     - theme: alt
+      text: Tutorial
+      link: /tutorial/a-module
+    - theme: alt
       text: Run in production
       link: /guides/production
     - theme: alt
@@ -33,7 +36,7 @@ features:
 
 ::: warning Early development
 playhold is a hobby project, and its API can still change. These pages describe the code on the `main` branch, as of
-v0.4.0. A tutorial on building your own game comes next.
+v0.4.0. The [tutorial](./tutorial/a-module.md) builds a game of your own, step by step.
 :::
 
 ## What works today

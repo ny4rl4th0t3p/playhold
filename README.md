@@ -4,7 +4,8 @@ A self-hosted game backend in Go, built from authoritative rooms and composable 
 
 > **Status: early development.** In v0.4.0, the SDKs and the sample game, Crazy Eights, have repositories of their own:
 > the SDKs install by tag, and the game builds on playhold's releases and survives a restart, a crash and a deploy that
-> changes how games are saved. A tutorial on building your own game comes next, and the API can change.
+> changes how games are saved. A [tutorial](https://ny4rl4th0t3p.github.io/playhold/tutorial/a-module.html) builds a
+> game of your own, step by step. The API can change.
 
 playhold is a hobby project. The first goal is a turn-based web game, public on itch.io, running on playhold. After
 that, each release adds support for another kind of game.
@@ -72,6 +73,8 @@ In repositories of their own, on playhold's releases:
   [playhold-sdk-go](https://github.com/ny4rl4th0t3p/playhold-sdk-go): the libraries a game's client uses
 - [playhold-crazy-eights](https://github.com/ny4rl4th0t3p/playhold-crazy-eights): a sample game, Crazy Eights, with a
   browser page
+- [playhold-tictactoe](https://github.com/ny4rl4th0t3p/playhold-tictactoe): the tutorial's game, tic-tac-toe, with
+  each chapter's code
 
 ## Not planned
 

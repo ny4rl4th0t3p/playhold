@@ -72,6 +72,7 @@ it those. [Modules, keepers and events](../concepts/modules.md) covers how that 
 
 ## Next
 
+- To build a game of your own, follow the [tutorial](../tutorial/a-module.md).
 - To put the server under load and measure it, see the game's
   [README](https://github.com/ny4rl4th0t3p/playhold-crazy-eights).
 - To run a server for players, see [Run in production](../guides/production.md) and [Deploy](../guides/deploy.md).

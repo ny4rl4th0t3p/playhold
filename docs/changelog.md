@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.4.1, 19 November 2026
+
+The server's log now says three things it used to keep to itself. Nothing in the API changes.
+
+### Changed
+
+- A page refused for its web origin is logged as a warning, with its origin and the pattern that would allow it in
+  `ServerConfig.OriginPatterns`. Before, the refusal was only logged at debug level, so a page refused in every browser
+  left the log empty. See [Web origins](./guides/production.md#web-origins).
+- A server with no `ServerConfig.Store` logs a warning at startup: games and guests live in memory only, and a restart
+  loses them.
+- Restoring rooms logs each migration it ran, with the module, both versions and how many rooms went through it. See
+  [Changing what's saved](./concepts/saving.md#changing-what-s-saved).
+
 ## v0.4.0, 18 November 2026
 
 The SDKs and the sample game move to repositories of their own, built on playhold's releases as any game's code would

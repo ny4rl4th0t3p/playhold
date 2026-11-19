@@ -33,6 +33,8 @@ position, behind a setting so the change can be tried on a running game:
   `NewRoomType` fails if one is missing.
 - If a step returns an error or panics, that room isn't restored, and its saved state stays as it was, for a fixed
   server to try again.
+- At startup, the server logs one line for each migration it ran, `migrated saved state`, with the module, both
+  versions and how many rooms went through it. Each room's own line is at debug level.
 - A migration works on the encoded bytes, so it doesn't depend on Go types the new code no longer has.
 
 These versions are about saved state. The versions of a module's messages and views, which decide whether an old page

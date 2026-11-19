@@ -87,6 +87,9 @@ A browser says which page opened a connection. The server's own host is always a
 connect, such as a game on itch.io, list its origins in `OriginPatterns`, such as `*.itch.zone`. A pattern that matches
 every origin, such as `*`, is refused outside development mode.
 
+A page the server refuses gets HTTP 403, and the server logs a warning with the page's origin and the pattern that
+would allow it, such as `allow=localhost:5173`.
+
 ::: warning Host the page on its own, never on the game's server
 `ListenConfig.Handler` can serve a game's page from the game's server, as the sample's local demo does. Don't do that
 in production. A static host or a CDN serves the page faster and closer to each player, the game's server keeps its

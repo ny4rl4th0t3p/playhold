@@ -30,6 +30,7 @@ export default defineConfig({
                     {text: "5. Saving", link: "/tutorial/saving"},
                     {text: "6. Time, and a new version", link: "/tutorial/time"},
                     {text: "7. A second module", link: "/tutorial/a-second-module"},
+                    {text: "Bonus: run it for players", link: "/tutorial/for-players"},
                 ],
             },
             {

@@ -122,4 +122,5 @@ restart keeps it.
 
 ## Next
 
-The game is complete. Chapter 8 runs it for players.
+The game is complete. [A bonus page](./for-players.md), which you can skip, runs it for players: over TLS, out of development mode, with
+the page on a host of its own.

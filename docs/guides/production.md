@@ -91,5 +91,6 @@ every origin, such as `*`, is refused outside development mode.
 `ListenConfig.Handler` can serve a game's page from the game's server, as the sample's local demo does. Don't do that
 in production. A static host or a CDN serves the page faster and closer to each player, the game's server keeps its
 CPU, memory and connections for the rooms, and a new page is deployed without restarting the server and disconnecting
-every player.
+every player. When the server is down, or restarting for a deploy, the page still loads and tells players it's
+reconnecting, instead of the browser's error.
 :::

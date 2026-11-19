@@ -104,7 +104,9 @@ here on Vite's development server, and for players on any static host, a CDN or 
 - The page is files that never change between releases, which a static host serves faster and closer to each player.
 - The game's server then does one job, the rooms, and keeps its CPU, memory and connections for them.
 - Each is deployed on its own: a new page doesn't restart the server, which disconnects every player until they're
-  back, and a new server doesn't need a new page.
+  back, and a new server doesn't take the page down while it restarts.
+- When the game's server is down, the page still loads, and says what's wrong: "Connection lost. Reconnecting…", then
+  back by itself when the server is. Served by the game's server, there's no page at all, only the browser's error.
 
 For a public page, build it with the server's address, such as `VITE_SERVER_URL=wss://game.example/ws npm --prefix web
 run build`, and upload `web/dist`.

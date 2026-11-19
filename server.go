@@ -184,18 +184,10 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	rt.useMetrics(m)
 	tracer := newTracer(cfg.TracerProvider, logger)
 	rt.useTracer(tracer)
-	records := cfg.Store
-	var writer *snapshotWriter
-	if records == nil {
-		records = memory.New()
-	} else {
-		if err := cfg.RoomType.requireSnapshots(); err != nil {
-			return nil, err
-		}
-		writer = newSnapshotWriter(traceStore(records, tracer), logger)
-		writer.interval, writer.metrics = cfg.SnapshotInterval, m
+	records, writer, err := openStore(cfg, tracer, m, logger)
+	if err != nil {
+		return nil, err
 	}
-	records = traceStore(records, tracer)
 	applyMemoryLimit(cfg.MemoryLimit, logger)
 	crashJournal, incidents, err := openIncidents(cfg, rt, records, m, logger) // before rooms are restored, so they use both
 	if err != nil {
@@ -279,6 +271,21 @@ func NewServer(rt *Runtime, cfg *ServerConfig) (*Server, error) {
 	}
 	server.watchGauges(g.guests)
 	return server, nil
+}
+
+// openStore returns what the server keeps its records in, traced, and the writer that saves rooms there, or nil if
+// rooms aren't saved: with no store, guests live in memory and nothing survives a restart.
+func openStore(cfg *ServerConfig, tracer trace.Tracer, m *metrics, logger *slog.Logger) (store.Store, *snapshotWriter, error) {
+	if cfg.Store == nil {
+		logger.Warn("no store: games and guests live in memory only, and a restart loses them; set ServerConfig.Store to keep them")
+		return traceStore(memory.New(), tracer), nil, nil
+	}
+	if err := cfg.RoomType.requireSnapshots(); err != nil {
+		return nil, nil, err
+	}
+	writer := newSnapshotWriter(traceStore(cfg.Store, tracer), logger)
+	writer.interval, writer.metrics = cfg.SnapshotInterval, m
+	return traceStore(cfg.Store, tracer), writer, nil
 }
 
 // startGuestExpiry deletes guests unseen for longer than the expiry, at once and then every hour, until ctx ends, unless

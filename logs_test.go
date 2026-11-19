@@ -11,8 +11,36 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ny4rl4th0t3p/playhold/store"
 	"github.com/ny4rl4th0t3p/playhold/store/memory"
 )
+
+func TestAServerWithNoStoreSaysSoAtStartup(t *testing.T) {
+	tests := []struct {
+		name    string
+		records store.Store
+		warned  bool
+	}{
+		{name: "no store", records: nil, warned: true},
+		{name: "a store", records: memory.New(), warned: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := &lockedBuffer{}
+			rt := NewRuntime(Config{Logger: slog.New(slog.NewTextHandler(logs, nil))})
+			server, err := NewServer(rt, &ServerConfig{RoomType: newTestRoomType(t, RoomConfig{Name: "t"}), Store: tt.records})
+			require.NoError(t, err)
+			t.Cleanup(server.Close)
+
+			text := logs.String()
+			if tt.warned {
+				assert.Contains(t, text, `level=WARN msg="no store: games and guests live in memory only`)
+			} else {
+				assert.NotContains(t, text, "no store")
+			}
+		})
+	}
+}
 
 func TestAStuckRoomsLogNamesTheTurn(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -149,12 +151,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many new connections from this address", http.StatusTooManyRequests)
 		return
 	}
+	// After the rate limit, so a flood of refused pages can't flood the log too.
+	if allow, refused := originRefused(r, s.cfg.OriginPatterns); refused {
+		s.cfg.Logger.Warn("connection refused: web origin not allowed; to allow it, list it in ServerConfig.OriginPatterns",
+			"origin", r.Header.Get("Origin"), "host", r.Host, "allow", allow)
+		http.Error(w, "web origin not allowed", http.StatusForbidden)
+		return
+	}
 	if status := s.acquire(ip); status != http.StatusOK {
 		http.Error(w, http.StatusText(status), status)
 		return
 	}
 	defer s.release(ip)
 
+	// Accept checks the origin again, by the same rule, so a mistake in originRefused can't let a page in.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: s.cfg.OriginPatterns})
 	if err != nil { // Accept has already written the response
 		s.cfg.Logger.Debug("websocket handshake failed", "error", err)
@@ -236,6 +246,36 @@ func (s *Server) keepalive(ctx context.Context, conn *Conn, ws *websocket.Conn) 
 			return
 		}
 	}
+}
+
+// originRefused reports whether a browser page's origin may not connect, by websocket.Accept's own rule, so playhold can
+// log the refusal, which Accept only returns as an error: a request with no Origin header, which isn't a browser page,
+// or whose origin is the request's own host, is allowed; otherwise a pattern must match the origin's host, or
+// scheme://host for a pattern with "://", with path.Match, ignoring case. It also returns the origin's host, which is
+// the pattern that would allow it.
+func originRefused(r *http.Request, patterns []string) (allow string, refused bool) {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return "", false
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return "", true
+	}
+	if strings.EqualFold(r.Host, u.Host) {
+		return u.Host, false
+	}
+	for _, pattern := range patterns {
+		target := u.Host
+		if strings.Contains(pattern, "://") {
+			target = u.Scheme + "://" + u.Host
+		}
+		// A pattern path.Match can't read matches nothing; NewServer refuses one outside development.
+		if matched, err := path.Match(strings.ToLower(pattern), strings.ToLower(target)); err == nil && matched {
+			return u.Host, false
+		}
+	}
+	return u.Host, true
 }
 
 // acquire takes a connection slot, or returns the HTTP status to refuse the request with.

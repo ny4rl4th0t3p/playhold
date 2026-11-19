@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -205,6 +206,67 @@ func TestOtherOriginsAreRefusedUnlessListed(t *testing.T) {
 	ws, _, err := websocket.Dial(testContext(t), allowed, opts) //nolint:bodyclose // Dial's docs say the body needs no closing
 	require.NoError(t, err)
 	_ = ws.CloseNow()
+}
+
+func TestOriginRefused(t *testing.T) {
+	tests := []struct {
+		name     string
+		origin   string
+		patterns []string
+		refused  bool
+		allow    string
+	}{
+		{name: "no Origin header, not a browser page", origin: ""},
+		{name: "the server's own host", origin: "http://game.example:8080", allow: "game.example:8080"},
+		{name: "a listed origin", origin: "https://page.example", patterns: []string{"page.example"}, allow: "page.example"},
+		{name: "a wildcard", origin: "https://abc.itch.zone", patterns: []string{"*.itch.zone"}, allow: "abc.itch.zone"},
+		{name: "ignoring case", origin: "https://PAGE.example", patterns: []string{"Page.Example"}, allow: "PAGE.example"},
+		{name: "an unlisted origin", origin: "https://page.example", refused: true, allow: "page.example"},
+		{name: "a port in the pattern", origin: "http://localhost:5173", patterns: []string{"localhost:5173"}, allow: "localhost:5173"},
+		{
+			name: "another port than the pattern's", origin: "http://localhost:5174", patterns: []string{"localhost:5173"},
+			refused: true, allow: "localhost:5174",
+		},
+		{
+			name: "a pattern with a scheme", origin: "https://page.example", patterns: []string{"https://page.example"},
+			allow: "page.example",
+		},
+		{
+			name: "another scheme than the pattern's", origin: "http://page.example", patterns: []string{"https://page.example"},
+			refused: true, allow: "page.example",
+		},
+		{name: "a page with no host, such as a local file", origin: "null", refused: true},
+		{name: "a pattern path.Match can't read", origin: "https://page.example", patterns: []string{"["}, refused: true, allow: "page.example"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://game.example:8080/ws", http.NoBody)
+			if tt.origin != "" {
+				r.Header.Set("Origin", tt.origin)
+			}
+
+			allow, refused := originRefused(r, tt.patterns)
+
+			assert.Equal(t, tt.refused, refused)
+			assert.Equal(t, tt.allow, allow)
+		})
+	}
+}
+
+func TestARefusedOriginIsLoggedWithThePatternThatWouldAllowIt(t *testing.T) {
+	var logs bytes.Buffer
+	server := NewServer(&Config{Logger: slog.New(slog.NewTextHandler(&logs, nil))}, ignoreFrames)
+	t.Cleanup(server.Close)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://game.example/ws", http.NoBody)
+	r.Header.Set("Origin", "http://localhost:5173")
+	w := httptest.NewRecorder()
+
+	server.ServeHTTP(w, r)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	text := logs.String()
+	assert.Contains(t, text, `level=WARN msg="connection refused: web origin not allowed`)
+	assert.Contains(t, text, "origin=http://localhost:5173 host=game.example allow=localhost:5173")
 }
 
 func TestReplacedConnectionClosesWithItsOwnStatus(t *testing.T) {

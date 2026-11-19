@@ -183,6 +183,9 @@ type Room struct {
 	// means the room just closes.
 	restart      func(*Room) bool
 	lastSnapshot atomic.Pointer[[]byte] // read after a stuck room's goroutine has been given up on
+	// migrated lists each module whose saved state was at an older version, set by applySnapshot before the room's
+	// goroutine starts, and only read after that.
+	migrated []snapshotMigration
 
 	inbox chan input
 
@@ -673,14 +676,25 @@ func (r *Room) applySnapshot(data []byte, policy TimersAfterRestart) (err error)
 		if saved == nil {
 			continue
 		}
-		state, err := module.load(int(saved.GetVersion()), saved.GetState())
+		version := int(saved.GetVersion())
+		state, err := module.load(version, saved.GetState())
 		if err != nil {
 			return fmt.Errorf("playhold: module %q: %w", module.module, err)
 		}
 		r.slots[module.index] = state
+		if version < module.version {
+			r.migrated = append(r.migrated, snapshotMigration{module: module.module, from: version, to: module.version})
+			r.logger.Debug("migrated a room's saved state", "module", module.module, "from", version, "to", module.version)
+		}
 	}
 	r.lastSnapshot.Store(&data)
 	return nil
+}
+
+// snapshotMigration is one module's saved state moved from an older version to the current one.
+type snapshotMigration struct {
+	module   string
+	from, to int
 }
 
 func findModule(snapshot *stored.RoomSnapshot, module string) *stored.ModuleSnapshot {

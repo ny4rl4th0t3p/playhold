@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -309,6 +310,7 @@ func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 	for i := range rooms {
 		l.savedCodes[rooms[i].Code] = true
 	}
+	migrated := make(map[snapshotMigration]int) // rooms restored through each migration
 	for i := range rooms {
 		record := &rooms[i]
 		if _, taken := l.rooms[record.Code]; taken {
@@ -332,11 +334,26 @@ func (l *lobby) restoreAll(ctx context.Context, records store.Store) error {
 			l.rt.logger.Error("skipping a saved room that can't be restored", "room", record.ID, "error", err)
 			continue
 		}
+		for _, m := range room.migrated {
+			migrated[m]++
+		}
 		room.startSessions(l.sessions())
 		entry.room = room
 		l.rooms[record.Code] = entry
 		l.startIdleTimer(entry)
 		go l.watch(record.Code, entry)
 	}
+	l.logMigrations(migrated)
 	return nil
+}
+
+// logMigrations logs one line for each migration the restore ran, with how many rooms went through it, so a deploy that
+// changed a saved state's version shows in the log however many rooms it touched. Each room's own line is at debug level.
+func (l *lobby) logMigrations(migrated map[snapshotMigration]int) {
+	keys := slices.SortedFunc(maps.Keys(migrated), func(a, b snapshotMigration) int {
+		return cmp.Or(cmp.Compare(a.module, b.module), cmp.Compare(a.from, b.from))
+	})
+	for _, m := range keys {
+		l.rt.logger.Info("migrated saved state", "module", m.module, "from", m.from, "to", m.to, "rooms", migrated[m])
+	}
 }

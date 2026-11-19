@@ -1,7 +1,9 @@
 package playhold
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"testing/synctest"
 
@@ -98,6 +100,51 @@ func TestRoomSavedAtAnOldVersionGoesThroughEachStepInOrder(t *testing.T) {
 				require.NoError(t, l.restoreAll(t.Context(), records))
 
 				assert.Equal(t, tt.want, valueIn(t, enterRoom(t, l, testCode)))
+			})
+		})
+	}
+}
+
+func TestARestoreLogsWhatItMigrated(t *testing.T) {
+	tests := []struct {
+		name    string
+		version int
+		want    []string // nil means no migration is logged
+	}{
+		{
+			name: "from an old version", version: 1,
+			want: []string{
+				`level=INFO msg="migrated saved state" module=saved from=1 to=3 rooms=1`,
+				`level=DEBUG msg="migrated a room's saved state"`,
+			},
+		},
+		{name: "already current", version: 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				records := memory.New()
+				steps := []func(r *Registry){step(1, changeNumber(addTen)), step(2, changeNumber(double))}
+				savedAt(t, records, versioned(tt.version, steps[:tt.version-1]...))
+
+				logs := &lockedBuffer{}
+				rt := NewRuntime(Config{Logger: slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))})
+				t.Cleanup(func() {
+					ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+					defer cancel()
+					require.NoError(t, rt.Shutdown(ctx))
+				})
+				typ := newTestRoomType(t, RoomConfig{Modules: []Module{versioned(3, steps...)}})
+				l := newLobby(rt, typ, testIdle, testMaxRooms, newTestWriter(t, records))
+				require.NoError(t, l.restoreAll(t.Context(), records))
+
+				text := logs.String()
+				if tt.want == nil {
+					assert.NotContains(t, text, "migrated")
+				}
+				for _, line := range tt.want {
+					assert.Contains(t, text, line)
+				}
 			})
 		})
 	}

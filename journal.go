@@ -47,12 +47,16 @@ var journalStateBytes = map[JournalState]byte{
 
 // JournalEntry is one turn in the crash journal: the message or timer that started it, and how far it got.
 type JournalEntry struct {
-	Seq      uint64
-	Time     time.Time // the room's clock when the turn started
-	State    JournalState
+	// Seq is the turn's place in the journal: a higher one is newer, across every room.
+	Seq  uint64
+	Time time.Time // the room's clock when the turn started
+	// State is how far the turn got.
+	State JournalState
+	// Room and RoomType are the turn's room, and its room type's name.
 	Room     RoomID
 	RoomType string
-	Player   PlayerID
+	// Player is who sent the message, if a player did.
+	Player PlayerID
 	// Module and MessageID name a player's message. Event names the event of a timer or grace period instead.
 	Module    string
 	MessageID uint32

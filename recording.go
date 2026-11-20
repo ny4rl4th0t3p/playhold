@@ -917,6 +917,7 @@ func (t *RoomType) recordedModules() []*wire.RecordedModule {
 // RecordingSegment is part of a room's recording: from when the room started running, new or restored, to when it
 // stopped. A room restarted or restored after a crash has several, in order.
 type RecordingSegment struct {
+	// Room and RoomType are the room recorded, and its room type's name.
 	Room     RoomID
 	RoomType string
 	// Build is a hash of the server's executable, and Revision the version control revision Go stamped into it, with
@@ -927,8 +928,10 @@ type RecordingSegment struct {
 	Modules map[string]int
 	// Restored says the room was restored, after a restart, a deploy or a crash, rather than new.
 	Restored bool
-	Start    time.Time
-	Turns    []RecordedTurn
+	// Start is when the segment started, by the room's clock, in UTC.
+	Start time.Time
+	// Turns are the segment's turns, in order.
+	Turns []RecordedTurn
 	// Closed says the segment ended with the room closing, for Reason. A segment that wasn't closed was cut short: the
 	// process died, or the file was copied while the room ran.
 	Closed bool
@@ -937,21 +940,27 @@ type RecordingSegment struct {
 
 // RecordedTurn is one turn of a recording: what started it, when by the room's clock, and how it ended.
 type RecordedTurn struct {
+	// Time is when the turn started, by the room's clock, in UTC.
 	Time time.Time
-	// Kind is what started the turn: "message", "seat", "leave", "timer", "grace", "reserve" or "reserve end".
-	Kind      string
-	Player    PlayerID
+	// Kind is what started the turn: "message", "seat", "leave", "timer", "grace", "reserve" or "reserve end". Which of
+	// the fields below are set depends on it.
+	Kind string
+	// Player is who sent the message, took or left a seat, or whose grace period ended; empty for the other kinds.
+	Player PlayerID
+	// Module, MessageID and Payload are the message, for a "message".
 	Module    string
 	MessageID uint32
 	Payload   []byte
-	Timer     TimerID
+	// Timer is the timer that fired, for a "timer".
+	Timer TimerID
 	// Players and MinPlayers are matchmaking's reservation.
 	Players    []PlayerID
 	MinPlayers int
 	// RefusedBy is set when the server refused a seat while draining or overloaded, before the room was asked.
 	RefusedBy string
 	// Error is the turn's error, empty if it had none.
-	Error    string
+	Error string
+	// Panicked says the turn panicked.
 	Panicked bool
 }
 

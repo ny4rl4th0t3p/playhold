@@ -13,8 +13,11 @@ var ErrNotFound = errors.New("store: not found")
 
 // RoomRecord is a room's latest snapshot. The store keeps Data as it is, without reading it.
 type RoomRecord struct {
-	ID       string
-	Code     string
+	// ID is the room's playhold.RoomID, which never changes.
+	ID string
+	// Code is how players reach the room.
+	Code string
+	// RoomType is its room type's name. A server only restores rooms of its own room type.
 	RoomType string
 	Data     []byte
 }
@@ -26,14 +29,17 @@ type Incident struct {
 	// Build identifies the server's build. A new build starts with no incidents.
 	Build string
 	// Kind is "stuck" or "crashed".
-	Kind   string
-	Room   string
+	Kind string
+	// Room is the turn's room, by its ID.
+	Room string
+	// Player is who sent the message, if a player did.
 	Player string
 	// Module and MessageID name a player's message. Event names the event of a timer or grace period instead.
 	Module    string
 	MessageID uint32
 	Event     string
-	At        time.Time
+	// At is when the server recorded it: for a turn that was running when the process died, at the next start.
+	At time.Time
 }
 
 // Store keeps what has to outlive the process.

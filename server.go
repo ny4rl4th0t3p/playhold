@@ -120,13 +120,13 @@ type ServerConfig struct {
 	// not through a trusted proxy is refused, and ListenAndServe won't start without TLS or a trusted proxy. Never set it
 	// on a server players reach; the server logs a warning when it's on.
 	Development bool
-	// MaxConns is the most connections the server accepts at once.
+	// MaxConns is the most connections the server accepts at once. Zero or less uses 4,096.
 	MaxConns int
-	// MaxConnsPerIP is the most connections accepted at once from one IP address.
+	// MaxConnsPerIP is the most connections accepted at once from one IP address. Zero or less uses 16.
 	MaxConnsPerIP int
-	// MaxMessageBytes is the largest client message allowed. A larger one closes the connection.
+	// MaxMessageBytes is the largest client message allowed. A larger one closes the connection. Zero or less uses 32 KiB.
 	MaxMessageBytes int64
-	// HandshakeTimeout is how long a new connection has to say Hello.
+	// HandshakeTimeout is how long a new connection has to say Hello. Zero or less uses 10 seconds.
 	HandshakeTimeout time.Duration
 	// MemoryLimit is the process's soft memory limit in bytes. Zero uses about 80% of the machine's memory,
 	// and a negative value leaves the limit alone. The GOMEMLIMIT environment variable always wins.
@@ -484,8 +484,10 @@ func newServerLobby(
 // Timeout is how long to wait before something happens. The zero value uses the default; there is no way to turn it
 // off by leaving it out. Off turns it off; each field that takes a Timeout says whether that's logged.
 type Timeout struct {
+	// After is how long to wait. Zero or less uses the default.
 	After time.Duration
-	Off   bool
+	// Off turns it off, whatever After says.
+	Off bool
 }
 
 func (t Timeout) orDefault(d time.Duration) Timeout {

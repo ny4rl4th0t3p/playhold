@@ -1,6 +1,7 @@
 # Go SDK
 
-[playhold-sdk-go](https://github.com/ny4rl4th0t3p/playhold-sdk-go), package `sdk`, connects a Go program to a
+[playhold-sdk-go](https://github.com/ny4rl4th0t3p/playhold-sdk-go), package `sdk`
+([API](https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold-sdk-go)), connects a Go program to a
 playhold server, for bots and load tests. It's minimal on purpose: unlike the TypeScript SDK, it doesn't reconnect by
 itself, because a load test has to see and count what goes wrong. To come back after a dropped connection, a program
 connects again with the same identity and joins the same code.

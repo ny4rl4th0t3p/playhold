@@ -6,28 +6,29 @@ calls another through a **keeper**, and tells the others what happened with an *
 
 ## A module
 
-A module has a name, unique in its room type, and a `Register` method that declares everything it does. The sample's
+A [module][Module] has a name, unique in its room type, and a `Register` method that declares everything it does. The sample's
 `deck` module, which owns the piles of cards:
 
 <<< ../.crazy-eights/deck/deck.go#module
 
-- **`playhold.NewKey`** makes the key to the module's state, once, in a package-level variable. The key stays
-  unexported, so only this module can reach its state.
-- **`playhold.State`** gives each room its own copy of the state, from the function given, when the room is created.
-- **`key.Get(rc)`** returns this room's state, from any handler, event, keeper or view.
-- **`playhold.Snapshot`** says how the state is saved. See [Saving and timers](./saving.md).
-- **`playhold.On`** subscribes to an event, and **`playhold.View`** declares what each player sees. See
+- **[`playhold.NewKey`][NewKey]** makes the key to the module's state, once, in a package-level variable. The key
+  stays unexported, so only this module can reach its state.
+- **[`playhold.State`][State]** gives each room its own copy of the state, from the function given, when the room is
+  created.
+- **[`key.Get(rc)`][Key.Get]** returns this room's state, from any handler, event, keeper or view.
+- **[`playhold.Snapshot`][Snapshot]** says how the state is saved. See [Saving and timers](./saving.md).
+- **[`playhold.On`][On]** subscribes to an event, and **[`playhold.View`][View]** declares what each player sees. See
   [Views](./views.md).
 
 ## Messages
 
-`playhold.Handle` declares a handler for one of the module's messages, by an ID local to the module, with the message
+[`playhold.Handle`][Handle] declares a handler for one of the module's messages, by an ID local to the module, with the message
 type it decodes:
 
 <<< ../.crazy-eights/hands/hands.go#register
 
 A message from a client names its module and that ID, and its payload is a Protobuf message. The handler gets it
-decoded, and `rc.Player()` is who sent it:
+decoded, and [`rc.Player()`][RoomContext.Player] is who sent it:
 
 <<< ../.crazy-eights/hands/hands.go#play
 
@@ -49,7 +50,8 @@ The providing module offers a type with those methods, here `deck.Keeper`, witho
 
 The game wires them together where it lists its modules, the only place that sees all of them: `hands.Module{Deck:
 deck.Keeper{}, Turns: turns.Keeper{...}}` in the sample's room type, shown in
-[Rooms and turns](./rooms.md#a-room-type). With `r.Needs("deck", m.Deck)`, `NewRoomType` fails if the keeper wasn't
+[Rooms and turns](./rooms.md#a-room-type). With [`r.Needs("deck", m.Deck)`][Registry.Needs],
+[`NewRoomType`][NewRoomType] fails if the keeper wasn't
 wired in, or if no module named `deck` is in the room type. A keeper the module can do without isn't declared: the
 module checks it for nil before calling it.
 
@@ -57,7 +59,7 @@ A keeper runs in the caller's turn, on the room's goroutine, and reaches the pro
 
 ## Events
 
-An event is any Go value that isn't an interface. A module emits it with `rc.Emit`, and every module subscribed to
+An event is any Go value that isn't an interface. A module emits it with [`rc.Emit`][RoomContext.Emit], and every module subscribed to
 its type with `playhold.On` gets it, without either one knowing about the other. The sample's `turns` module starts
 the game once the room is full:
 
@@ -74,11 +76,28 @@ loudly instead of running forever.
 
 playhold emits its own events too:
 
-| Event                | When                                                                              |
-|----------------------|-----------------------------------------------------------------------------------|
-| `PlayerJoined`       | A new player takes a seat; not when a seated player reconnects                    |
-| `PlayerDisconnected` | A seated player has been gone for the whole grace period. They keep their seat    |
-| `PlayerReturned`     | That player comes back                                                            |
-| `MatchReady`         | A matched room's players have joined, or enough of them when the reservation ends |
+| Event                                      | When                                                                              |
+|--------------------------------------------|-----------------------------------------------------------------------------------|
+| [`PlayerJoined`][PlayerJoined]             | A new player takes a seat; not when a seated player reconnects                    |
+| [`PlayerDisconnected`][PlayerDisconnected] | A seated player has been gone for the whole grace period. They keep their seat    |
+| [`PlayerReturned`][PlayerReturned]         | That player comes back                                                            |
+| [`MatchReady`][MatchReady]                 | A matched room's players have joined, or enough of them when the reservation ends |
 
 See [Players and connections](./players.md) and [Find a game](../guides/finding-a-game.md#matchmaking).
+
+[Module]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Module
+[NewKey]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewKey
+[State]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#State
+[Key.Get]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Key.Get
+[Snapshot]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Snapshot
+[On]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#On
+[View]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#View
+[Handle]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Handle
+[RoomContext.Player]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.Player
+[Registry.Needs]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Registry.Needs
+[NewRoomType]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewRoomType
+[RoomContext.Emit]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.Emit
+[PlayerJoined]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#PlayerJoined
+[PlayerDisconnected]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#PlayerDisconnected
+[PlayerReturned]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#PlayerReturned
+[MatchReady]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#MatchReady

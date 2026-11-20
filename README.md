@@ -13,7 +13,7 @@ that, each release adds support for another kind of game.
 **Documentation:** <https://ny4rl4th0t3p.github.io/playhold/>. Start with the
 [walkthrough](https://ny4rl4th0t3p.github.io/playhold/start/walkthrough.html), which runs the sample game and stops its
 server mid-game. The site also has rough [measurements](https://ny4rl4th0t3p.github.io/playhold/measurements.html) from
-development.
+development. **Go API:** [pkg.go.dev](https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold).
 
 ## The idea
 

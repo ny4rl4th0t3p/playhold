@@ -9,13 +9,13 @@ A game describes its rooms once, as a room type built from modules. The sample g
 
 <<< ../.crazy-eights/cards.go#room-type
 
-`NewRoomType` registers every module and checks how they fit together: a duplicate module name, state or message, a
+[`NewRoomType`][NewRoomType] registers every module and checks how they fit together: a duplicate module name, state or message, a
 keeper nobody wired in, or a module needed but missing. It reports every problem at once, so a wiring mistake stops the
 server at startup instead of failing in the middle of a game. A server offers one room type, and every room it creates
 is of that type.
 
-`RoomConfig` also takes `Init`, which runs once before a new room starts, after its modules' state is created, and
-`Close`, which runs after a room's last turn with the reason it closed, but not after a panic that a restore follows, nor
+[`RoomConfig`][RoomConfig] also takes [`Init`][RoomConfig.Init], which runs once before a new room starts, after its
+modules' state is created, and [`Close`][RoomConfig.Close], which runs after a room's last turn with the reason it closed, but not after a panic that a restore follows, nor
 after a stuck turn. An error or a panic in `Init` means the room is never created.
 
 ## Turns
@@ -31,18 +31,19 @@ dropping their connection, a timer coming due. The room takes them one at a time
    [Views](./views.md). A turn that can't have changed the game, such as a player's connection dropping, skips this
    step.
 
-A room's queue holds 32 inputs by default (`RoomConfig.QueueSize`). A message that arrives while it's full is refused
+A room's queue holds 32 inputs by default ([`RoomConfig.QueueSize`][RoomConfig.QueueSize]). A message that arrives while it's full is refused
 with `QUEUE_FULL`, and the room carries on.
 
 ## What game code can read
 
-Handlers, events and views get a `RoomContext`, valid only during the call it was passed to:
+Handlers, events and views get a [`RoomContext`][RoomContext], valid only during the call it was passed to:
 
-- `rc.Player()` is the player whose input this is, or the player a view is for. It's empty in a turn a timer started.
-- `rc.Players()` is the room's seated players, in the order they arrived.
-- `rc.Now()` is the room's clock, which stays the same for the whole turn.
-- `rc.Rand()` is the room's random numbers, from a seed the room was created with.
-- `rc.CloseRoom()` closes the room after this turn.
+- [`rc.Player()`][RoomContext.Player] is the player whose input this is, or the player a view is for. It's empty in a
+  turn a timer started.
+- [`rc.Players()`][RoomContext.Players] is the room's seated players, in the order they arrived.
+- [`rc.Now()`][RoomContext.Now] is the room's clock, which stays the same for the whole turn.
+- [`rc.Rand()`][RoomContext.Rand] is the room's random numbers, from a seed the room was created with.
+- [`rc.CloseRoom()`][RoomContext.CloseRoom] closes the room after this turn.
 
 Game code reads the time and random numbers only through these, so the same moves from the same seed always give the
 same game: [Record and replay](../guides/recording.md) and [Test a game](../guides/testing.md) depend on it, and
@@ -56,3 +57,15 @@ same game: [Record and replay](../guides/recording.md) and [Test a game](../guid
   carry on in it. See [When a handler panics](../guides/keeping-games-running.md#when-a-handler-panics).
 - **A turn runs too long:** the watchdog closes the room. See
   [Slow and stuck turns](../guides/keeping-games-running.md#slow-and-stuck-turns).
+
+[NewRoomType]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewRoomType
+[RoomConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomConfig
+[RoomConfig.Init]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomConfig.Init
+[RoomConfig.Close]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomConfig.Close
+[RoomConfig.QueueSize]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomConfig.QueueSize
+[RoomContext]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext
+[RoomContext.Player]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.Player
+[RoomContext.Players]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.Players
+[RoomContext.Now]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.Now
+[RoomContext.Rand]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.Rand
+[RoomContext.CloseRoom]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.CloseRoom

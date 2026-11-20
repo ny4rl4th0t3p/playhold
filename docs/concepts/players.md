@@ -11,7 +11,7 @@ answers with a Welcome holding the new ID and secret. A returning client sends i
 them against the hash it keeps. The TypeScript SDK keeps them in the browser's `localStorage` by default.
 
 The Hello also says which version of each module's messages the client was built with. A client older than a module
-accepts is told to update, before it joins anything; see `Registry.ClientSchema`.
+accepts is told to update, before it joins anything; see [`Registry.ClientSchema`][Registry.ClientSchema].
 
 A player has one connection at a time: a second connection with the same identity, such as another tab, takes over, and
 the older one is told it was replaced.
@@ -19,23 +19,23 @@ the older one is told it was replaced.
 ## Seats
 
 A player joins a room by its code and asks for a seat. A new seat can be refused: the room is full, the server is
-draining or overloaded, or the game's `OnJoinAttempt` says no. See
+draining or overloaded, or the game's [`OnJoinAttempt`][RoomConfig.OnJoinAttempt] says no. See
 [Who takes a seat](../guides/finding-a-game.md#who-takes-a-seat). A player who already has a seat is never refused,
 so they can always come back to it.
 
-- A new seat emits `PlayerJoined` to the room's modules. A seated player reconnecting doesn't.
-- `rc.Players()` lists the seated players in the order they arrived.
+- A new seat emits [`PlayerJoined`][PlayerJoined] to the room's modules. A seated player reconnecting doesn't.
+- [`rc.Players()`][RoomContext.Players] lists the seated players in the order they arrived.
 - A seat stays when its player's connection drops. The game decides what being away means.
 
 ## Disconnecting and coming back
 
 When a seated player's connection drops, the room stops sending them views, and their grace period starts:
-`ServerConfig.DisconnectGrace`, a minute by default.
+[`ServerConfig.DisconnectGrace`][ServerConfig.DisconnectGrace], a minute by default.
 
 - If they're back within it, the game hears nothing: a dropped connection that recovers is invisible to it.
-- If not, the room emits `PlayerDisconnected`. They keep their seat; the sample, for example, shows the other player a
+- If not, the room emits [`PlayerDisconnected`][PlayerDisconnected]. They keep their seat; the sample, for example, shows the other player a
   message, and lets the turn timer move the game on.
-- When they come back after that, the room emits `PlayerReturned`.
+- When they come back after that, the room emits [`PlayerReturned`][PlayerReturned].
 
 After a restart, the grace period starts again for every seated player who wasn't already away, since the restart is
 what cut everyone off.
@@ -45,8 +45,18 @@ design, so a load test sees every dropped connection: a bot connects again and j
 
 ## Rooms nobody uses
 
-Two timeouts close rooms whose players are gone: `EmptyRoomTimeout`, when nobody has been connected for 5 minutes, and
-`InactiveRoomTimeout`, when no player has sent anything for 30 minutes, connected or not. See
-[Timeouts](../guides/keeping-games-running.md#timeouts).
+Two timeouts close rooms whose players are gone: [`EmptyRoomTimeout`][ServerConfig.EmptyRoomTimeout], when nobody has
+been connected for 5 minutes, and [`InactiveRoomTimeout`][ServerConfig.InactiveRoomTimeout], when no player has sent
+anything for 30 minutes, connected or not. See [Timeouts](../guides/keeping-games-running.md#timeouts).
 
 What playhold keeps about guests, and for how long: [What playhold keeps about players](../guides/privacy.md).
+
+[Registry.ClientSchema]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Registry.ClientSchema
+[RoomConfig.OnJoinAttempt]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomConfig.OnJoinAttempt
+[PlayerJoined]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#PlayerJoined
+[RoomContext.Players]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.Players
+[ServerConfig.DisconnectGrace]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.DisconnectGrace
+[PlayerDisconnected]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#PlayerDisconnected
+[PlayerReturned]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#PlayerReturned
+[ServerConfig.EmptyRoomTimeout]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.EmptyRoomTimeout
+[ServerConfig.InactiveRoomTimeout]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.InactiveRoomTimeout

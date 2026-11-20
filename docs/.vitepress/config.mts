@@ -66,6 +66,14 @@ export default defineConfig({
                     {text: "TypeScript SDK", link: "/reference/sdk-ts"},
                     {text: "Go SDK", link: "/reference/sdk-go"},
                     {text: "Wire protocol", link: "/reference/protocol"},
+                    {
+                        text: "Go API",
+                        items: [
+                            {text: "playhold", link: "https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold"},
+                            {text: "wire", link: "https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/wire"},
+                            {text: "Go SDK", link: "https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold-sdk-go"},
+                        ],
+                    },
                 ],
             },
             {text: "Measurements", link: "/measurements"},

@@ -6,8 +6,8 @@ view, never leaves the server, so a modified client has nothing to find.
 
 ## Declaring a view
 
-A module declares its view with `playhold.View`: a function that returns a Protobuf message, with `rc.Player()` as the
-player it's for. The sample's `hands` module copies across only that player's own cards, and a count for everyone
+A module declares its view with [`playhold.View`][View]: a function that returns a Protobuf message, with
+[`rc.Player()`][RoomContext.Player] as the player it's for. The sample's `hands` module copies across only that player's own cards, and a count for everyone
 else's:
 
 <<< ../.crazy-eights/hands/hands.go#view
@@ -31,10 +31,17 @@ client only ever shows the latest. A player who joins or comes back gets theirs 
 A turn that can't have changed the game, such as a player's connection dropping, sends no views.
 
 The client decodes each module's view with that module's message type. The TypeScript SDK passes them to the page's
-`onState`, and in a Go test, [`playholdtest`](../guides/testing.md) decodes them with `View`.
+`onState`, and in a Go test, [`playholdtest`](../guides/testing.md) decodes them with
+[`View`][playholdtest.View].
 
 ## Testing what a player sees
 
-A view that leaks something is a bug a player can exploit, so it's worth a test: `playholdtest`'s `Received` returns
-every state a player was sent, as encoded bytes, and the sample's tests search each for the names of cards that player
-must not see. See [Hidden information](../guides/testing.md#hidden-information).
+A view that leaks something is a bug a player can exploit, so it's worth a test: `playholdtest`'s
+[`Received`][playholdtest.Player.Received] returns every state a player was sent, as encoded bytes, and the sample's
+tests search each for the names of cards that player must not see. See
+[Hidden information](../guides/testing.md#hidden-information).
+
+[View]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#View
+[RoomContext.Player]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext.Player
+[playholdtest.View]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#View
+[playholdtest.Player.Received]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Player.Received

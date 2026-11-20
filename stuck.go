@@ -10,8 +10,9 @@ import (
 )
 
 // ErrRestartNeeded means the server shut down so its process can be restarted: a stuck room's goroutine kept running
-// while the server stayed overloaded, and only a new process gets rid of it. Every room was saved, and comes back when
-// the server starts again.
+// while the server stayed overloaded, and only a new process gets rid of it. With a ServerConfig.Store, every room the
+// shutdown saved in time comes back when the server starts again. ListenAndServe returns it joined with any other error
+// from the shutdown, so check for it with errors.Is.
 var ErrRestartNeeded = errors.New("playhold: restart needed to get rid of a stuck room's goroutine")
 
 const (

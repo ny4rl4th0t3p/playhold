@@ -14,17 +14,18 @@ import (
 // with a seat can always come back.
 var ErrOverloaded = errors.New("playhold: the server is too busy for new games or players")
 
-// Admission says when the server is too busy to take new work: new guests, new rooms and new seats. Each signal
-// is checked every second; going over any of them refuses new work, and it's taken again once all of them have stayed
-// under 90% of their thresholds for 10 checks in a row. Zero values use the defaults. Off turns admission control off,
-// and the server logs a warning at startup.
+// Admission says when the server is too busy to take new work: new guests, rooms, seats and matchmaking queues. Each
+// signal is checked every second; going over any of them refuses new work, and it's taken again once all of them have
+// stayed under 90% of their thresholds for 10 checks in a row. Zero values use the defaults. Off turns admission control
+// off, and the server logs a warning at startup.
 type Admission struct {
 	// Memory is the share of the memory limit (GOMEMLIMIT, or ServerConfig.MemoryLimit) the Go runtime may hold. The
 	// default is 0.9. It's not checked when there's no limit.
 	Memory float64
 	// SchedP99 is how long goroutines may wait to run, at the 99th percentile over the last 4 seconds: the sign that the
 	// CPU can't keep up. The default is 20 ms. The Go runtime records waits in steps of about 25%, and the p99 is read as
-	// the bottom of its step, so a wait counts as over only once it's certainly over.
+	// the bottom of its step, so a wait counts as over only once it's certainly over. It isn't checked over fewer than 100
+	// waits, so a server with little to do never trips it.
 	SchedP99 time.Duration
 	// Queue is the share of all rooms' inbound queues that may be in use. The default is 0.5.
 	Queue float64
@@ -145,7 +146,7 @@ func (a *admission) check(l load) {
 			a.since.Store(time.Now().UnixNano())
 			a.overloaded.Store(true)
 			a.calm = 0
-			a.logger.Warn("server overloaded, refusing new guests, rooms and seats", "signal", signal,
+			a.logger.Warn("server overloaded, refusing new guests, rooms, seats and queues", "signal", signal,
 				"memory", l.memory, "sched_p99", l.schedP99, "queue", l.queue)
 		}
 		return

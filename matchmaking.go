@@ -74,7 +74,7 @@ type Candidate struct {
 }
 
 // Matcher forms groups from the players waiting, in the order they queued, and returns them. Each group gets a new
-// room. Players left out keep waiting. A group may have at most RoomConfig.MaxPlayers players and at least
+// room. Players left out keep waiting. A group may have at most RoomConfig.MaxPlayers players, if it's set, and at least
 // Matchmaking.MinPlayers, each waiting and in one group only; otherwise the whole result is dropped and logged, and
 // nobody is matched until the next run.
 type Matcher func(waiting []Candidate) [][]PlayerID

@@ -61,8 +61,8 @@ type ListenConfig struct {
 }
 
 // MetricsListen says where ListenAndServe serves the metrics, at /metrics. The default address is 127.0.0.1:9464, so
-// only the machine itself can read them. Another address, such as the one a container's monitoring scrapes, logs a
-// warning outside development, since the metrics show how busy the server is. Off serves none.
+// only the machine itself can read them. An address other machines can reach, such as the one a container's monitoring
+// scrapes, logs a warning outside development, since the metrics show how busy the server is. Off serves none.
 type MetricsListen struct {
 	Addr string
 	Off  bool

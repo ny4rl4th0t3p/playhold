@@ -27,16 +27,16 @@ It holds players' messages, so keep it as private as the database. The file is r
 
 Each turn ends in one of these states:
 
-| State                    | Meaning                                                                           |
-|--------------------------|-----------------------------------------------------------------------------------|
-| `running`                | The turn's handler started, and nothing more was written                          |
-| `handled`                | The handler finished, and the turn was saving or sending views                    |
-| `done`                   | The turn finished                                                                 |
-| `panicked`               | The turn panicked, and the room was restored from its last save or closed         |
-| `stuck`                  | The watchdog gave up on the turn                                                  |
-| `crashed`                | The turn was running when the process died, found at the next start               |
-| `crashed after handling` | The process died after the turn's handler finished, while saving or sending views |
-| `unknown`                | A newer turn reused the entry before this one's state was written                 |
+| State                    | Meaning                                                                              |
+|--------------------------|--------------------------------------------------------------------------------------|
+| `running`                | The turn's handler started, and nothing more was written                             |
+| `handled`                | The handler finished, and the turn was saving or sending views                       |
+| `done`                   | The turn finished                                                                    |
+| `panicked`               | The turn panicked, and the room was restored from its last save or closed            |
+| `stuck`                  | The watchdog gave up on the turn                                                     |
+| `crashed`                | The turn was running when the process died, found at the next start                  |
+| `crashed after handling` | The process died after the turn's handler finished, while saving or sending views    |
+| `unknown`                | An older turn's state was written late into this turn's entry, so this one's is lost |
 
 At its next start, the server logs each turn that was running when it died, once. A `crashed` turn is the likeliest
 cause.

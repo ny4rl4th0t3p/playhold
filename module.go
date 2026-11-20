@@ -174,7 +174,8 @@ func (r *Registry) ClientSchema(current, oldest int) {
 
 // RateLimit limits how often one connection may send this message, on top of ServerConfig.MessageRate. Over it, the
 // message gets a rate-limited error and isn't handled. Use it for messages that cost the room or other players
-// something, such as chat. The message needs a handler, and the limit needs both Every and Burst.
+// something, such as chat. The message needs a handler, and the limit needs a positive Every and Burst: unlike
+// ServerConfig's limits, it has no default, and can't be Off.
 func (r *Registry) RateLimit(id uint32, limit RateLimit) {
 	if limit.Off || limit.Every <= 0 || limit.Burst <= 0 {
 		r.errorf("rate limit of message %d needs a positive Every and Burst", id)
@@ -282,7 +283,8 @@ type RoomConfig struct {
 	// a free seat, up to MaxPlayers, which is checked first. It must decide from what's in memory: waiting on a database
 	// or a service would hold up the whole room.
 	OnJoinAttempt func(rc *RoomContext, attempt *JoinAttempt) error
-	// Close runs once on the room's goroutine after its last turn, unless Init failed.
+	// Close runs once on the room's goroutine after its last turn, unless Init failed, the room was closed as stuck, or it
+	// panicked and is being restored from its last snapshot, which isn't the room's end.
 	Close func(rc *RoomContext, reason CloseReason)
 	// Record records every turn of this type's rooms, on a server with RecordingConfig.Dir set, so a game can be replayed
 	// with playholdtest.Replay. Every module's state needs a snapshot, and Name has to be a folder name: letters, digits,
@@ -449,7 +451,8 @@ type (
 )
 
 // NewRoomType registers the config's modules and checks how they fit together. It reports every problem it
-// finds: a nil or unnamed module, a duplicate module name, a duplicate state or message, or a missing keeper.
+// finds at once, such as a nil or unnamed module, a duplicate module name, a duplicate state or message, a missing
+// keeper, or a missing migration.
 func NewRoomType(cfg RoomConfig) (*RoomType, error) {
 	typ := &RoomType{
 		cfg:      cfg,

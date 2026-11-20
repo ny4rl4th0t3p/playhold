@@ -984,8 +984,8 @@ func (t *RecordedTurn) String() string {
 }
 
 // ReadRecording reads a room's recording, a file from RecordingConfig.Dir, in progress or finished. A record the file
-// ends in the middle of, or one damaged, ends the reading: what comes before is returned. Replaying needs the game's room
-// type, with playholdtest.Replay.
+// ends in the middle of, or one damaged, ends the reading: what comes before is returned. A file with no whole segment,
+// such as one damaged in its first record, is an error. Replaying needs the game's room type, with playholdtest.Replay.
 func ReadRecording(path string) ([]RecordingSegment, error) {
 	segments, err := readRecordingFile(path)
 	if err != nil {

@@ -63,7 +63,7 @@ type ServerConfig struct {
 	// state is deleted, and players are told it closed as inactive. The default is 30 minutes. The time starts over when
 	// the server restarts.
 	InactiveRoomTimeout Timeout
-	// Admission refuses new guests, rooms and seats while the server is overloaded: memory near its limit, goroutines
+	// Admission refuses new guests, rooms, seats and matchmaking queues while the server is overloaded: memory near its limit, goroutines
 	// waiting too long to run, or rooms' queues filling up. Rooms carry on, and players with a seat can always come back,
 	// so connections themselves are never refused for this: who is connecting is only known once they say Hello. See
 	// Admission for the defaults.
@@ -350,7 +350,7 @@ func (s *Server) watchGauges(players *guests) {
 	m.gauge("connections", "Open connections.", func() float64 { return float64(s.transport.Conns()) })
 	m.gauge("players_connected", "Players with a connection.", func() float64 { return float64(players.connected()) })
 	m.gauge("queue_fill", "The share of all rooms' inbound queues in use.", s.rt.queueFill)
-	m.gauge("overloaded", "1 while admission control refuses new guests, rooms and seats.", func() float64 {
+	m.gauge("overloaded", "1 while admission control refuses new guests, rooms, seats and queues.", func() float64 {
 		if s.admission != nil && s.admission.overloaded.Load() {
 			return 1
 		}
@@ -482,7 +482,7 @@ func newServerLobby(
 }
 
 // Timeout is how long to wait before something happens. The zero value uses the default; there is no way to turn it
-// off by leaving it out. Off turns it off, and the server logs a warning at startup.
+// off by leaving it out. Off turns it off; each field that takes a Timeout says whether that's logged.
 type Timeout struct {
 	After time.Duration
 	Off   bool

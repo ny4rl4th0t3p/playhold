@@ -61,7 +61,7 @@ const (
 	CloseRequested CloseReason = iota + 1
 	// CloseShutdown means the runtime is shutting down.
 	CloseShutdown
-	// ClosePanic means a handler panicked.
+	// ClosePanic means game code panicked during a turn: a handler, an event, a view, or a save.
 	ClosePanic
 	// CloseInitFailed means the room's Init hook failed, so it never started.
 	CloseInitFailed

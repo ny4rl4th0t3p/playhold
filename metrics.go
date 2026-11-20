@@ -160,7 +160,7 @@ func newMetrics(typ *RoomType) *metrics {
 		"Rooms replaced by a copy from their last save, by what happened to them.", "reason")
 	m.rateLimited = m.counterVec("rate_limited_total", "Requests refused by a rate limit, by layer.", "layer")
 	m.admissionRefused = m.counterVec("admission_refused_total",
-		"New guests, rooms and seats refused while the server was overloaded.", "what")
+		"New guests, rooms, seats and queues refused while the server was overloaded.", "what")
 	m.slowTurns = m.counter("slow_turns_total", "Turns that took longer than the time budget, Config.SlowTurn.")
 	m.incidents = m.counterVec("incidents_total",
 		"Turns that hurt the whole server, by kind: crashed with the process, or stuck and still running.", "kind")

@@ -32,7 +32,8 @@ type Divergence struct {
 	Turn int
 	// Input is the turn as recorded, empty for the start.
 	Input playhold.RecordedTurn
-	// Reason says what differs: the error, a panic, the room's state, or a timer that isn't pending.
+	// Reason says what differs, such as the error, a panic, the room's state, a timer or grace period that isn't pending,
+	// or the room failing to start.
 	Reason string
 	// WantHash and GotHash are the room's state after the turn, as recorded and as replayed, when that's what differs.
 	WantHash string

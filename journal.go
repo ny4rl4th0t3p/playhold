@@ -20,7 +20,8 @@ type JournalState string
 
 // The states of a journaled turn.
 const (
-	// JournalRunning means the turn's handler started and nothing more was written: the process stopped while it ran.
+	// JournalRunning means the turn's handler started and nothing more was written: the process stopped while it ran, or,
+	// in a copy of a running server's file, the turn was still running when it was copied.
 	JournalRunning JournalState = "running"
 	// JournalHandled means the handler and its events finished, and the turn was saving or sending views.
 	JournalHandled JournalState = "handled"
@@ -34,7 +35,8 @@ const (
 	JournalCrashed JournalState = "crashed"
 	// JournalCrashedAfter means the process died after the turn's handler finished, while saving or sending views.
 	JournalCrashedAfter JournalState = "crashed after handling"
-	// JournalUnknown means a newer turn reused the slot before this one's state was written.
+	// JournalUnknown means an older turn's state was written late, into the slot this turn had already reused, so this
+	// turn's own state is lost.
 	JournalUnknown JournalState = "unknown"
 )
 
@@ -88,8 +90,9 @@ const (
 // JournalConfig turns on the crash journal: before each turn, the message or timer that started it is written to a file,
 // and marked as the turn goes on. After a crash, even one that kills the process, the file shows the last turns and which
 // were still running; with the room's last save, that's what it takes to reproduce the crash. The file has a fixed size,
-// set by Entries and EntrySize, and the oldest entries are overwritten, so it never grows. It holds players' messages, so
-// keep it as private as the database.
+// set by Entries and EntrySize, and the oldest entries are overwritten, so it never grows. Changing Entries or EntrySize
+// starts the file over at the next start, after logging the turns that were running when the process died: copy the file
+// first. It holds players' messages, so keep it as private as the database.
 type JournalConfig struct {
 	// Path is the journal's file. Empty turns the journal off. It survives restarts only on lasting storage, such as a
 	// container volume.

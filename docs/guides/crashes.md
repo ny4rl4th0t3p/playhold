@@ -8,7 +8,7 @@ message from doing it again and again.
 
 ## The crash journal
 
-With `CrashJournal.Path` set, each room writes the message or timer that starts a turn to the journal before running it,
+With [`CrashJournal.Path`][JournalConfig] set, each room writes the message or timer that starts a turn to the journal before running it,
 then marks how far the turn got. After a crash, even one that kills the process, the journal shows the last turns and
 which were still running. With the room's last save, that's what it takes to reproduce the crash.
 
@@ -52,8 +52,7 @@ go run github.com/ny4rl4th0t3p/playhold/cmd/playholdjournal@v0.4.2 path/to/journ
 
 A game can list it as a tool in its `go.mod`, as Crazy Eights does, and run it with `go tool playholdjournal`.
 
-`ReadCrashJournal` reads it from Go, to replay a
-message in a test.
+[`ReadCrashJournal`][ReadCrashJournal] reads it from Go, to replay a message in a test.
 
 ## The breaker
 
@@ -73,7 +72,8 @@ kills the process would keep the server down for every game, restart after resta
 **A room that keeps doing it isn't restored.** A room with two incidents in the 10 minutes before a start isn't
 restored, so a timer that kills the process can't keep the server down either. The room stays in the store and is
 logged. A later start brings it back, with a new build or once its incidents are older than 10 minutes. Meanwhile its
-code stays taken: no new room gets it, and joining it is refused with `ROOM_NOT_FOUND`. With `AllowClientCodes`, joining
+code stays taken: no new room gets it, and joining it is refused with `ROOM_NOT_FOUND`. With
+[`AllowClientCodes`][ServerConfig.AllowClientCodes], joining
 it starts a new game instead, and at the next start the newest saved room keeps the code and the older one is deleted.
 
 A new build of the server starts with no incidents: the build is identified by a hash of the server's executable.
@@ -90,3 +90,7 @@ FROM incidents;
 ```
 
 To clear one message only, add `WHERE module = 'deck' AND message_id = 3`, with the module and message the log named.
+
+[JournalConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#JournalConfig
+[ReadCrashJournal]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ReadCrashJournal
+[ServerConfig.AllowClientCodes]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.AllowClientCodes

@@ -6,7 +6,8 @@ Every limit can be changed, and turning one off is explicit and logged.
 
 ## Rate limits
 
-Three layers apply to every server, each with a default far above what a player of a turn-based game needs:
+Three layers apply to every server, set in [`ServerConfig`][ServerConfig], each with a default far above what a player
+of a turn-based game needs:
 
 | Setting       | Counts                         | Default                                | Over it                                                        |
 |---------------|--------------------------------|----------------------------------------|----------------------------------------------------------------|
@@ -17,7 +18,7 @@ Three layers apply to every server, each with a default far above what a player 
 The bursts let a whole network behind one address, such as a school, reconnect at once after a restart. A player has
 one connection at a time, so `MessageRate` is also the limit per player.
 
-A `RateLimit` left at zero keeps the default; leaving it out never removes a limit. `Off` turns a layer off, for a
+A [`RateLimit`][RateLimit] left at zero keeps the default; leaving it out never removes a limit. `Off` turns a layer off, for a
 server behind a proxy that already limits it:
 
 <<< ../../example_test.go#rate-limits
@@ -25,7 +26,7 @@ server behind a proxy that already limits it:
 ### A module's own limit
 
 Some messages cost the room or other players something, such as a chat line. A module can limit one of its messages
-further, on top of `MessageRate`:
+further, with [`Registry.RateLimit`][Registry.RateLimit], on top of `MessageRate`:
 
 <<< ../../example_test.go#module-limit
 
@@ -40,12 +41,13 @@ further, on top of `MessageRate`:
 
 ## Rooms
 
-`MaxRooms`, 10,000 by default, is the most rooms the server runs at once. Over it, joining a new code gets a
+[`MaxRooms`][ServerConfig.MaxRooms], 10,000 by default, is the most rooms the server runs at once. Over it, joining a new code gets a
 `SERVER_FULL` error, and existing rooms carry on.
 
 ## Admission control
 
-A server can be under its caps and still overloaded. Admission control checks three signals every second:
+A server can be under its caps and still overloaded. Admission control, [`ServerConfig.Admission`][Admission], checks
+three signals every second:
 
 | Signal     | Over it when                                                                                   | Default |
 |------------|------------------------------------------------------------------------------------------------|---------|
@@ -68,5 +70,12 @@ off. `/readyz` doesn't change: an overloaded server still serves the players it 
 warning. [Restart when stuck](./keeping-games-running.md#restart-when-stuck)
 needs it on.
 
-The memory limit is `MemoryLimit`, about 80% of the machine's memory by default, or of the container's limit if that's
-lower. The `GOMEMLIMIT` environment variable always wins.
+The memory limit is [`MemoryLimit`][ServerConfig.MemoryLimit], about 80% of the machine's memory by default, or of the
+container's limit if that's lower. The `GOMEMLIMIT` environment variable always wins.
+
+[ServerConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig
+[RateLimit]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RateLimit
+[Registry.RateLimit]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Registry.RateLimit
+[ServerConfig.MaxRooms]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.MaxRooms
+[Admission]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Admission
+[ServerConfig.MemoryLimit]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.MemoryLimit

@@ -10,14 +10,14 @@ a bug in it hours or days later, and its recording is what replays it.
 
 ## Turn it on
 
-The game turns it on for a room type, with `RoomConfig.Record`, and the server says where the files go, with
-`ServerConfig.Recording`:
+The game turns it on for a room type, with [`RoomConfig.Record`][RoomConfig.Record], and the server says where the
+files go, with [`ServerConfig.Recording`][RecordingConfig]:
 
 <<< ../../example_test.go#recording
 
-- `NewRoomType` refuses `Record` if a module's state has no snapshot, since a turn's hash covers every module's state,
-  or if `Name` isn't a folder name: letters, digits, `-` and `_`.
-- `NewServer` refuses a recorded room type without `Recording.Dir`, so a game that asks for recordings never quietly
+- [`NewRoomType`][NewRoomType] refuses `Record` if a module's state has no snapshot, since a turn's hash covers every
+  module's state, or if `Name` isn't a folder name: letters, digits, `-` and `_`.
+- [`NewServer`][NewServer] refuses a recorded room type without `Recording.Dir`, so a game that asks for recordings never quietly
   gets none.
 
 Each room type's recordings go in a folder of their own, named after it, with one file per room, named by its ID, such
@@ -47,9 +47,9 @@ server still writes to them.
 
 Finished recordings stay until one of two limits deletes them; recordings in progress are never deleted by either.
 
-- `Retention` deletes a finished recording 30 days after its last write by default, checked every hour. `Off` keeps
+- [`Retention`][RecordingConfig.Retention] deletes a finished recording 30 days after its last write by default, checked every hour. `Off` keeps
   them however old, and the server logs a warning.
-- `MaxSize` keeps every recording in `Dir` under 10 GiB by default. Past it, the oldest finished recordings are
+- [`MaxSize`][RecordingConfig.MaxSize] keeps every recording in `Dir` under 10 GiB by default. Past it, the oldest finished recordings are
   deleted, down to 90% of it, and `.problem.rec` files last, since they're the likeliest to be needed. The check runs
   every hour and as soon as the recordings pass the limit. A negative `MaxSize` means no limit, and the server logs a
   warning.
@@ -112,13 +112,14 @@ empty for a build that has none.
 A turn that got stuck isn't recorded, since it never ended: the crash journal has it. A record cut off at the end of
 the file, by a machine failure or a copy taken while the room ran, is ignored, with everything before it still read.
 
-A recording holds every player's message in full, and `HidePlayerIDs` doesn't apply to it,
+A recording holds every player's message in full, and [`HidePlayerIDs`][ServerConfig.HidePlayerIDs] doesn't apply to
+it,
 since a replay needs each turn's player. See [What playhold keeps about players](./privacy.md).
 
 ## Replay one
 
 Copy the recording from the server, finished or in progress, check out the code of the revision it names, and replay
-it in a test with `playholdtest.Replay`, against the game's room type. The sample game's tests record a game on a real
+it in a test with [`playholdtest.Replay`][playholdtest.Replay], against the game's room type. The sample game's tests record a game on a real
 server, then:
 
 <<< ../.crazy-eights/server_test.go#replay
@@ -131,8 +132,20 @@ has to be pending, or that's a difference. `Replay` fails the test at the first 
 
 From there, a test of its own can play up to that turn with `playholdtest` and look at the state.
 
-`TryReplay` returns the same report without failing the test. Its `SchemaMatches` says whether the room type's
-modules save at the snapshot versions the recording's did; replaying against other code is a best effort, and the
-report shows where it parts.
+[`TryReplay`][playholdtest.TryReplay] returns the same report without failing the test. Its
+[`SchemaMatches`][playholdtest.Report] says whether the room type's modules save at the snapshot versions the
+recording's did; replaying against other code is a best effort, and the report shows where it parts.
 
-`playhold.ReadRecording` reads a recording's segments and turns, for a tool of the game's own.
+[`playhold.ReadRecording`][ReadRecording] reads a recording's segments and turns, for a tool of the game's own.
+
+[RoomConfig.Record]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomConfig.Record
+[RecordingConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RecordingConfig
+[NewRoomType]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewRoomType
+[NewServer]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewServer
+[RecordingConfig.Retention]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RecordingConfig.Retention
+[RecordingConfig.MaxSize]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RecordingConfig.MaxSize
+[ServerConfig.HidePlayerIDs]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.HidePlayerIDs
+[playholdtest.Replay]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Replay
+[playholdtest.TryReplay]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#TryReplay
+[playholdtest.Report]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Report
+[ReadRecording]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ReadRecording

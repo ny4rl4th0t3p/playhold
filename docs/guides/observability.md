@@ -5,8 +5,9 @@ recovers from. With an OpenTelemetry tracer provider, it also traces each turn a
 
 ## Where the metrics are
 
-`ListenAndServe` serves them at `/metrics`, on a listener of their own, never the game's. By default it listens on
-`127.0.0.1:9464`, so only the machine itself can read them. `ListenConfig.Metrics` changes that:
+[`ListenAndServe`][Server.ListenAndServe] serves them at `/metrics`, on a listener of their own, never the game's. By
+default it listens on `127.0.0.1:9464`, so only the machine itself can read them.
+[`ListenConfig.Metrics`][MetricsListen] changes that:
 
 | Setting                        | Serves                                                                         |
 |--------------------------------|--------------------------------------------------------------------------------|
@@ -15,7 +16,7 @@ recovers from. With an OpenTelemetry tracer provider, it also traces each turn a
 | `MetricsListen{Off: true}`     | Nothing                                                                        |
 
 The warning for an address other machines can reach isn't logged in development mode. A server that doesn't use
-`ListenAndServe` serves `Server.MetricsHandler()` itself, on an address only its monitoring can reach.
+`ListenAndServe` serves [`Server.MetricsHandler()`][Server.MetricsHandler] itself, on an address only its monitoring can reach.
 
 ## The metrics
 
@@ -77,8 +78,8 @@ See [Limit abuse and load](./limits.md).
 
 ## Logs
 
-The server logs through `log/slog`: its own lines go to `ServerConfig.Logger`, and rooms' lines to the runtime's
-`Config.Logger`, which `ServerConfig.Logger` defaults to. The lines carry what they're about:
+The server logs through `log/slog`: its own lines go to [`ServerConfig.Logger`][ServerConfig.Logger], and rooms' lines
+to the runtime's [`Config.Logger`][Config.Logger], which `ServerConfig.Logger` defaults to. The lines carry what they're about:
 
 | Lines about                                   | Carry                                                                                 |
 |-----------------------------------------------|---------------------------------------------------------------------------------------|
@@ -94,13 +95,13 @@ failed TLS handshake.
 
 A player's ID is a random guest ID, not a name, but it can still count as personal data where it could be linked back
 to someone. The logs keep it by default, since it's what ties a problem to the player who hit it. A game that would
-rather not record it sets `ServerConfig.HidePlayerIDs`: every log line drops its `player`, a turn's span drops
+rather not record it sets [`ServerConfig.HidePlayerIDs`][ServerConfig.HidePlayerIDs]: every log line drops its `player`, a turn's span drops
 `playhold.player.id`, and the server logs `player IDs left out of logs and traces` at startup. The crash journal, when
 on, still records each turn's player, since reproducing a crash is what it's for.
 
 ## Traces
 
-Set `ServerConfig.TracerProvider` to an OpenTelemetry tracer provider, and the server traces its work. playhold only
+Set [`ServerConfig.TracerProvider`][ServerConfig.TracerProvider] to an OpenTelemetry tracer provider, and the server traces its work. playhold only
 uses OpenTelemetry's API, so the game picks the SDK and where the traces go. Without a provider, nothing is traced,
 and tracing costs nothing.
 
@@ -125,3 +126,11 @@ Every span the provider samples costs CPU. In the [rough measurements](../measur
 tracing every turn took about a tenth more of the game server's CPU, and 99% of moves were answered within about 5 ms
 instead of 3 with saving off, and about 10 ms instead of 7 with it on. On a busy server, have the provider sample a share of the traces, such as with the OpenTelemetry
 SDK's ratio-based sampler.
+
+[Server.ListenAndServe]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.ListenAndServe
+[MetricsListen]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#MetricsListen
+[Server.MetricsHandler]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.MetricsHandler
+[ServerConfig.Logger]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.Logger
+[Config.Logger]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Config.Logger
+[ServerConfig.HidePlayerIDs]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.HidePlayerIDs
+[ServerConfig.TracerProvider]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.TracerProvider

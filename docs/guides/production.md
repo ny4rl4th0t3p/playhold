@@ -4,13 +4,13 @@ A playhold server starts in production mode. It refuses settings that would expo
 plain HTTP unless a proxy in front of it ends TLS. This page covers TLS, proxies, the allowed web origins, and the
 development mode for your own machine. What the server needs from whatever runs it is in [Deploy](./deploy.md).
 
-Every snippet calls `run`, which is how a game's `main` function serves a `Server`:
+Every snippet calls `run`, which is how a game's `main` function serves a [`Server`][Server]:
 
 <<< ../../example_test.go#run
 
 ## Development mode
 
-On a developer's machine, `Development` turns the safety checks off, so the server runs over plain HTTP:
+On a developer's machine, [`Development`][ServerConfig.Development] turns the safety checks off, so the server runs over plain HTTP:
 
 <<< ../../example_test.go#development
 
@@ -18,10 +18,10 @@ The server logs a warning at startup while it's on. Never set it on a server pla
 
 Without it:
 
-- `NewServer` refuses an origin pattern that matches every site, such as `*`, and a trusted proxy range that covers
-  every address;
+- [`NewServer`][NewServer] refuses an origin pattern that matches every site, such as `*`, and a trusted proxy range
+  that covers every address;
 - a connection that arrives without TLS, and not through a trusted proxy, is refused with HTTP 403;
-- `ListenAndServe` won't start with neither TLS nor a trusted proxy.
+- [`ListenAndServe`][Server.ListenAndServe] won't start with neither TLS nor a trusted proxy.
 
 ## TLS
 
@@ -41,7 +41,7 @@ How it works:
 - The server asks for a certificate when the first player connects, not when it starts. That first connection waits a
   few seconds.
 - It answers Let's Encrypt's challenge on port 443 itself, so nothing needs to listen on port 80.
-- It keeps certificates in `AutocertCacheDir`, so a restart doesn't ask for new ones. Let's Encrypt limits how often a
+- It keeps certificates in [`AutocertCacheDir`][ListenConfig.AutocertCacheDir], so a restart doesn't ask for new ones. Let's Encrypt limits how often a
   domain can ask.
 - If Let's Encrypt can't reach the server, for example because the domain points elsewhere or port 443 is closed, the
   connection fails and the server's log says why.
@@ -59,7 +59,7 @@ From another terminal, an issuer with `(STAGING)` in its name means the setup wo
 curl -kv https://game.example/healthz 2>&1 | grep issuer
 ```
 
-Then switch to the real service by removing `AutocertDirectoryURL`. Keep the two cache folders apart: certificates are
+Then switch to the real service by removing [`AutocertDirectoryURL`][ListenConfig.AutocertDirectoryURL]. Keep the two cache folders apart: certificates are
 kept by domain name, so a shared folder would keep serving the test certificate.
 
 ### A certificate you already have
@@ -70,30 +70,41 @@ The files are read at start, so a renewed certificate takes a restart, which los
 
 ### Behind a proxy
 
-A proxy or load balancer that ends TLS sends the server plain HTTP. List its addresses in `TrustedProxies`:
+A proxy or load balancer that ends TLS sends the server plain HTTP. List its addresses in [`TrustedProxies`][ServerConfig.TrustedProxies]:
 
 <<< ../../example_test.go#behind-a-proxy
 
 Without TLS fields, the server listens on port 8080. A connection from a trusted proxy may arrive without TLS, and the
 client's address comes from the proxy's `X-Forwarded-For` header: the rightmost address that isn't a trusted proxy. From
 anywhere else, that header is ignored, since a client could make it up. For a proxy that sends another header, such as
-`Forwarded`, set `ProxyClientIP`.
+`Forwarded`, set [`ProxyClientIP`][ServerConfig.ProxyClientIP].
 
 The client's address matters for the [limits](./limits.md) that count per address.
 
 ## Web origins
 
 A browser says which page opened a connection. The server's own host is always allowed. To let a page hosted elsewhere
-connect, such as a game on itch.io, list its origins in `OriginPatterns`, such as `*.itch.zone`. A pattern that matches
+connect, such as a game on itch.io, list its origins in [`OriginPatterns`][ServerConfig.OriginPatterns], such as `*.itch.zone`. A pattern that matches
 every origin, such as `*`, is refused outside development mode.
 
 A page the server refuses gets HTTP 403, and the server logs a warning with the page's origin and the pattern that
 would allow it, such as `allow=localhost:5173`.
 
 ::: warning Host the page on its own, never on the game's server
-`ListenConfig.Handler` can serve a game's page from the game's server, as the sample's local demo does. Don't do that
-in production. A static host or a CDN serves the page faster and closer to each player, the game's server keeps its
-CPU, memory and connections for the rooms, and a new page is deployed without restarting the server and disconnecting
-every player. When the server is down, or restarting for a deploy, the page still loads and tells players it's
-reconnecting, instead of the browser's error.
+[`ListenConfig.Handler`][ListenConfig.Handler] can serve a game's page from the game's server, as the sample's local
+demo does. Don't do that in production. A static host or a CDN serves the page faster and closer to each player, the
+game's server keeps its CPU, memory and connections for the rooms, and a new page is deployed without restarting the
+server and disconnecting every player. When the server is down, or restarting for a deploy, the page still loads and
+tells players it's reconnecting, instead of the browser's error.
 :::
+
+[Server]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server
+[ServerConfig.Development]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.Development
+[NewServer]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewServer
+[Server.ListenAndServe]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.ListenAndServe
+[ListenConfig.AutocertCacheDir]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ListenConfig.AutocertCacheDir
+[ListenConfig.AutocertDirectoryURL]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ListenConfig.AutocertDirectoryURL
+[ServerConfig.TrustedProxies]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.TrustedProxies
+[ServerConfig.ProxyClientIP]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.ProxyClientIP
+[ServerConfig.OriginPatterns]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.OriginPatterns
+[ListenConfig.Handler]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ListenConfig.Handler

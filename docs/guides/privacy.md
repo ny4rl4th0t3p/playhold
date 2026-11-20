@@ -27,21 +27,28 @@ restores it or someone deletes it.
 
 ## What the operator chooses
 
-- **How long guests last.** `GuestExpiry` deletes a guest once they haven't connected for that long; the server checks
+- **How long guests last.** [`GuestExpiry`][ServerConfig.GuestExpiry] deletes a guest once they haven't connected for that long; the server checks
   every hour. A player who comes back later starts again as a new guest. Choose the shortest time that still suits the
   game: data protection rules such as the GDPR ask to keep personal data no longer than needed, without setting a
   period.
-- **Logs.** playhold logs through `ServerConfig.Logger`, and rooms through the runtime's `Config.Logger`, and keeps
-  nothing itself. Rotate and delete logs on a schedule,
-  as for any server. With `HidePlayerIDs`, no log line or span carries a guest ID.
-- **The crash journal.** It holds players' messages, cut at `EntrySize`, so turn it on only where it's needed, and keep
+- **Logs.** playhold logs through [`ServerConfig.Logger`][ServerConfig.Logger], and rooms through the runtime's
+  [`Config.Logger`][Config.Logger], and keeps nothing itself. Rotate and delete logs on a schedule, as for any server.
+  With [`HidePlayerIDs`][ServerConfig.HidePlayerIDs], no log line or span carries a guest ID.
+- **The crash journal.** It holds players' messages, cut at [`EntrySize`][JournalConfig.EntrySize], so turn it on only where it's needed, and keep
   its file, and any copy of it, as private as the database.
 - **Recordings.** They hold players' messages in full, and `HidePlayerIDs` doesn't apply to them, since a replay needs
   each turn's player. Keep their folder, and any copy of a recording, as private as the database, and
-  set `Retention` to as long as the game needs to look into a reported game.
+  set [`Retention`][RecordingConfig.Retention] to as long as the game needs to look into a reported game.
 - **Backups** of the database keep everything above for as long as the backups are kept.
 
 ## What a game adds
 
 Anything a game's modules keep in their state is saved with the room, and goes when the room's save does. Anything a
 game stores elsewhere, such as players' levels in its own database, follows the game's own rules, not these.
+
+[ServerConfig.GuestExpiry]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.GuestExpiry
+[ServerConfig.Logger]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.Logger
+[Config.Logger]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Config.Logger
+[ServerConfig.HidePlayerIDs]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.HidePlayerIDs
+[JournalConfig.EntrySize]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#JournalConfig.EntrySize
+[RecordingConfig.Retention]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RecordingConfig.Retention

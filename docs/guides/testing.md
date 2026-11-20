@@ -1,6 +1,6 @@
 # Test a game
 
-`playholdtest` runs a room of the game's own room type in a Go test: its modules, events, views and timers run as on a
+[`playholdtest`][playholdtest] runs a room of the game's own room type in a Go test: its modules, events, views and timers run as on a
 server, with no server, no network and no real time. This page covers what a test can do with it.
 
 The examples test `counter`, a small module from `playholdtest`'s own tests: players add to a count with message
@@ -11,16 +11,17 @@ message `msgTimer` sets a timer that adds one a minute later.
 
 <<< ../../playholdtest/playholdtest_test.go#views
 
-A test runs inside `playholdtest.Run`, which is `testing/synctest`'s bubble, and makes its rooms there with `NewRoom`.
-Each room has a runtime of its own, closed when the test ends.
+A test runs inside [`playholdtest.Run`][Run], which is `testing/synctest`'s bubble, and makes its rooms there with
+[`NewRoom`][NewRoom]. Each room has a runtime of its own, closed when the test ends.
 
-- `Join` seats a player and connects them, so they get views from then on. Joining again reconnects them, as a client
-  coming back does. `TryJoin` returns a refusal instead of failing the test: `ErrRoomFull`, the error from the game's
-  `OnJoinAttempt`, or `ErrRoomClosed` once the room has closed.
-- `Send` sends a module's message as the player.
-- `View` decodes the module's view in the latest state the player received, or returns nil if the module showed them
-  nothing.
-- `Disconnect` drops the player's connection, which starts their grace period.
+- [`Join`][Room.Join] seats a player and connects them, so they get views from then on. Joining again reconnects them,
+  as a client coming back does. [`TryJoin`][Room.TryJoin] returns a refusal instead of failing the test:
+  [`ErrRoomFull`][ErrRoomFull], the error from the game's `OnJoinAttempt`, or [`ErrRoomClosed`][ErrRoomClosed] once the
+  room has closed.
+- [`Send`][Player.Send] sends a module's message as the player.
+- [`View`][View] decodes the module's view in the latest state the player received, or returns nil if the module
+  showed them nothing.
+- [`Disconnect`][Player.Disconnect] drops the player's connection, which starts their grace period.
 
 Every call returns once the room has nothing left to do: the turn's events have run and its views have been delivered.
 A test never waits or counts messages.
@@ -31,17 +32,18 @@ A test never waits or counts messages.
 
 <<< ../../playholdtest/playholdtest_test.go#errors
 
-A message no module handles gets `ErrUnknownMessage`. A turn that panics closes the room, as on a server without a store,
-and `Send` returns `ErrRoomClosed`; `Closed` then says `ClosePanic`.
+A message no module handles gets [`ErrUnknownMessage`][ErrUnknownMessage]. A turn that panics closes the room, as on a
+server without a store, and `Send` returns `ErrRoomClosed`; [`Closed`][Room.Closed] then says
+[`ClosePanic`][CloseReason].
 
 ## Time
 
-Time only moves when the test moves it. `Advance` moves it forward: timers and grace periods fire as they come due,
+Time only moves when the test moves it. [`Advance`][Room.Advance] moves it forward: timers and grace periods fire as they come due,
 each in its own turn, and a room no player has used for `InactiveRoomTimeout` closes:
 
 <<< ../../playholdtest/playholdtest_test.go#advance
 
-The room has the server's timeouts, with the same defaults, set in `Options`:
+The room has the server's timeouts, with the same defaults, set in [`Options`][Options]:
 
 | Field                 | Default       | What it does                                                   |
 |-----------------------|---------------|----------------------------------------------------------------|
@@ -54,7 +56,8 @@ So `Advance(time.Hour)` closes a room nobody uses, as a server would, unless the
 
 ## Setting up a position
 
-`Do` runs a function as a turn of the room, with its `RoomContext`, and views go out after it. A module's own tests, in
+[`Do`][Room.Do] runs a function as a turn of the room, with its [`RoomContext`][RoomContext], and views go out after
+it. A module's own tests, in
 its package, reach its state through its key, so they can set up a position instead of playing up to it:
 
 <<< ../../playholdtest/playholdtest_test.go#do
@@ -64,8 +67,8 @@ looks for a seed that deals what it needs.
 
 ## Restarts and deploys
 
-`Restart` saves the room as a server shutting down would, and brings it back from that save, as the next server
-would. Everyone is disconnected and joins again. `RestartAs` brings it back as another room type, as a deploy would,
+[`Restart`][Room.Restart] saves the room as a server shutting down would, and brings it back from that save, as the
+next server would. Everyone is disconnected and joins again. [`RestartAs`][Room.RestartAs] brings it back as another room type, as a deploy would,
 so a module whose snapshot version changed runs its migrations:
 
 <<< ../../playholdtest/playholdtest_test.go#restart
@@ -75,13 +78,13 @@ a store.
 
 ## Seeds
 
-A room's random numbers come from `Options.Seed`. Left at zero, the seed is random, as on a server, and a test that fails
+A room's random numbers come from [`Options.Seed`][Options.Seed]. Left at zero, the seed is random, as on a server, and a test that fails
 logs it, so it can be set in `Options` to play the same game again. Two rooms with the same seed, given the same moves,
 play the same game.
 
 ## Hidden information
 
-`Received` returns every state a player was sent, each encoded as it goes to a client. A test that looks for something the
+[`Received`][Player.Received] returns every state a player was sent, each encoded as it goes to a client. A test that looks for something the
 player must never see, such as another player's cards, searches these bytes: the sample game's tests check every state
 for card names that player can't see, in `cards_test.go` in
 [Crazy Eights](https://github.com/ny4rl4th0t3p/playhold-crazy-eights).
@@ -91,3 +94,25 @@ for card names that player can't see, in `cards_test.go` in
 `playholdtest` runs the room, not the server: no handshake, rate limits, admission control or matchmaking. A room never
 gets `MatchReady`, which only comes from matchmaking; a test of a game that starts on it emits it with `Do`. A test of
 those runs a server, as Crazy Eights' `server_test.go` does, with the Go SDK as its client.
+
+[playholdtest]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest
+[Run]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Run
+[NewRoom]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#NewRoom
+[Room.Join]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Room.Join
+[Room.TryJoin]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Room.TryJoin
+[ErrRoomFull]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ErrRoomFull
+[ErrRoomClosed]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ErrRoomClosed
+[Player.Send]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Player.Send
+[View]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#View
+[Player.Disconnect]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Player.Disconnect
+[ErrUnknownMessage]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ErrUnknownMessage
+[Room.Closed]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Room.Closed
+[CloseReason]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#CloseReason
+[Room.Advance]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Room.Advance
+[Options]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Options
+[Room.Do]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Room.Do
+[RoomContext]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomContext
+[Room.Restart]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Room.Restart
+[Room.RestartAs]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Room.RestartAs
+[Options.Seed]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Options.Seed
+[Player.Received]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/playholdtest#Player.Received

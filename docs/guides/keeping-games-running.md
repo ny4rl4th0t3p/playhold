@@ -6,17 +6,17 @@ restarting the server.
 
 ## Saving and restoring
 
-With a `Store`, such as the PostgreSQL one in `store/postgres`, the server saves each room after
+With a [`Store`][ServerConfig.Store], such as the PostgreSQL one in [`store/postgres`][postgres], the server saves each room after
 every change, in the background, and brings every saved room back when it starts. Players reconnect to their rooms by
 themselves. A room that can't be restored is logged and left in the store, so a fixed server can try again, and it
 doesn't stop the others. Without a store, a restart forgets every room and guest.
 
-`SnapshotInterval` saves a busy room less often: a change that comes sooner than the interval waits, and the changes
+[`SnapshotInterval`][ServerConfig.SnapshotInterval] saves a busy room less often: a change that comes sooner than the interval waits, and the changes
 made meanwhile are saved together. A crash can then lose up to one interval of moves. A shutdown still saves every room.
 
-`TimersAfterRestart` says what pending timers do when the server comes back:
+[`TimersAfterRestart`][ServerConfig.TimersAfterRestart] says what pending timers do when the server comes back:
 
-- `TimersPause`, the default: the time the server was down doesn't count, so nobody loses a turn to an outage. It's
+- [`TimersPause`][TimersAfterRestart], the default: the time the server was down doesn't count, so nobody loses a turn to an outage. It's
   measured from the room's last turn, so after a crash a player can get back a little more time than they had, but
   never less.
 - `TimersKeepRunning`: each timer keeps its original time, and any that came due while the server was down fire at
@@ -40,22 +40,22 @@ Two timeouts close rooms, and a third tells the game a player left:
 | `DisconnectGrace`     | 1 minute   | How long a seated player has to come back before the game gets a `PlayerDisconnected` event                                                                                                 |
 | `InactiveRoomTimeout` | 30 minutes | Closes a room, and deletes its saved state, once no player has sent it anything for this long, connected or not. Timer turns don't count, so a room kept busy only by its timers closes too |
 
-A `Timeout` left at zero keeps the default. `Off` turns
+A [`Timeout`][Timeout] left at zero keeps the default. `Off` turns
 one off, and the server logs it at startup:
 
 <<< ../../example_test.go#timeouts
 
-A room closing doesn't wait for grace periods, so keep `EmptyRoomTimeout` longer than `DisconnectGrace` if the game
+A room closing doesn't wait for grace periods, so keep [`EmptyRoomTimeout`][ServerConfig.EmptyRoomTimeout] longer than
+[`DisconnectGrace`][ServerConfig.DisconnectGrace] if the game
 cares about those events. After a restart, the grace periods and the inactive time start over.
 
 ## Slow and stuck turns
 
-Two settings of the `Runtime`'s `Config` watch how long a turn
-takes:
+Two settings of the [`Runtime`][Runtime]'s [`Config`][Config] watch how long a turn takes:
 
-- **`SlowTurn`**, 100 ms by default: a longer turn is logged as `slow turn`, with the message or timer that started it.
+- **[`SlowTurn`][Config.SlowTurn]**, 100 ms by default: a longer turn is logged as `slow turn`, with the message or timer that started it.
   The room carries on.
-- **`StuckTimeout`**, 5 seconds by default: the watchdog gives up on a longer turn. The room is closed as stuck and,
+- **[`StuckTimeout`][Config.StuckTimeout]**, 5 seconds by default: the watchdog gives up on a longer turn. The room is closed as stuck and,
   with a store, replaced by a copy from its last save, as after a panic. Go can't stop the stuck goroutine, so nothing
   it does
   afterward reaches players or the store.
@@ -63,20 +63,21 @@ takes:
 ## Restart when stuck
 
 A stuck goroutine usually ends by itself, and one that's only blocked costs little memory. One that spins forever takes
-CPU from every room, and only a new process gets rid of it. With `RestartWhenStuck`, the server restarts its process
+CPU from every room, and only a new process gets rid of it. With [`RestartWhenStuck`][ServerConfig.RestartWhenStuck],
+the server restarts its process
 when a stuck room's goroutine is still running 30 seconds after the watchdog gave up on it, while the server has been
 overloaded for a minute without a break:
 
 <<< ../../example_test.go#restart-when-stuck
 
 The server then drains for 10 seconds, so a load balancer sends players elsewhere, saves every room, and
-`ListenAndServe` returns `ErrRestartNeeded`. The game exits with an error, as `run` does in
+[`ListenAndServe`][Server.ListenAndServe] returns [`ErrRestartNeeded`][ErrRestartNeeded]. The game exits with an error, as `run` does in
 [Run in production](./production.md), and the service manager
 starts it again, with every game.
 
 It needs [admission control](./limits.md#admission-control) on, to tell when the server is overloaded. Without
 `RestartWhenStuck`, the server logs an error every minute while that lasts, for an operator to restart it. A server
-that doesn't use `ListenAndServe` watches `Server.RestartNeeded` instead.
+that doesn't use `ListenAndServe` watches [`Server.RestartNeeded`][Server.RestartNeeded] instead.
 
 ## Health checks, drain and shutdown
 
@@ -94,6 +95,26 @@ When its context ends, as on SIGTERM in `run`, it stops without losing a match:
 2. It closes every room, which saves it, and writes everything waiting to be saved.
 3. Only then does it disconnect the clients, which reconnect and find their rooms on the next server.
 
-`ShutdownTimeout`, 8 seconds by default, is how long saving may take. Keep it below the time the service manager waits
-before killing the process. A server that doesn't use `ListenAndServe`
-calls `Server.Drain` and `Server.Shutdown` itself.
+[`ShutdownTimeout`][ListenConfig.ShutdownTimeout], 8 seconds by default, is how long saving may take. Keep it below the
+time the service manager waits before killing the process. A server that doesn't use `ListenAndServe` calls
+[`Server.Drain`][Server.Drain] and [`Server.Shutdown`][Server.Shutdown] itself.
+
+[ServerConfig.Store]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.Store
+[postgres]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/store/postgres
+[ServerConfig.SnapshotInterval]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.SnapshotInterval
+[ServerConfig.TimersAfterRestart]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.TimersAfterRestart
+[TimersAfterRestart]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#TimersAfterRestart
+[Timeout]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Timeout
+[ServerConfig.EmptyRoomTimeout]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.EmptyRoomTimeout
+[ServerConfig.DisconnectGrace]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.DisconnectGrace
+[Runtime]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Runtime
+[Config]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Config
+[Config.SlowTurn]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Config.SlowTurn
+[Config.StuckTimeout]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Config.StuckTimeout
+[ServerConfig.RestartWhenStuck]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.RestartWhenStuck
+[Server.ListenAndServe]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.ListenAndServe
+[ErrRestartNeeded]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ErrRestartNeeded
+[Server.RestartNeeded]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.RestartNeeded
+[ListenConfig.ShutdownTimeout]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ListenConfig.ShutdownTimeout
+[Server.Drain]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.Drain
+[Server.Shutdown]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.Shutdown

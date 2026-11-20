@@ -6,24 +6,25 @@ to cover each setting.
 
 ## Ports
 
-- The game listens on `:443` with TLS and on `:8080` without, unless `ListenConfig.Addr` says otherwise. The players'
+- The game listens on `:443` with TLS and on `:8080` without, unless [`ListenConfig.Addr`][ListenConfig.Addr] says
+  otherwise. The players'
   connections and the health checks share it.
 - Automatic certificates answer Let's Encrypt's challenge on the TLS port itself, so nothing needs to listen on port
   80. See [TLS](./production.md#tls).
 - The Prometheus metrics have a listener of their own, on `127.0.0.1:9464` by default, so only the machine itself can
-  read them. An address other machines can reach logs a warning outside development, and `Metrics.Off` serves none.
-  See
-  [Watch the server](./observability.md).
+  read them. An address other machines can reach logs a warning outside development, and
+  [`Metrics.Off`][MetricsListen] serves none. See [Watch the server](./observability.md).
 
 ## Starting and stopping
 
-- `ListenAndServe` stops when its context ends: in the `run` function of [Run in production](./production.md), on
+- [`ListenAndServe`][Server.ListenAndServe] stops when its context ends: in the `run` function of [Run in production](./production.md), on
   SIGINT or SIGTERM. It drains, saves every room, and only then disconnects players, who reconnect to the next server.
   See [Health checks, drain and shutdown](./keeping-games-running.md#health-checks-drain-and-shutdown).
-- Saving may take up to `ListenConfig.ShutdownTimeout`, 8 seconds by default. Whatever stops the program must wait
+- Saving may take up to [`ListenConfig.ShutdownTimeout`][ListenConfig.ShutdownTimeout], 8 seconds by default. Whatever stops the program must wait
   longer than that before killing it.
 - Something has to start the program again after it dies, so the server, with a store, restores its rooms. With
-  `RestartWhenStuck`, the server also exits on purpose, with `ErrRestartNeeded`, for that same restart. See
+  [`RestartWhenStuck`][ServerConfig.RestartWhenStuck], the server also exits on purpose, with
+  [`ErrRestartNeeded`][ErrRestartNeeded], for that same restart. See
   [Restart when stuck](./keeping-games-running.md#restart-when-stuck).
 
 ## Health checks
@@ -34,7 +35,7 @@ to cover each setting.
 
 ## Memory
 
-With `MemoryLimit` left at zero, the server sets Go's soft memory limit to 80% of the memory it can use: the machine's
+With [`MemoryLimit`][ServerConfig.MemoryLimit] left at zero, the server sets Go's soft memory limit to 80% of the memory it can use: the machine's
 total, from `/proc/meminfo`, or the container's limit, from `/sys/fs/cgroup/memory.max` or
 `/sys/fs/cgroup/memory/memory.limit_in_bytes`, whichever is lower. Where it can read neither, as outside Linux, it sets
 no limit and logs a warning. A `GOMEMLIMIT` environment variable always wins, and a negative `MemoryLimit` leaves the
@@ -44,11 +45,11 @@ limit alone. So a container's memory limit is all the server needs to stay withi
 
 Each only if the server uses it. On a container platform, these go on a volume.
 
-- **`ListenConfig.AutocertCacheDir`**, for automatic certificates, so a restart doesn't ask Let's Encrypt for new
-  ones.
-- **`CrashJournal.Path`**, a file of about `Entries` times `EntrySize`, 4 MiB by default. Its folder must exist; the
+- **[`ListenConfig.AutocertCacheDir`][ListenConfig.AutocertCacheDir]**, for automatic certificates, so a restart
+  doesn't ask Let's Encrypt for new ones.
+- **[`CrashJournal.Path`][JournalConfig]**, a file of about `Entries` times `EntrySize`, 4 MiB by default. Its folder must exist; the
   server creates the file, readable only by its own user. See [The crash journal](./crashes.md#the-crash-journal).
-- **`Recording.Dir`**. The server makes a folder in it for the room type, readable only by its own user, and keeps the
+- **[`Recording.Dir`][RecordingConfig]**. The server makes a folder in it for the room type, readable only by its own user, and keeps the
   recordings under `MaxSize`, 10 GiB by default. See [Record and replay](./recording.md).
 
 Recordings hold players' messages in full, and the crash journal holds them up to `EntrySize`: keep both, and any copy,
@@ -57,9 +58,9 @@ See [What playhold keeps about players](./privacy.md).
 
 ## PostgreSQL
 
-- `postgres.Open` connects and brings the store's tables up to date. If another server is updating them at the same
-  time, it waits for that, for up to 5 minutes.
-- `NewServer` then restores every saved room, and fails if it can't read them, so the database has to be reachable
+- [`postgres.Open`][postgres.Open] connects and brings the store's tables up to date. If another server is updating
+  them at the same time, it waits for that, for up to 5 minutes.
+- [`NewServer`][NewServer] then restores every saved room, and fails if it can't read them, so the database has to be reachable
   when the server starts.
 - While the server runs, `/readyz` answers 503 whenever the database can't be reached.
 
@@ -82,3 +83,16 @@ as the backup is kept.
 
 How to back up PostgreSQL is its own subject: see
 [Backup and restore](https://www.postgresql.org/docs/current/backup.html) in PostgreSQL's documentation.
+
+[ListenConfig.Addr]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ListenConfig.Addr
+[MetricsListen]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#MetricsListen
+[Server.ListenAndServe]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.ListenAndServe
+[ListenConfig.ShutdownTimeout]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ListenConfig.ShutdownTimeout
+[ServerConfig.RestartWhenStuck]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.RestartWhenStuck
+[ErrRestartNeeded]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ErrRestartNeeded
+[ServerConfig.MemoryLimit]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig.MemoryLimit
+[ListenConfig.AutocertCacheDir]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ListenConfig.AutocertCacheDir
+[JournalConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#JournalConfig
+[RecordingConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RecordingConfig
+[postgres.Open]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold/store/postgres#Open
+[NewServer]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewServer

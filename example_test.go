@@ -12,10 +12,53 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/ny4rl4th0t3p/playhold"
+	"github.com/ny4rl4th0t3p/playhold/store/postgres"
 )
 
-// These examples are the code the documentation site shows, between the region comments. They compile with the tests,
-// but don't run, since a server serves until it's stopped.
+// A game's whole main function: its room type, a server that saves games in PostgreSQL, and serving with automatic
+// certificates until Ctrl+C or SIGTERM, which stops it without losing a match.
+func ExampleNewServer() {
+	typ, err := playhold.NewRoomType(playhold.RoomConfig{
+		Name:       "match",
+		MaxPlayers: 2,
+		Modules:    []playhold.Module{ /* the game's modules */ },
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	records, err := postgres.Open(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	server, err := playhold.NewServer(playhold.NewRuntime(playhold.Config{}), &playhold.ServerConfig{
+		RoomType: typ,
+		Store:    records,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = server.ListenAndServe(ctx, &playhold.ListenConfig{
+		AutocertDomains:  []string{"game.example"},
+		AutocertCacheDir: "/var/lib/game/certs",
+	})
+	stop()
+	records.Close()
+	if err != nil {
+		// With RestartWhenStuck this includes ErrRestartNeeded: exiting with an error makes the service manager start
+		// the server again.
+		log.Fatal(err)
+	}
+}
+
+// The rest of this file is the code the documentation site shows, between the region comments. The functions compile
+// with the tests, but nothing calls them, since a server serves until it's stopped. They aren't examples, because each
+// calls run and the other helpers here, which an example's page wouldn't show.
+var _ = []func(){
+	autocertSnippet, stagingSnippet, certificateFilesSnippet, behindAProxySnippet, developmentSnippet,
+	rateLimitsSnippet, moduleLimitSnippet, admissionSnippet, timeoutsSnippet, restartWhenStuckSnippet,
+	recordingSnippet, crashJournalSnippet,
+}
 
 // matchType stands in for a game's room type.
 func matchType() *playhold.RoomType {
@@ -51,7 +94,7 @@ func run(cfg *playhold.ServerConfig, listen *playhold.ListenConfig) {
 // #endregion run
 
 // Automatic certificates from Let's Encrypt, on port 443.
-func ExampleServer_ListenAndServe() {
+func autocertSnippet() {
 	// #region autocert
 	run(&playhold.ServerConfig{RoomType: matchType()}, &playhold.ListenConfig{
 		AutocertDomains:  []string{"game.example"},
@@ -63,7 +106,7 @@ func ExampleServer_ListenAndServe() {
 
 // A first run against Let's Encrypt's test service, which has no limits on failed attempts. Browsers don't trust its
 // certificates.
-func ExampleServer_ListenAndServe_staging() {
+func stagingSnippet() {
 	// #region staging
 	run(&playhold.ServerConfig{RoomType: matchType()}, &playhold.ListenConfig{
 		AutocertDomains:      []string{"game.example"},
@@ -74,7 +117,7 @@ func ExampleServer_ListenAndServe_staging() {
 }
 
 // A certificate the server already has.
-func ExampleServer_ListenAndServe_certificateFiles() {
+func certificateFilesSnippet() {
 	// #region certificate-files
 	run(&playhold.ServerConfig{RoomType: matchType()}, &playhold.ListenConfig{
 		CertFile: "/etc/game/fullchain.pem",
@@ -84,7 +127,7 @@ func ExampleServer_ListenAndServe_certificateFiles() {
 }
 
 // Plain HTTP on port 8080, behind a proxy at 10.0.0.2 that ends TLS.
-func ExampleServer_ListenAndServe_behindAProxy() {
+func behindAProxySnippet() {
 	// #region behind-a-proxy
 	run(&playhold.ServerConfig{
 		RoomType:       matchType(),
@@ -94,13 +137,13 @@ func ExampleServer_ListenAndServe_behindAProxy() {
 }
 
 // A developer's machine: plain HTTP, and none of the checks that keep a public server safe.
-func ExampleServerConfig_development() {
+func developmentSnippet() {
 	// #region development
 	run(&playhold.ServerConfig{RoomType: matchType(), Development: true}, &playhold.ListenConfig{Addr: "127.0.0.1:8080"})
 	// #endregion development
 }
 
-func ExampleRateLimit() {
+func rateLimitsSnippet() {
 	run(&playhold.ServerConfig{
 		RoomType: matchType(),
 		// #region rate-limits
@@ -132,7 +175,7 @@ func (chat) Register(r *playhold.Registry) {
 
 // #endregion module-limit
 
-func ExampleRegistry_RateLimit() {
+func moduleLimitSnippet() {
 	typ, err := playhold.NewRoomType(playhold.RoomConfig{Name: "match", Modules: []playhold.Module{chat{}}})
 	if err != nil {
 		log.Fatal(err)
@@ -140,7 +183,7 @@ func ExampleRegistry_RateLimit() {
 	run(&playhold.ServerConfig{RoomType: typ}, onTheInternet())
 }
 
-func ExampleAdmission() {
+func admissionSnippet() {
 	run(&playhold.ServerConfig{
 		RoomType: matchType(),
 		// #region admission
@@ -151,7 +194,7 @@ func ExampleAdmission() {
 	}, onTheInternet())
 }
 
-func ExampleTimeout() {
+func timeoutsSnippet() {
 	run(&playhold.ServerConfig{
 		RoomType: matchType(),
 		// #region timeouts
@@ -163,7 +206,7 @@ func ExampleTimeout() {
 	}, onTheInternet())
 }
 
-func ExampleServerConfig_restartWhenStuck() {
+func restartWhenStuckSnippet() {
 	run(&playhold.ServerConfig{
 		RoomType: matchType(),
 		// #region restart-when-stuck
@@ -174,7 +217,7 @@ func ExampleServerConfig_restartWhenStuck() {
 	}, onTheInternet())
 }
 
-func ExampleRecordingConfig() {
+func recordingSnippet() {
 	// #region recording
 	typ, err := playhold.NewRoomType(playhold.RoomConfig{
 		Name:   "match", // also the name of its recordings' folder
@@ -191,7 +234,7 @@ func ExampleRecordingConfig() {
 	// #endregion recording
 }
 
-func ExampleJournalConfig() {
+func crashJournalSnippet() {
 	run(&playhold.ServerConfig{
 		RoomType: matchType(),
 		// #region crash-journal

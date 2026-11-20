@@ -6,7 +6,7 @@ except for `Config.SlowTurn` and `MemoryLimit`. The guides explain when to chang
 
 ## ServerConfig
 
-What `NewServer` takes.
+What [`NewServer`][NewServer] takes. Every field on pkg.go.dev: [`ServerConfig`][ServerConfig].
 
 ### The game and saving
 
@@ -64,7 +64,7 @@ See [Limit abuse and load](../guides/limits.md).
 | `MaxConnsPerIP`    | 16                                | Connections at once from one IP address                             |
 | `MaxMessageBytes`  | 32 KiB                            | The largest client message; a larger one closes the connection      |
 | `HandshakeTimeout` | 10 s                              | How long a new connection has to say Hello                          |
-| `Admission`        | On                                | When the server is too busy for new guests, rooms and seats         |
+| `Admission`        | On                                | When the server is too busy for new guests, rooms, seats and queues |
 | `MemoryLimit`      | 80% of the memory it can use      | Go's soft memory limit; negative leaves it alone; `GOMEMLIMIT` wins |
 
 ### Crashes
@@ -90,7 +90,7 @@ See [Watch the server](../guides/observability.md).
 
 ## ListenConfig
 
-What `ListenAndServe` takes. The health checks are always at `/healthz` and `/readyz`. See
+What [`ListenAndServe`][Server.ListenAndServe] takes, a [`ListenConfig`][ListenConfig]. The health checks are always at `/healthz` and `/readyz`. See
 [Run in production](../guides/production.md#tls).
 
 | Field                  | Default                          | What it does                                                                                |
@@ -111,7 +111,7 @@ HTTP, which it allows only behind a trusted proxy or in development mode.
 
 ## Config
 
-What `NewRuntime` takes. See [Slow and stuck turns](../guides/keeping-games-running.md#slow-and-stuck-turns).
+What [`NewRuntime`][NewRuntime] takes, a [`Config`][Config]. See [Slow and stuck turns](../guides/keeping-games-running.md#slow-and-stuck-turns).
 
 | Field          | Default          | What it does                                                               |
 |----------------|------------------|----------------------------------------------------------------------------|
@@ -123,7 +123,7 @@ What `NewRuntime` takes. See [Slow and stuck turns](../guides/keeping-games-runn
 
 ## RoomConfig
 
-What `NewRoomType` takes. The modules and the `Init` and `Close` hooks are the game itself, covered with building a
+What [`NewRoomType`][NewRoomType] takes, a [`RoomConfig`][RoomConfig]. The modules and the `Init` and `Close` hooks are the game itself, covered with building a
 game.
 
 | Field           | Default           | What it does                                                                                                         |
@@ -141,26 +141,28 @@ unrestored. They stay in the store, and the server logs each one it skips.
 
 ### RateLimit
 
-`Every` and `Burst`: on average once every `Every`, with up to `Burst` at once. A field left at zero uses the layer's
-default. `Off` turns the layer off. A module's own limit, set with `Registry.RateLimit`, needs both `Every` and `Burst`,
+[`RateLimit`][RateLimit] has `Every` and `Burst`: on average once every `Every`, with up to `Burst` at once. A field left at zero uses the layer's
+default. `Off` turns the layer off. A module's own limit, set with [`Registry.RateLimit`][Registry.RateLimit], needs both `Every` and `Burst`,
 and can't be off.
 
 ### Timeout
 
-`After`, or `Off`. Zero uses the default.
+[`Timeout`][Timeout] has `After`, or `Off`. Zero uses the default.
 
 ### Admission
+
+[`Admission`][Admission]:
 
 | Field      | Default | Over it when                                                            |
 |------------|---------|-------------------------------------------------------------------------|
 | `Memory`   | 0.9     | The Go runtime holds this share of the memory limit                     |
-| `SchedP99` | 20 ms   | Goroutines wait this long to run, at the 99th percentile over 5 seconds |
+| `SchedP99` | 20 ms   | Goroutines wait this long to run, at the 99th percentile over 4 seconds |
 | `Queue`    | 0.5     | This share of all rooms' inbound queues is in use                       |
 | `Off`      | False   | Turns admission control off                                             |
 
 ### Matchmaking
 
-See [Matchmaking](../guides/finding-a-game.md#matchmaking).
+[`Matchmaking`][Matchmaking]. See [Matchmaking](../guides/finding-a-game.md#matchmaking).
 
 | Field        | Default                                          | What it does                                                |
 |--------------|--------------------------------------------------|-------------------------------------------------------------|
@@ -173,7 +175,7 @@ See [Matchmaking](../guides/finding-a-game.md#matchmaking).
 
 ### RecordingConfig
 
-See [Record and replay](../guides/recording.md).
+[`RecordingConfig`][RecordingConfig]. See [Record and replay](../guides/recording.md).
 
 | Field       | Default | What it does                                                                                    |
 |-------------|---------|-------------------------------------------------------------------------------------------------|
@@ -183,8 +185,26 @@ See [Record and replay](../guides/recording.md).
 
 ### JournalConfig
 
+[`JournalConfig`][JournalConfig]. See [When something crashes](../guides/crashes.md).
+
 | Field       | Default | What it does                                                             |
 |-------------|---------|--------------------------------------------------------------------------|
 | `Path`      | Empty   | The journal's file. Empty turns the journal off                          |
 | `Entries`   | 1,024   | How many turns it keeps, up to 16,777,216                                |
 | `EntrySize` | 4 KiB   | The space for one turn, from 512 bytes to 1 MiB; a longer payload is cut |
+
+[NewServer]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewServer
+[ServerConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ServerConfig
+[Server.ListenAndServe]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Server.ListenAndServe
+[ListenConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#ListenConfig
+[NewRuntime]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewRuntime
+[Config]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Config
+[NewRoomType]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#NewRoomType
+[RoomConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RoomConfig
+[RateLimit]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RateLimit
+[Registry.RateLimit]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Registry.RateLimit
+[Timeout]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Timeout
+[Admission]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Admission
+[Matchmaking]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#Matchmaking
+[RecordingConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#RecordingConfig
+[JournalConfig]: https://pkg.go.dev/github.com/ny4rl4th0t3p/playhold#JournalConfig

@@ -36,7 +36,7 @@ features:
 
 ::: warning Early development
 playhold is a hobby project, and its API can still change. These pages describe the code on the `main` branch, as of
-v0.4.1. The [tutorial](./tutorial/a-module.md) builds a game of your own, step by step.
+v0.4.2. The [tutorial](./tutorial/a-module.md) builds a game of your own, step by step.
 :::
 
 ## What works today

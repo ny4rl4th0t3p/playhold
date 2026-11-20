@@ -3,8 +3,8 @@
 // A [Runtime] runs rooms. Each room handles its inputs one at a time on its own goroutine, so game code needs no locks.
 // A [RoomType] lists the [Module] values that give a room its state, message handlers, views and events, declared with
 // [State], [Handle], [View] and [On]. Modules never import each other: one that needs another declares an interface,
-// and the game passes it the provider when it builds the room type. Each player gets a view built for them alone, so a client never receives what
-// its player may not see.
+// and the game passes it the provider when it builds the room type. Each player gets a view built for them alone, so a
+// client never receives what its player may not see.
 //
 // A [Server], from [NewServer], lets clients connect as guests and join rooms by code, or be matched with others through
 // ServerConfig.Matchmaking. [Server.ListenAndServe] serves it over TLS, with automatic or existing certificates, or

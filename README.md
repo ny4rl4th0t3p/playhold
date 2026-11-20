@@ -2,7 +2,7 @@
 
 A self-hosted game backend in Go, built from authoritative rooms and composable modules.
 
-> **Status: early development, at v0.4.1.** Since v0.4.0, the SDKs and the sample game, Crazy Eights, have repositories
+> **Status: early development, at v0.4.2.** Since v0.4.0, the SDKs and the sample game, Crazy Eights, have repositories
 > of their own: the SDKs install by tag, and the game builds on playhold's releases and survives a restart, a crash and a deploy that
 > changes how games are saved. A [tutorial](https://ny4rl4th0t3p.github.io/playhold/tutorial/a-module.html) builds a
 > game of your own, step by step. The API can change.

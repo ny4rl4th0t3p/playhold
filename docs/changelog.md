@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.4.2, 20 November 2026
+
+The Go API's documentation, ready for pkg.go.dev: every exported doc comment checked against the code. Nothing in the
+API changes.
+
+### Changed
+
+- A package overview, and one complete example, `NewServer`'s: a game's whole main function. The documentation site's
+  snippets are no longer examples, since they call helpers an example's page doesn't show.
+- Doc comments that said more or less than the code does, now matching it: among them `JournalUnknown`, which named
+  the wrong turn, `ErrRestartNeeded`, `RoomConfig.Close`, `Registry.RateLimit` and `Timeout`. The same `unknown` row is
+  fixed in [When something crashes](./guides/crashes.md#what-it-shows).
+- The defaults of `RoomConfig.QueueSize`, `ServerConfig.MaxConns`, `MaxConnsPerIP`, `MaxMessageBytes` and
+  `HandshakeTimeout` are stated, and exported fields that had no comment have one.
+- Admission control's texts name matchmaking queues, which it refuses too: the `admission_refused_total` and
+  `overloaded` metrics' help, and the `server overloaded` warning in the log.
+- `playholdvet`'s and `playholdjournal`'s doc comments give commands that work from any folder.
+
 ## v0.4.1, 19 November 2026
 
 The server's log now says three things it used to keep to itself. Nothing in the API changes.

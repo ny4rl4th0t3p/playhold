@@ -47,7 +47,7 @@ Copy the file, then print it with `playholdjournal`, oldest turn first, one line
 the playhold version the game runs:
 
 ```bash
-go run github.com/ny4rl4th0t3p/playhold/cmd/playholdjournal@v0.4.0 path/to/journal
+go run github.com/ny4rl4th0t3p/playhold/cmd/playholdjournal@v0.4.1 path/to/journal
 ```
 
 A game can list it as a tool in its `go.mod`, as Crazy Eights does, and run it with `go tool playholdjournal`.

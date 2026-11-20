@@ -1,7 +1,8 @@
-// Command playholdvet runs playhold's checks through go vet:
+// Command playholdvet runs playhold's checks through go vet. Add it as a tool of the game's module, which keeps it at the
+// same playhold version as the game, and run it from there:
 //
-//	go build -o playholdvet github.com/ny4rl4th0t3p/playhold/cmd/playholdvet
-//	go vet -vettool=./playholdvet ./...
+//	go get -tool github.com/ny4rl4th0t3p/playhold/cmd/playholdvet
+//	go vet -vettool=$(go tool -n playholdvet) ./...
 package main
 
 import (

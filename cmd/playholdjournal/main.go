@@ -1,6 +1,11 @@
-// Command playholdjournal prints a crash journal, oldest turn first, one line per turn:
+// Command playholdjournal prints a crash journal, oldest turn first, one line per turn. Run it at the playhold version the
+// game runs, from anywhere:
 //
-//	go run github.com/ny4rl4th0t3p/playhold/cmd/playholdjournal journal-file
+//	go run github.com/ny4rl4th0t3p/playhold/cmd/playholdjournal@v0.4.1 journal-file
+//
+// or, from a game's module that lists it as a tool, with go get -tool:
+//
+//	go tool playholdjournal journal-file
 //
 // A turn still running or crashed is the likeliest cause of a crash. With the room's last save, its message is what it
 // takes to reproduce it. Payloads are printed in base64.

@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/jackc/pgx/v5 v5.12.0
-	github.com/ny4rl4th0t3p/playhold/wire v0.4.0
+	github.com/ny4rl4th0t3p/playhold/wire v0.5.0
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/stretchr/testify v1.12.1

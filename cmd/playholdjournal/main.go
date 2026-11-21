@@ -1,7 +1,7 @@
 // Command playholdjournal prints a crash journal, oldest turn first, one line per turn. Run it at the playhold version the
 // game runs, from anywhere:
 //
-//	go run github.com/ny4rl4th0t3p/playhold/cmd/playholdjournal@v0.4.2 journal-file
+//	go run github.com/ny4rl4th0t3p/playhold/cmd/playholdjournal@v0.5.0 journal-file
 //
 // or, from a game's module that lists it as a tool, with go get -tool:
 //

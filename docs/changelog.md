@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.0, 21 November 2026
 
 Three names in `frames.proto` change, for Godot: Godobuf, which generates GDScript from protobuf, refuses fields named
 `message`, and a message named `Error` clashes with GDScript's global `Error`. The bytes on the wire don't change:
@@ -18,8 +18,8 @@ clients and servers built before and after the renames still talk to each other.
 - `Error.message` is `ServerError.text`: `Message` and `GetMessage()` are `Text` and `GetText()` in Go, `message` is
   `text` in TypeScript.
 
-Only code that uses the generated types directly changes. The Go SDK's `Error` and the TypeScript SDK's `onError` keep
-their `message`.
+In Go, they come with `github.com/ny4rl4th0t3p/playhold/wire` `v0.5.0`. Only code that uses the generated types
+directly changes: the Go SDK's `Error` and the TypeScript SDK's `onError` keep their `message`.
 
 ## v0.4.2, 20 November 2026
 

@@ -14,14 +14,3 @@ lint:
 breaking:
   use:
     - FILE
-  # v0.5.0 renames ClientFrame.message, Error and Error.message, for Godot's protobuf generator. The bytes on the wire
-  # don't change; only generated names do. Remove once the renames are the comparison's base.
-  ignore_only:
-    MESSAGE_NO_DELETE:
-      - proto/playhold/v1/frames.proto
-    FIELD_SAME_JSON_NAME:
-      - proto/playhold/v1/frames.proto
-    FIELD_SAME_NAME:
-      - proto/playhold/v1/frames.proto
-    FIELD_SAME_TYPE:
-      - proto/playhold/v1/frames.proto

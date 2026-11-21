@@ -96,8 +96,8 @@ func messageFrame(t *testing.T, seq uint64, module string, id uint32, msg proto.
 	t.Helper()
 	payload, err := proto.Marshal(msg)
 	require.NoError(t, err)
-	return &wire.ClientFrame{Seq: seq, Body: &wire.ClientFrame_Message{
-		Message: &wire.ModuleMessage{Module: module, Id: id, Payload: payload},
+	return &wire.ClientFrame{Seq: seq, Body: &wire.ClientFrame_ModuleMessage{
+		ModuleMessage: &wire.ModuleMessage{Module: module, Id: id, Payload: payload},
 	}}
 }
 
@@ -192,7 +192,7 @@ func TestStoreOutageIsReportedAndTheClientCanRetry(t *testing.T) {
 
 			got := readServerFrame(t, ws).GetError()
 			assert.Equal(t, wire.ErrorCode_ERROR_CODE_UNAVAILABLE, got.GetCode())
-			assert.NotContains(t, got.GetMessage(), errStoreDown.Error(), "internal errors stay on the server")
+			assert.NotContains(t, got.GetText(), errStoreDown.Error(), "internal errors stay on the server")
 
 			// The connection stays open, so saying hello again is allowed.
 			sendFrame(t, ws, tt.frame)
@@ -458,7 +458,7 @@ func TestRoomThatFailsToStartIsReported(t *testing.T) {
 
 	got := readServerFrame(t, ws).GetError()
 	assert.Equal(t, wire.ErrorCode_ERROR_CODE_REJECTED, got.GetCode())
-	assert.NotContains(t, got.GetMessage(), "bad config", "internal errors stay on the server")
+	assert.NotContains(t, got.GetText(), "bad config", "internal errors stay on the server")
 }
 
 func TestProblemsAreReportedToTheSender(t *testing.T) {
@@ -466,8 +466,8 @@ func TestProblemsAreReportedToTheSender(t *testing.T) {
 		Handle(r, msgFail, func(_ *RoomContext, _ *addMsg) error { return errors.New("not your turn") })
 		Handle(r, msgAdd, func(_ *RoomContext, _ *addMsg) error { return nil })
 	}}
-	badPayload := &wire.ClientFrame{Seq: 7, Body: &wire.ClientFrame_Message{
-		Message: &wire.ModuleMessage{Module: "refusing", Id: msgAdd, Payload: []byte{0xff}},
+	badPayload := &wire.ClientFrame{Seq: 7, Body: &wire.ClientFrame_ModuleMessage{
+		ModuleMessage: &wire.ModuleMessage{Module: "refusing", Id: msgAdd, Payload: []byte{0xff}},
 	}}
 
 	tests := []struct {

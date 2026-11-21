@@ -83,8 +83,8 @@ func TestFramesRoundTrip(t *testing.T) {
 	})
 	ws := dial(t, url)
 
-	sent := &wire.ClientFrame{Seq: 7, Body: &wire.ClientFrame_Message{
-		Message: &wire.ModuleMessage{Module: "deck", Id: 1, Payload: []byte{1, 2, 3}},
+	sent := &wire.ClientFrame{Seq: 7, Body: &wire.ClientFrame_ModuleMessage{
+		ModuleMessage: &wire.ModuleMessage{Module: "deck", Id: 1, Payload: []byte{1, 2, 3}},
 	}}
 	data, err := proto.Marshal(sent)
 	require.NoError(t, err)

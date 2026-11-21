@@ -21,7 +21,7 @@ another one.
 
 <<< ../../proto/playhold/v1/frames.proto#frames
 
-Every client frame has a `seq`, chosen by the client, which the server echoes in any `Error` about that frame, and in
+Every client frame has a `seq`, chosen by the client, which the server echoes in any `ServerError` about that frame, and in
 `Joined` and `Queued`. The SDKs number their frames from 1.
 
 ## A connection, in order
@@ -32,10 +32,10 @@ Every client frame has a `seq`, chosen by the client, which the server echoes in
    version gets `UNSUPPORTED_PROTOCOL`, a client too old for a module gets `UPDATE_REQUIRED`, and an unknown or wrong
    identity gets `UNAUTHORIZED`.
 2. **Join → Joined.** A `Join` with a room's code, or an empty code for a new room, is answered with `Joined`, carrying
-   the room's code, or with an `Error`.
+   the room's code, or with a `ServerError`.
 3. **Messages and states.** Once joined, the client sends `ModuleMessage`s, naming a module, an ID local to it and the
    payload, which is that module's own Protobuf message. A message the game handles gets no answer: the `RoomState`
-   that follows shows what changed. One the game refuses gets an `Error`.
+   that follows shows what changed. One the game refuses gets a `ServerError`.
 4. **RoomClosed.** When the room closes for good, `RoomClosed` says why, and is the last frame from that room. The
    connection stays open, and can join another room.
 

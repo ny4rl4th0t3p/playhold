@@ -13,7 +13,7 @@ message ClientFrame {
   oneof body {
     Hello hello = 2;
     Join join = 3;
-    ModuleMessage message = 4;
+    ModuleMessage module_message = 4;
     Queue queue = 5;
     LeaveQueue leave_queue = 6;
   }
@@ -24,7 +24,7 @@ message ServerFrame {
   oneof body {
     Welcome welcome = 1;
     RoomState state = 2;
-    Error error = 3;
+    ServerError error = 3;
     RoomClosed closed = 4;
     Joined joined = 5;
     Queued queued = 6;
@@ -62,7 +62,7 @@ message Joined {
 }
 
 // Queue asks to be matched with other players. properties are what the player chose, such as a mode, for the game's
-// matcher to read; the server limits how many there are and how long. The answer is Queued, or an Error.
+// matcher to read; the server limits how many there are and how long. The answer is Queued, or a ServerError.
 message Queue {
   map<string, string> properties = 1;
 }
@@ -102,7 +102,7 @@ message RoomState {
 
 // #region error-codes
 
-// ErrorCode says what kind of problem an Error reports.
+// ErrorCode says what kind of problem a ServerError reports.
 enum ErrorCode {
   ERROR_CODE_UNSPECIFIED = 0;
   // ERROR_CODE_MALFORMED_FRAME means the frame could not be decoded or breaks a frame rule.
@@ -144,11 +144,12 @@ enum ErrorCode {
 
 // #endregion error-codes
 
-// Error reports a problem with one client frame.
-message Error {
+// ServerError reports a problem with one client frame.
+message ServerError {
   uint64 seq = 1;
   ErrorCode code = 2;
-  string message = 3;
+  // text describes the problem, for logs and developers. Clients act on code.
+  string text = 3;
 }
 
 // #region close-reasons

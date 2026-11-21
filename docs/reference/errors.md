@@ -1,8 +1,7 @@
 # Errors and close reasons
 
-The server answers a frame it didn't handle with an `Error`: the frame's `seq`, an `ErrorCode` and a message for logs.
-When
-a player's room closes, it sends a `RoomClosed` with a `CloseReason`. Both come from
+The server answers a frame it didn't handle with a `ServerError`: the frame's `seq`, an `ErrorCode` and a `text` for
+logs. When a player's room closes, it sends a `RoomClosed` with a `CloseReason`. Both come from
 [`frames.proto`](https://github.com/ny4rl4th0t3p/playhold/blob/main/proto/playhold/v1/frames.proto), shown here as it
 is.
 

@@ -199,7 +199,7 @@ func TestOverloadedServerRefusesNewGuestsRoomsAndSeatsButNotPlayersComingBack(t 
 
 			require.NotNil(t, refused)
 			assert.Equal(t, tt.want, refused.GetCode())
-			assert.Contains(t, refused.GetMessage(), "too busy")
+			assert.Contains(t, refused.GetText(), "too busy")
 		})
 	}
 

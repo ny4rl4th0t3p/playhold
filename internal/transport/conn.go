@@ -117,9 +117,9 @@ func (c *Conn) SendState(state *wire.RoomState) {
 }
 
 // SendError reports a problem with the client frame numbered seq.
-func (c *Conn) SendError(seq uint64, code wire.ErrorCode, message string) {
+func (c *Conn) SendError(seq uint64, code wire.ErrorCode, text string) {
 	c.enqueue(&wire.ServerFrame{Body: &wire.ServerFrame_Error{
-		Error: &wire.Error{Seq: seq, Code: code, Message: message},
+		Error: &wire.ServerError{Seq: seq, Code: code, Text: text},
 	}})
 }
 

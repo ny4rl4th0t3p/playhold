@@ -69,8 +69,8 @@ func (s *session) frame(frame *wire.ClientFrame) {
 		s.hello(seq, body.Hello)
 	case *wire.ClientFrame_Join:
 		s.join(seq, body.Join.GetCode())
-	case *wire.ClientFrame_Message:
-		s.message(seq, body.Message)
+	case *wire.ClientFrame_ModuleMessage:
+		s.message(seq, body.ModuleMessage)
 	case *wire.ClientFrame_Queue:
 		s.queue(seq, body.Queue.GetProperties())
 	case *wire.ClientFrame_LeaveQueue:

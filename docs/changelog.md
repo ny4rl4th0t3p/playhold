@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+Three names in `frames.proto` change, for Godot: Godobuf, which generates GDScript from protobuf, refuses fields named
+`message`, and a message named `Error` clashes with GDScript's global `Error`. The bytes on the wire don't change:
+clients and servers built before and after the renames still talk to each other.
+
+### Breaking changes
+
+**Renamed in `frames.proto`,** and so in the code generated from it:
+
+- `ClientFrame.message` is `module_message`. In Go, `wire.ClientFrame_Message` is `wire.ClientFrame_ModuleMessage`,
+  with its field `ModuleMessage`, and `GetMessage()` is `GetModuleMessage()`. In TypeScript, the `body` case
+  `"message"` is `"moduleMessage"`.
+- The `Error` message is `ServerError`. In Go, `wire.Error` is `wire.ServerError`; `ServerFrame.GetError()` keeps its
+  name. In TypeScript, `Error` and `ErrorSchema` are `ServerError` and `ServerErrorSchema`.
+- `Error.message` is `ServerError.text`: `Message` and `GetMessage()` are `Text` and `GetText()` in Go, `message` is
+  `text` in TypeScript.
+
+Only code that uses the generated types directly changes. The Go SDK's `Error` and the TypeScript SDK's `onError` keep
+their `message`.
+
 ## v0.4.2, 20 November 2026
 
 The Go API's documentation, ready for pkg.go.dev: every exported doc comment checked against the code. Nothing in the

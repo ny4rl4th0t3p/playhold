@@ -46,7 +46,7 @@ func TestClientSchemaWindow(t *testing.T) {
 			}
 			assert.Equal(t, wire.ErrorCode_ERROR_CODE_UPDATE_REQUIRED, frame.GetError().GetCode())
 			assert.Equal(t, uint64(1), frame.GetError().GetSeq())
-			assert.Contains(t, frame.GetError().GetMessage(), "versioned")
+			assert.Contains(t, frame.GetError().GetText(), "versioned")
 		})
 	}
 }
@@ -81,7 +81,7 @@ func TestEveryModuleWithASchemaIsChecked(t *testing.T) {
 
 	got := readServerFrame(t, ws).GetError()
 	assert.Equal(t, wire.ErrorCode_ERROR_CODE_UPDATE_REQUIRED, got.GetCode())
-	assert.Contains(t, got.GetMessage(), "other")
+	assert.Contains(t, got.GetText(), "other")
 }
 
 func TestClientSchemaWiringMistakes(t *testing.T) {

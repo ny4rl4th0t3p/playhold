@@ -46,7 +46,7 @@ See [Players and connections](../concepts/players.md) and [Find a game](../guide
 The Go SDK is a client for programs, such as bots and tests. Add it, at the version that goes with playhold's:
 
 ```bash
-go get github.com/ny4rl4th0t3p/playhold-sdk-go@v0.4.0
+go get github.com/ny4rl4th0t3p/playhold-sdk-go@v0.5.0
 ```
 
 The test starts the game's server on a port of its own, connects two players, and plays a move:

@@ -12,7 +12,7 @@ and helps if you've read [Modules, keepers and events](../concepts/modules.md).
 ```bash
 mkdir tictactoe && cd tictactoe
 go mod init example.com/tictactoe
-go get github.com/ny4rl4th0t3p/playhold@v0.4.0 google.golang.org/protobuf github.com/stretchr/testify
+go get github.com/ny4rl4th0t3p/playhold@v0.5.0 google.golang.org/protobuf github.com/stretchr/testify
 ```
 
 Everything in this chapter goes in one package, `tictactoe`, in two files: `tictactoe.go` and `tictactoe_test.go`.

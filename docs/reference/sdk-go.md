@@ -7,7 +7,7 @@ itself, because a load test has to see and count what goes wrong. To come back a
 connects again with the same identity and joins the same code.
 
 ```bash
-go get github.com/ny4rl4th0t3p/playhold-sdk-go@v0.4.1
+go get github.com/ny4rl4th0t3p/playhold-sdk-go@v0.5.0
 ```
 
 ```go

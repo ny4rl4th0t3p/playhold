@@ -3,6 +3,11 @@
 This chapter gives the game a page in the browser, on the TypeScript SDK: one player starts a game and sends its link,
 the other opens it, and they play. The page is hosted on its own, not by the game's server.
 
+::: tip Building the client in Godot?
+This chapter and the page parts of chapters 6 and 7 are the browser's client. For a Godot client, follow the server's
+parts of chapters 5 to 7, then build the client in [A Godot client](./a-godot-client.md).
+:::
+
 The finished code is `chapter4/` in
 [playhold-tictactoe](https://github.com/ny4rl4th0t3p/playhold-tictactoe). Its Go paths start with
 `github.com/ny4rl4th0t3p/playhold-tictactoe/chapter4`; in your module, they're `example.com/tictactoe`. This chapter

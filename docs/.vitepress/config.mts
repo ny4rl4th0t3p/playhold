@@ -4,8 +4,8 @@ export default defineConfig({
     title: "playhold",
     description: "A self-hosted game backend in Go, built from authoritative rooms and composable modules.",
     base: "/playhold/",
-    // The games checked out for the examples the pages import; their own Markdown isn't part of the site.
-    srcExclude: [".crazy-eights/**", ".tictactoe/**"],
+    // The repositories checked out for the examples the pages import; their own Markdown isn't part of the site.
+    srcExclude: [".crazy-eights/**", ".tictactoe/**", ".godot-sdk/**"],
     themeConfig: {
         nav: [
             {text: "Start here", link: "/start/walkthrough"},
@@ -30,6 +30,7 @@ export default defineConfig({
                     {text: "5. Saving", link: "/tutorial/saving"},
                     {text: "6. Time, and a new version", link: "/tutorial/time"},
                     {text: "7. A second module", link: "/tutorial/a-second-module"},
+                    {text: "A Godot client", link: "/tutorial/a-godot-client"},
                     {text: "Bonus: run it for players", link: "/tutorial/for-players"},
                 ],
             },
@@ -65,6 +66,7 @@ export default defineConfig({
                     {text: "Errors and close reasons", link: "/reference/errors"},
                     {text: "TypeScript SDK", link: "/reference/sdk-ts"},
                     {text: "Go SDK", link: "/reference/sdk-go"},
+                    {text: "Godot SDK", link: "/reference/sdk-godot"},
                     {text: "Wire protocol", link: "/reference/protocol"},
                     {
                         text: "Go API",

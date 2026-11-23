@@ -1,7 +1,14 @@
 # 1. A module
 
-This tutorial builds tic-tac-toe on playhold, one idea at a time, from an empty folder to a game two people play in
-their browsers. Each chapter ends with code that builds and passes its tests, and each chapter's finished code is in
+This tutorial builds tic-tac-toe on playhold, one idea at a time, from an empty folder to a game two people play. It
+builds two things:
+
+- **The game's server,** in Go: the rules, saving, a time limit and a score, in chapters 1 to 7.
+- **A client for it,** either of two:
+    - a page in the browser, on the TypeScript SDK, from [chapter 4](./a-page.md) on;
+    - a Godot game, on the Godot SDK, in [A Godot client](./a-godot-client.md), once the server is complete.
+
+Each chapter ends with code that builds and passes its tests, and each chapter's finished code is in
 [playhold-tictactoe](https://github.com/ny4rl4th0t3p/playhold-tictactoe), in a folder of its own, to compare yours with.
 
 This chapter writes the game's rules as a module, and tests them, with no server yet. It assumes Go 1.27.4 or later,

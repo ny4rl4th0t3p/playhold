@@ -122,5 +122,6 @@ restart keeps it.
 
 ## Next
 
-The game is complete. [A bonus page](./for-players.md), which you can skip, runs it for players: over TLS, out of development mode, with
-the page on a host of its own.
+The game is complete. For a client in Godot instead of the browser, see [A Godot client](./a-godot-client.md).
+[A bonus page](./for-players.md), which you can skip, runs it for players: over TLS, out of development mode, with the
+page on a host of its own.

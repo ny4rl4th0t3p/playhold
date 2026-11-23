@@ -9,11 +9,12 @@ go.work.sum
 # Node
 node_modules/
 
-# Documentation site, and the games' checkouts its examples come from (make crazy-eights, make tictactoe)
+# Documentation site, and the checkouts its examples come from (make crazy-eights, make tictactoe, make godot-sdk)
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 docs/.crazy-eights/
 docs/.tictactoe/
+docs/.godot-sdk/
 
 # Editors and OS
 .idea/

@@ -4,11 +4,15 @@ CRAZY_EIGHTS_REF := v0.5.0
 CRAZY_EIGHTS_REPO := https://github.com/ny4rl4th0t3p/playhold-crazy-eights.git
 TICTACTOE_REF := v0.5.0
 TICTACTOE_REPO := https://github.com/ny4rl4th0t3p/playhold-tictactoe.git
+GODOT_SDK_REF := v0.5.0
+GODOT_SDK_REPO := https://github.com/ny4rl4th0t3p/playhold-sdk-godot.git
 
-# checkout clones repository $(2) into folder $(1), unless it already has commit or tag $(3), and checks that out.
+# checkout checks out commit or tag $(3) of repository $(2) in folder $(1): it clones the repository if the folder isn't
+# there, and fetches if the folder lacks that ref. It never deletes anything: a folder git can't use stops it.
 checkout = @dir=$(1); \
+	if [ ! -e $$dir ]; then git clone --quiet $(2) $$dir; fi; \
 	if ! git -C $$dir rev-parse --verify --quiet '$(3)^{commit}' >/dev/null 2>&1; then \
-		rm -rf $$dir && git clone --quiet $(2) $$dir; \
+		git -C $$dir fetch --quiet --tags origin; \
 	fi; \
 	git -C $$dir -c advice.detachedHead=false checkout --quiet '$(3)'
 BUF_VERSION := v1.75.0
@@ -18,7 +22,7 @@ BUF_AGAINST ?= .git\#branch=main
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check build vet gamevet test integration docs crazy-eights tictactoe lint buflint bufbreaking vuln gen fmt tidy
+.PHONY: help check build vet gamevet test integration docs crazy-eights tictactoe godot-sdk lint buflint bufbreaking vuln gen fmt tidy
 
 help: ## Show the available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -46,7 +50,7 @@ integration: ## Run the tests that need PostgreSQL, in a throwaway container
 	until docker exec playhold-testdb pg_isready -q -h 127.0.0.1 -U postgres; do sleep 1; done; \
 	PLAYHOLD_TEST_POSTGRES='postgres://postgres:test@127.0.0.1:55432/postgres?sslmode=disable' go test -count=1 -race ./store/postgres/...
 
-docs: docs/node_modules crazy-eights tictactoe ## Build the documentation site; a dead link or a missing code snippet fails it
+docs: docs/node_modules crazy-eights tictactoe godot-sdk ## Build the documentation site; a dead link or a missing code snippet fails it
 	npm --prefix docs run build
 
 crazy-eights: ## Check out Crazy Eights at CRAZY_EIGHTS_REF in docs/.crazy-eights, for the docs' examples
@@ -54,6 +58,9 @@ crazy-eights: ## Check out Crazy Eights at CRAZY_EIGHTS_REF in docs/.crazy-eight
 
 tictactoe: ## Check out the tutorial's game at TICTACTOE_REF in docs/.tictactoe, for the tutorial's pages
 	$(call checkout,docs/.tictactoe,$(TICTACTOE_REPO),$(TICTACTOE_REF))
+
+godot-sdk: ## Check out the Godot SDK at GODOT_SDK_REF in docs/.godot-sdk, for its sample's code on two pages
+	$(call checkout,docs/.godot-sdk,$(GODOT_SDK_REPO),$(GODOT_SDK_REF))
 
 docs/node_modules: docs/package-lock.json
 	npm --prefix docs ci

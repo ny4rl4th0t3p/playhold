@@ -56,7 +56,8 @@ development. **Go API:** [pkg.go.dev](https://pkg.go.dev/github.com/ny4rl4th0t3p
 
 - [ ] Accounts, with bans and admin tools
 - [ ] Code generation and scaffolding
-- [ ] Unity and Godot SDKs
+- [x] Godot SDK, in GDScript, for every export
+- [ ] Unity SDK
 - [ ] Modules in other languages
 
 ## Layout
@@ -69,8 +70,9 @@ development. **Go API:** [pkg.go.dev](https://pkg.go.dev/github.com/ny4rl4th0t3p
 
 In repositories of their own, on playhold's releases:
 
-- [playhold-sdk-ts](https://github.com/ny4rl4th0t3p/playhold-sdk-ts) and
-  [playhold-sdk-go](https://github.com/ny4rl4th0t3p/playhold-sdk-go): the libraries a game's client uses
+- [playhold-sdk-ts](https://github.com/ny4rl4th0t3p/playhold-sdk-ts),
+  [playhold-sdk-go](https://github.com/ny4rl4th0t3p/playhold-sdk-go) and
+  [playhold-sdk-godot](https://github.com/ny4rl4th0t3p/playhold-sdk-godot): the libraries a game's client uses
 - [playhold-crazy-eights](https://github.com/ny4rl4th0t3p/playhold-crazy-eights): a sample game, Crazy Eights, with a
   browser page
 - [playhold-tictactoe](https://github.com/ny4rl4th0t3p/playhold-tictactoe): the tutorial's game, tic-tac-toe, with

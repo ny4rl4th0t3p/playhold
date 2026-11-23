@@ -25,6 +25,9 @@ Every error reaches the game's `onError`. Some also change what the client does 
 Any other error, such as `REJECTED`, `RATE_LIMITED` in a room, or `TURNED_OFF`, only reaches `onError`: the message
 wasn't handled, and the game decides what to tell the player.
 
+The Godot SDK does the same, in its own names: every error reaches `server_error`, and the status that stops it is
+`UPDATE_REQUIRED`.
+
 The Go SDK returns a server's error as an `*Error`, with its code, from `Join`, `Queue`, `Matched` or `Next`, and a
 closed room as `ErrRoomClosed`. What to do next is left to the caller.
 
@@ -33,6 +36,6 @@ closed room as `ErrRoomClosed`. What to do next is left to the caller.
 <<< ../../proto/playhold/v1/frames.proto#close-reasons
 
 The TypeScript client stays connected when its room closes, forgets the room's code and calls `onRoomClosed` with the
-reason, so the game can offer another room. A room closing as `MATCH_INCOMPLETE` also puts a client that was matched
-to it back in the queue, with the same properties. A room closing for a server shutdown sends nothing: the room comes
-back on the next server, and the client reconnects to it.
+reason, so the game can offer another room; the Godot client does the same, with `room_closed`. A room closing as
+`MATCH_INCOMPLETE` also puts a client that was matched to it back in the queue, with the same properties. A room closing
+for a server shutdown sends nothing: the room comes back on the next server, and the client reconnects to it.
